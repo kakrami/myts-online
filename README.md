@@ -1,6 +1,6 @@
 # myTS
 
-Current app version: **2.13.3**
+Current app version: **2.13.4**
 
 TeamSnap manager console with authenticated Trace playing-time integration.
 
@@ -34,14 +34,17 @@ README.md
 
 `worker.js` contains both the website and its API backend. No terminal setup or manual D1 migration is required for an existing deployment.
 
-## 2.13.3 Trace sign-in fix
+## 2.13.4 Trace sign-in fix
 
 Trace's successful browser request sends the account email in both `email` and `email_type`. myTS now follows that observed request directly instead of trying to reverse-engineer a value from Trace's minified frontend bundle.
 
 
-## 2.13.3
+## 2.13.4
 Trace magic-code login now uses the exact `email_type=magic-code` value observed in the Firefox authentication diagnostic capture.
 
 
-## 2.13.3
+## 2.13.4
 Trace sign-in now follows the observed production sequence: resolve the Trace user ID from `/tracebot-prod/42/users/search?email=...`, then request the magic code, then submit `user_id + code` to `/users/login/by-code`. The email-send response is no longer expected to contain a user ID because Trace returns `{success:true,data:null}` there.
+
+## 2.13.4
+Playing-time synchronization is now progressive. The game catalog is returned immediately, the first player is processed as a fast-start batch, subsequent batches continue normally, and the Playing Time page shows the newest games first while their player-minute rows are arriving. Current TeamSnap roster players are prioritized ahead of historical Trace members.
