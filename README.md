@@ -1,6 +1,6 @@
 # myTS
 
-Current app version: **2.13.0**
+Current app version: **2.13.1**
 
 TeamSnap manager console with authenticated Trace playing-time integration.
 
@@ -33,3 +33,7 @@ README.md
 ```
 
 `worker.js` contains both the website and its API backend. No terminal setup or manual D1 migration is required for an existing deployment.
+
+## 2.13.1 Trace sign-in fix
+
+Trace's successful browser request sends the account email in both `email` and `email_type`. myTS now follows that observed request directly instead of trying to reverse-engineer a value from Trace's minified frontend bundle.
