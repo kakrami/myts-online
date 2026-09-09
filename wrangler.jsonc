@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "myts-online",
+  "main": "./worker.js",
+  "compatibility_date": "2026-09-09",
+  "d1_databases": [
+    { "binding": "DB","database_id": "d131a8ac-aa46-451a-80eb-4379399f7980","database_name": "myts" }
+  ],
+  "triggers": {
+    "crons": ["17 * * * *"]
+  }
+}

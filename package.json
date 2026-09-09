@@ -1,0 +1,9 @@
+{
+  "name": "myts-online",
+  "version": "2.9.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "wrangler": "^4.68.0"
+  }
+}
