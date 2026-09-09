@@ -1,48 +1,29 @@
 # myTS
 
-Current app version: **2.12.0**
+Current app version: **2.13.0**
 
-TeamSnap manager console with optional automatic Trace integration.
+TeamSnap manager console with authenticated Trace playing-time integration.
 
-[![Deploy myTS to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kakrami/myts)
+## Existing installation update
 
-## Install from your phone
+Replace `worker.js` in the deployed repository and commit the change. Cloudflare Workers Builds publishes the new version automatically. Existing D1 data is migrated in place on first use.
 
-1. Tap **Deploy myTS to Cloudflare** above.
-2. Sign in to Cloudflare and GitHub if asked.
-3. Keep the defaults and tap **Deploy**.
-4. When deployment finishes, tap the new `workers.dev` address.
-5. In myTS, connect **TeamSnap** and then tap **Connect Trace**.
+## First Trace connection
 
-**Done.**
+1. Connect TeamSnap and open the team you want.
+2. Open **Playing Time** and choose **Connect Trace**.
+3. Enter the email used by your Trace account.
+4. Enter the one-time code Trace emails you.
+5. myTS reads the teams available to that authenticated Trace account and verifies the TeamSnap/Trace match with completed fixtures.
+6. Roster, game catalog, and playing-time data are cached automatically.
 
-There is no terminal setup, database setup, Worker URL, API key, Trace team ID, or Trace team URL to enter.
+The Trace email and one-time code are not stored. The resulting Trace web session stays server-side and is never returned to the browser. Internal Trace team IDs are not shown in normal UI.
 
-## What Cloudflare sets up automatically
+## Automatic updates
 
-The deploy button creates the myTS Worker and its D1 database binding. myTS creates its own database tables on first use. The included hourly schedule checks connected Trace teams for updates automatically.
-
-Cloudflare also creates a copy of this repository in your GitHub account and connects it to Workers Builds, so later repository updates redeploy automatically.
-
-## Trace connection
-
-Users never need to know Trace's internal team ID. myTS discovers and stores the connection for the current TeamSnap team. After the first connection, the user does not set Trace up again after a refresh.
-
-Playing-time data is cached on the device in IndexedDB and also stored in Cloudflare D1. myTS shows the saved device copy immediately, checks Cloudflare quietly in the background, and only downloads the cloud data again when its data timestamp changed. While the site is open it checks status periodically; the included Cloudflare schedule also checks Trace hourly when the site is closed.
-
-The first Trace collection is progressive: the Playing Time view shows team match, player discovery, game discovery, and playing-time collection status while existing/available data remains usable.
-
-## Trace resolver safety
-
-myTS verifies Trace teams with completed TeamSnap fixtures (date, opponent, and score) before saving a match. A same-name Trace result is not enough. Existing connections that have no players or game data are automatically re-verified and repaired in the background.
-
-## Updating myTS
-
-Cloudflare watches the deployed GitHub repository. When the repository is updated, Cloudflare automatically publishes the new version while the D1 data remains in the Cloudflare account.
+The included hourly Cloudflare schedule refreshes authenticated Trace connections. While myTS is open it also performs quiet status checks and incremental updates. If Trace expires the sign-in session, saved data remains available and myTS asks the user to reconnect.
 
 ## Files
-
-The complete application intentionally contains only four files:
 
 ```text
 worker.js
@@ -51,4 +32,4 @@ package.json
 README.md
 ```
 
-`worker.js` contains both the myTS website and its small API backend.
+`worker.js` contains both the website and its API backend. No terminal setup or manual D1 migration is required for an existing deployment.
