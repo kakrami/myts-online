@@ -52,3 +52,15 @@ Playing-time synchronization is now progressive. The game catalog is returned im
 
 ## 2.13.5
 Playing-time sync now uses the proven Trace radar reconstruction path when direct player_game_stats contains no usable minute rows. Sync is game-centric and newest-first: detailed game metadata and radar halves are fetched, the generic Trace minutes engine calculates one game, D1 saves it immediately, and the UI pulls that game before continuing to older games. Game processing state survives catalog refreshes and automatic hourly runs continue pending games.
+
+
+## 2.14.0 — server-owned Trace synchronization
+- The browser no longer calculates or drives the Trace backlog.
+- D1 `trace_games.playing_status` is the persistent central queue shared by every device.
+- Successful games remain cached across app releases; an app-version change does not invalidate historical radar calculations.
+- The Worker starts a background batch immediately after Trace connection and cron continues the backlog every minute.
+- Cron processes up to 3 pending games per tick, newest first.
+- Completed game rows are saved after every game and are immediately available to any device.
+- Trace catalog refreshes are change-aware; unchanged games keep their original update timestamp and are not re-downloaded/recalculated.
+- `/api/trace/data` supports incremental `since=` reads so clients receive only changed games/player rows after the first full load.
+- Manual "Check for updates" only queues a Worker-side refresh/retry; the page never owns the computation.
