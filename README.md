@@ -54,7 +54,7 @@ Playing-time synchronization is now progressive. The game catalog is returned im
 Playing-time sync now uses the proven Trace radar reconstruction path when direct player_game_stats contains no usable minute rows. Sync is game-centric and newest-first: detailed game metadata and radar halves are fetched, the generic Trace minutes engine calculates one game, D1 saves it immediately, and the UI pulls that game before continuing to older games. Game processing state survives catalog refreshes and automatic hourly runs continue pending games.
 
 
-## 2.14.1 — server-owned Trace synchronization
+## 2.14.2 — server-owned Trace synchronization
 - The browser no longer calculates or drives the Trace backlog.
 - D1 `trace_games.playing_status` is the persistent central queue shared by every device.
 - Successful games remain cached across app releases; an app-version change does not invalidate historical radar calculations.
@@ -65,7 +65,7 @@ Playing-time sync now uses the proven Trace radar reconstruction path when direc
 - `/api/trace/data` supports incremental `since=` reads so clients receive only changed games/player rows after the first full load.
 - Manual "Check for updates" only queues a Worker-side refresh/retry; the page never owns the computation.
 
-## 2.14.1
+## 2.14.2
 - Removed the visible 30-second polling state flip that caused the Playing Time page to flash between "Showing saved Trace data" and "Updating Trace".
 - The page now re-renders only when Trace progress or saved data actually changes.
 - Background backfill increased from 3 to 8 games per cron tick.
@@ -73,3 +73,10 @@ Playing-time sync now uses the proven Trace radar reconstruction path when direc
 - One Trace token/profile lookup is reused across each batch instead of repeating it for every game.
 - Existing D1 game rows remain authoritative; completed games are not recalculated.
 - Client data pulls remain incremental after a device has its initial saved snapshot.
+
+## 2.14.2
+- Fixed false `insufficient detailed metadata` failures caused by using the signed-in account profile as the rich-game context.
+- Resolves authenticated Trace relations and connected-team player profiles, prioritizing relation users who are players on the connected team and current TeamSnap-roster matches.
+- Verifies the chosen athlete profile against a real pending game before using it for the batch.
+- Caches the verified team-access profile centrally in D1 for future Worker runs and devices.
+- Automatically requeues only older metadata/profile failures. Successfully calculated games and rows remain untouched.
