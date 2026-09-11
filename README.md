@@ -1,82 +1,132 @@
-# myTS
+# myTS 4.0.0
 
-Current app version: **2.13.5**
+A finished TeamSnap team dashboard with server-side publishing and private viewer links.
 
-TeamSnap manager console with authenticated Trace playing-time integration.
+## Product flow
 
-## Existing installation update
+1. The owner opens `/admin` and connects TeamSnap normally with the TeamSnap OAuth Client ID.
+2. TeamSnap schedule, roster, opponents, locations, availability, seasons, results, and history are synchronized into Cloudflare D1.
+3. The owner creates the performance export with `tools/trace_player_processor.html` and **Export myts data**.
+4. In myTS, open **Stats** and drag/drop `myts_trace_data.json`.
+5. myTS validates the `myts.trace` v1.0 contract and publishes the processed match/player stats to D1 for the selected team.
+6. Copy the team's **private viewer link** from Account. Viewers can see the dashboard and published stats without TeamSnap or owner access.
 
-Replace `worker.js` in the deployed repository and commit the change. Cloudflare Workers Builds publishes the new version automatically. Existing D1 data is migrated in place on first use.
+The upload controls and stats mutation API are owner-only. The viewer link is read-only. Replacing an import switches the active stats dataset only after the complete replacement has been stored, so viewers do not see a half-imported dataset.
 
-## First Trace connection
-
-1. Connect TeamSnap and open the team you want.
-2. Open **Playing Time** and choose **Connect Trace**.
-3. Enter the email used by your Trace account.
-4. Enter the one-time code Trace emails you.
-5. myTS reads the teams available to that authenticated Trace account and verifies the TeamSnap/Trace match with completed fixtures.
-6. Roster, game catalog, and playing-time data are cached automatically.
-
-The Trace email and one-time code are not stored. The resulting Trace web session stays server-side and is never returned to the browser. Internal Trace team IDs are not shown in normal UI.
-
-## Automatic updates
-
-The included hourly Cloudflare schedule refreshes authenticated Trace connections. While myTS is open it also performs quiet status checks and incremental updates. If Trace expires the sign-in session, saved data remains available and myTS asks the user to reconnect.
-
-## Files
+## What is included
 
 ```text
 worker.js
 wrangler.jsonc
 package.json
 README.md
+.gitignore
+tools/
+  trace_player_processor.html
+  trace_raw_compact.zip
+  trace_halo_all_games.zip
+  trace_analytics.zip
 ```
 
-`worker.js` contains both the website and its API backend. No terminal setup or manual D1 migration is required for an existing deployment.
+`worker.js` contains the website and API backend. Database tables are created/upgraded automatically on first use.
 
-## 2.13.5 Trace sign-in fix
+## Existing myTS deployment
 
-Trace's successful browser request sends the account email in both `email` and `email_type`. myTS now follows that observed request directly instead of trying to reverse-engineer a value from Trace's minified frontend bundle.
+This build upgrades the current server-backed myTS installation in place.
 
+1. Replace the repository files with this bundle.
+2. Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` Worker secret.
+3. Commit/push. Cloudflare Workers Builds deploys the update.
+4. Open `/admin`.
 
-## 2.13.5
-Trace magic-code login now uses the exact `email_type=magic-code` value observed in the Firefox authentication diagnostic capture.
+Existing TeamSnap data, owner configuration, and private viewer links stay in D1. Old Trace/R2 tables are ignored by the new stats publishing flow. An R2 binding is **not required** for myTS 4.0.
 
+## Fresh Cloudflare setup
 
-## 2.13.5
-Trace sign-in now follows the observed production sequence: resolve the Trace user ID from `/tracebot-prod/42/users/search?email=...`, then request the magic code, then submit `user_id + code` to `/users/login/by-code`. The email-send response is no longer expected to contain a user ID because Trace returns `{success:true,data:null}` there.
+The Worker needs:
 
-## 2.13.5
-Playing-time synchronization is now progressive. The game catalog is returned immediately, the first player is processed as a fast-start batch, subsequent batches continue normally, and the Playing Time page shows the newest games first while their player-minute rows are arriving. Current TeamSnap roster players are prioritized ahead of historical Trace members.
+- a Cloudflare D1 database bound as **`DB`**
+- a Worker secret named **`ADMIN_KEY`**
 
+With Wrangler:
 
-## 2.13.5
-Playing-time sync now uses the proven Trace radar reconstruction path when direct player_game_stats contains no usable minute rows. Sync is game-centric and newest-first: detailed game metadata and radar halves are fetched, the generic Trace minutes engine calculates one game, D1 saves it immediately, and the UI pulls that game before continuing to older games. Game processing state survives catalog refreshes and automatic hourly runs continue pending games.
+```bash
+npm install
+npx wrangler d1 create myts
+# Bind the created database as DB in wrangler.jsonc / the Cloudflare dashboard.
+npx wrangler secret put ADMIN_KEY
+npx wrangler deploy
+```
 
+You can also create the D1 binding and `ADMIN_KEY` in the Cloudflare dashboard and let GitHub/Workers Builds deploy the repository.
 
-## 2.14.2 — server-owned Trace synchronization
-- The browser no longer calculates or drives the Trace backlog.
-- D1 `trace_games.playing_status` is the persistent central queue shared by every device.
-- Successful games remain cached across app releases; an app-version change does not invalidate historical radar calculations.
-- The Worker starts a background batch immediately after Trace connection and cron continues the backlog every minute.
-- Cron processes up to 3 pending games per tick, newest first.
-- Completed game rows are saved after every game and are immediately available to any device.
-- Trace catalog refreshes are change-aware; unchanged games keep their original update timestamp and are not re-downloaded/recalculated.
-- `/api/trace/data` supports incremental `since=` reads so clients receive only changed games/player rows after the first full load.
-- Manual "Check for updates" only queues a Worker-side refresh/retry; the page never owns the computation.
+The included schedule refreshes the saved TeamSnap data every 15 minutes. Stats are intentionally updated only when the owner publishes a new stats file.
 
-## 2.14.2
-- Removed the visible 30-second polling state flip that caused the Playing Time page to flash between "Showing saved Trace data" and "Updating Trace".
-- The page now re-renders only when Trace progress or saved data actually changes.
-- Background backfill increased from 3 to 8 games per cron tick.
-- Up to 4 games are calculated concurrently per wave.
-- One Trace token/profile lookup is reused across each batch instead of repeating it for every game.
-- Existing D1 game rows remain authoritative; completed games are not recalculated.
-- Client data pulls remain incremental after a device has its initial saved snapshot.
+## TeamSnap OAuth
 
-## 2.14.2
-- Fixed false `insufficient detailed metadata` failures caused by using the signed-in account profile as the rich-game context.
-- Resolves authenticated Trace relations and connected-team player profiles, prioritizing relation users who are players on the connected team and current TeamSnap-roster matches.
-- Verifies the chosen athlete profile against a real pending game before using it for the batch.
-- Caches the verified team-access profile centrally in D1 for future Worker runs and devices.
-- Automatically requeues only older metadata/profile failures. Successfully calculated games and rows remain untouched.
+Create or use a TeamSnap OAuth application. Its redirect URI must be your deployed myTS origin plus `/admin`, for example:
+
+```text
+https://myts.example.com/admin
+```
+
+On the first visit to `/admin`, enter the owner key and TeamSnap Client ID. myTS sends you through the normal TeamSnap OAuth read-only connection flow.
+
+## Publishing stats
+
+The included Trace processor remains a local/admin tool; viewers never use it.
+
+1. Open `tools/trace_player_processor.html`.
+2. Load/process the Trace data as usual.
+3. Choose **Export myts data**. This creates `myts_trace_data.json`.
+4. Open the matching team in myTS `/admin`.
+5. Open **Stats** → **Import stats**.
+6. Drop the JSON file into the upload area and review the team/match/player preview.
+7. Choose **Publish stats**.
+
+The server stores the normalized match payloads by team. The original upload is not exposed through the viewer API. The private viewer endpoint returns only the performance data needed by the dashboard.
+
+### Replacement behavior
+
+Publishing another file for the same TeamSnap team creates a new server-side import first, switches the team to it when complete, and removes the previous match payloads afterward. TeamSnap schedule/availability data is never modified by a stats import.
+
+### Matching
+
+myTS correlates imported games to TeamSnap fixtures using date, opponent, and score evidence. Player matching uses the existing TeamSnap roster plus imported identity/name/jersey evidence. Owner corrections from the Stats **Review** view are stored server-side and shared with all viewers.
+
+## Viewer experience
+
+Each TeamSnap team has its own private link under **Account**. The owner can copy or rotate it.
+
+Viewers can see:
+
+- Overview and season context
+- Events and availability
+- Fixtures/results
+- Team/roster
+- Stats
+- Match-specific player performance
+- Player season performance
+- Goal events from the imported match reconstruction
+- History/H2H
+- Reports
+
+Viewers cannot connect TeamSnap, upload/replace/remove stats, change mappings/settings, rotate links, or use owner APIs.
+
+## Data-quality presentation
+
+Trace is an inconsistent source, so myTS treats the imported output as best-effort performance data. The normal UI does not repeat warning messages. A small `% data` indicator is shown in the relevant stats context where a confidence/coverage value exists.
+
+## Security notes
+
+- `ADMIN_KEY` is never embedded in the Worker source.
+- TeamSnap access is stored encrypted server-side using a key derived from `ADMIN_KEY`.
+- Viewer links are random bearer links and can be rotated immediately by the owner.
+- Stats import/delete routes require the owner key.
+- Viewer APIs enforce the team represented by the viewer link.
+- The stats source snapshot metadata remains server-side; viewers receive only normalized display data.
+
+## Version
+
+- myTS: **4.0.0**
+- Stats contract: **`myts.trace` 1.0**
