@@ -1,13 +1,13 @@
-# myTS 6.0.11
+# myTS 6.0.12
 
 Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
 
 ## Product flow
 
 - **Overview** combines TeamSnap schedule/availability with current-season Trace performance leaders and recent matches.
-- **Schedule** is the single timeline for games, practices, and other team events. Opening a game gives a FotMob-style match center with score context, player stats, goal events, and TeamSnap availability.
+- **Schedule** is the single timeline for games, practices, and other team events. Opening a game gives a FotMob-style match center with score context, a game-specific reconstructed lineup/formation, player stats, goal events, and TeamSnap availability.
 - **Player profiles** combine match/season performance, corrected Trace heat maps, position profile, tracked distance, attacking-third share, field coverage, match history, and TeamSnap availability. Trace-tagged shots/touch involvement remain available in the underlying dataset but are not presented as complete event counts. A player opened from a match starts in match context and can move naturally to the season profile.
-- **Squad** combines a FotMob-inspired positional pitch with the roster, availability, appearances, starts, minutes, goals, assists, and rate stats. Primary positions are inferred from goalkeeper role data and normalized Trace movement, with historical Trace movement used only when the selected season has no positional samples.
+- **Team** is the season roster/performance area. Match formations are not shown here; lineup reconstruction belongs to each individual game and uses that game’s starter, goalkeeper, minutes, and spatial evidence.
 - **Reports** provides Excel and PDF exports without duplicating the normal dashboard workflow.
 - Opponent H2H is opened contextually from a match/opponent instead of living in a separate History section.
 
@@ -93,15 +93,16 @@ The current version is populated from the application version constant beside th
 
 
 
-## 6.0.11 squad and navigation pass
+## 6.0.12 match lineup + scroll structure
 
-- Renamed the mixed games/practices primary area from **Matches** to **Schedule**. Its report is also named Schedule, while match-specific views keep the word Match.
-- Renamed the roster-oriented primary area from **Team** to **Squad**.
-- Added an integrated FotMob-inspired **Squad map** above the existing player list. Every positioned player is clickable and opens the same player profile used throughout myTS.
-- Primary positions are inferred from TeamSnap position data when specific, Trace goalkeeper usage, and season-long normalized spatial movement. Selected-season movement is preferred; historical movement is only a fallback for current roster players with no positional samples in the selected season.
-- The pitch groups players into goalkeeper, defender, midfielder, and forward bands, then uses left/right movement to derive the displayed primary role (for example LB/CB/RB, LM/CM/RM, LW/ST/RW).
-- The inferred position is reused in Squad search/list rows, player profiles, match player rows, and player exports so the feature is part of the shared UI/data model rather than an isolated visualization.
-- The dominant tracked format (for example 9v9) is shown as context without pretending the squad map is a starting formation.
+- Removed the season-wide Squad pitch. The primary roster area is **Team** again.
+- Added a FotMob-style **Lineup** card inside each match Overview. It reconstructs that game independently from the game format, Trace starter flags, goalkeeper usage/role, player minutes, and match-specific normalized spatial movement.
+- When Trace start flags are incomplete, the lineup fills only the missing starting spots using the strongest match participation evidence and labels the result as best-effort.
+- Formation is inferred per game from the attacking-depth gaps of the reconstructed starting field players; left/right roles use that match’s tactical movement.
+- Match position labels are reused in the match player table, top contributors, and match-scoped player profile so the same game has one position model across views.
+- Substitutes and other appearances are kept off the pitch and shown directly under the reconstructed starting lineup.
+- Fixed modal scrolling structurally: modal shells no longer scroll. Header and footer are fixed regions; only `.modal-body` owns vertical overflow, so the scrollbar starts below the header and ends above the footer.
+- Applied the same structure to match/player entity drawers: the title bar stays outside the scroll region and only the content body scrolls.
 
 ## 6.0.10 native UI pass
 
