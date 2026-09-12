@@ -1,4 +1,4 @@
-# myTS 6.0.0
+# myTS 6.0.1
 
 Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
 
@@ -6,12 +6,18 @@ Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + T
 
 - **Overview** combines TeamSnap schedule/availability with current-season Trace performance leaders and recent matches.
 - **Matches** is the single timeline for games, practices, and other team events. Opening a game gives a FotMob-style match center with score context, player stats, goal events, and TeamSnap availability.
-- **Player profiles** combine match/season performance, corrected Trace heat maps, position profile, shots/touches/box involvement, match history, and TeamSnap availability. A player opened from a match starts in match context and can move naturally to the season profile.
+- **Player profiles** combine match/season performance, corrected Trace heat maps, position profile, tracked distance, attacking-third share, field coverage, match history, and TeamSnap availability. Trace-tagged shots/touch involvement remain available in the underlying dataset but are not presented as complete event counts. A player opened from a match starts in match context and can move naturally to the season profile.
 - **Team** combines roster, availability, appearances, starts, minutes, goals, assists, and rate stats in one table.
 - **Reports** provides Excel and PDF exports without duplicating the normal dashboard workflow.
 - Opponent H2H is opened contextually from a match/opponent instead of living in a separate History section.
 
 Trace is a data source, not a separate product area. Owner controls for connecting Trace, checking for new games, exporting the unified dataset, or manually importing `myts_trace_data.json` live under **Account & Data Sources**.
+
+## UI / table behavior
+
+- Every data table is sortable by tapping/clicking a column header.
+- Match and player tables use horizontal scrolling on small screens instead of squeezing columns unreadably.
+- Match detail uses a compact sticky title; team names remain in the score hero instead of repeating in the top bar.
 
 ## Trace data
 
@@ -38,4 +44,4 @@ Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, rep
 
 ## Version
 
-`v6.0.0` is shown beside the myTS logo on both the login screen and loaded dashboard, so the deployed version is visible immediately.
+`v6.0.1` is shown beside the myTS logo on both the login screen and loaded dashboard, so the deployed version is visible immediately.
