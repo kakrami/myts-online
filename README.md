@@ -1,29 +1,8 @@
-# myTS 4.1.0
+# myTS
 
-TeamSnap team dashboard with private viewer links and owner-only Trace performance publishing.
+Current app version: **5.0.0**
 
-## Normal flow
-
-1. Open `/admin` and connect TeamSnap normally.
-2. Select the TeamSnap team/season you want.
-3. Open **Stats → Import stats**.
-4. Drag/drop the same Trace files used by the Trace processor:
-   - `trace_raw_compact.zip`
-   - `trace_halo_all_games.zip`
-   - `trace_analytics.zip`
-5. myTS processes those files locally in the owner browser using the baked-in Trace processor/engine, shows a preview, then **Publish stats** stores the finished performance data in D1.
-6. Copy the team's private viewer link from **Account**. Viewers see the published stats but never see the import controls or source files.
-
-A `trace_player_processor_bundle.zip` containing those source ZIPs is also accepted. The older `myts_trace_data.json` export remains supported as a fallback.
-
-## Important data behavior
-
-- Trace source ZIPs are processed **in the browser**. They are not uploaded to the Worker.
-- Only the normalized finished stats snapshot is sent to the owner-only publish API and stored server-side.
-- Publishing a replacement is atomic: viewers continue seeing the previous complete dataset until the new one is fully stored.
-- TeamSnap schedule, roster, availability, and other TeamSnap data are never modified by a stats import.
-- Match → player shows stats for that match. Player profile shows season-level performance.
-- Best-effort Trace confidence is represented by the small `% data` indicator rather than repeated warnings.
+myTS is a Cloudflare Worker + D1 team dashboard. TeamSnap remains the schedule, roster, availability, and season source. Trace is an owner-only connected performance source.
 
 ## Production files
 
@@ -36,62 +15,30 @@ README.md
 .dev.vars.example
 ```
 
-There is no `index.html` and no `tools/` folder. The frontend and the baked-in Trace processing harness are served by `worker.js`.
+There is no `index.html`, tools folder, or R2 bucket requirement. The Worker serves the UI and API.
 
-## Existing deployment
+## Setup
 
-1. Replace the repository files with this bundle.
-2. Keep the existing D1 binding named `DB`.
-3. Keep the existing Worker secret named `ADMIN_KEY`.
-4. Commit/push and let Cloudflare Workers Builds deploy it.
-5. Open `/admin`.
+1. Deploy the repository to Cloudflare Workers.
+2. Bind a D1 database as `DB`.
+3. Set the `ADMIN_KEY` Worker secret.
+4. Open `/admin` and connect TeamSnap normally.
+5. Open **Stats** or **Account → Connect Trace**.
+6. Enter the email used by your Trace account, then the one-time code Trace emails you.
+7. myTS matches the selected TeamSnap team to the authenticated Trace team and begins processing games newest-first.
 
-Existing TeamSnap data, configuration, private viewer links, and previously published stats remain in D1. Database changes are created automatically on first use.
+## Trace storage model
 
-## Fresh Cloudflare setup
+myTS downloads detailed Trace metadata and radar only while processing a game. Those bulky source responses are not retained. The Worker stores one compact normalized `myts.trace` **1.0** dataset in D1 containing match identity, scores, events, player minutes, goals, assists, shots, touches, role/start status, Trace identities, and data confidence. Raw radar responses and raw Halo rings are never retained; only reduced metadata and compact tracking segments are kept while needed for processing/recalculation.
 
-The Worker requires:
+New/changed games are queued incrementally. Unchanged game evidence is reused; only a new or changed game needs a fresh base calculation. Trace Engine 1.7 runs inside the Worker, so processing and publication continue from the scheduled job even when the admin browser is closed. The included every-minute cron advances the queue and periodically refreshes the Trace catalog. TeamSnap is refreshed on a 15-minute cadence.
 
-- Cloudflare D1 database bound as `DB`
-- Worker secret `ADMIN_KEY`
+The Trace email and one-time code are not stored. The authenticated Trace session is encrypted server-side. Share-link viewers never receive Trace credentials or owner controls.
 
-```bash
-npm install
-npx wrangler d1 create myts
-# Add the returned D1 binding to wrangler.jsonc / Cloudflare dashboard.
-npx wrangler secret put ADMIN_KEY
-npx wrangler deploy
-```
+## Unified dataset backup
 
-The included cron refreshes saved TeamSnap data every 15 minutes. Trace performance changes only when the owner publishes a new import.
+The normal workflow is automatic Trace sync. As an emergency backup/restore path, **Account → Advanced** can export or restore one `myts_trace_data.json` file. The old three-ZIP workflow is not part of production.
 
-## TeamSnap OAuth
+## Existing installations
 
-Create/use a TeamSnap OAuth application. Its redirect URI must be your deployed myTS origin plus `/admin`, for example:
-
-```text
-https://myts.example.com/admin
-```
-
-The TeamSnap connection is read-only.
-
-## Private viewers
-
-Each TeamSnap team has a private viewer link under **Account**. The owner can copy or rotate it.
-
-Viewers can see the team dashboard, availability, fixtures/results, roster, published performance stats, match-specific player stats, player season stats, goal events, H2H/history, and reports. They cannot upload/remove stats, change mappings/settings, rotate links, reconnect TeamSnap, or call owner APIs.
-
-## Security
-
-- `ADMIN_KEY` is a Worker secret and is not embedded in the source.
-- TeamSnap credentials are stored server-side and encrypted using the owner secret.
-- Stats publish/delete endpoints require owner authentication.
-- Viewer links are random bearer links and can be rotated.
-- Trace ZIP source files never leave the owner browser during processing.
-- Viewer APIs expose normalized dashboard data, not the original imported source files.
-
-## Version
-
-- myTS: **4.1.0**
-- Trace processor baked into import flow: **5.2.0**
-- Stats contract: **`myts.trace` 1.0**
+Deploying 5.0.0 creates the new unified Trace tables automatically. Existing TeamSnap data and private viewer links remain in D1. If a 4.x admin-import dataset exists, myTS migrates it once into the unified dataset on startup. Existing direct Trace connections are reprocessed with the unified engine contract so the compact match payloads are created.
