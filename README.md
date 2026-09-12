@@ -1,4 +1,4 @@
-# myTS 6.0.4
+# myTS 6.0.5
 
 Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
 
@@ -44,7 +44,7 @@ Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, rep
 
 ## Version
 
-`v6.0.4` is shown beside the myTS logo on both the login screen and loaded dashboard, so the deployed version is visible immediately.
+`v6.0.5` is shown beside the myTS logo on both the login screen and loaded dashboard, so the deployed version is visible immediately.
 ## 6.0.2 season history fix
 
 - Season choices now come from the union of TeamSnap seasons, saved TeamSnap event dates, and the unified Trace dataset.
@@ -52,10 +52,12 @@ Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, rep
 - Trace-only historical seasons remain selectable even if TeamSnap no longer exposes an old team record.
 
 
-## 6.0.4 goal attribution safety
+## 6.0.5 date and goal/assist consistency
 
-- Goal occurrence/timing still reconciles against the official Trace score.
-- Player scorer/assist attribution now requires explicit role evidence from Trace.
-- Generic GID order, AOS/superfollow presence, and nearby touches are not treated as scorer/assist proof.
-- Ambiguous historical role attributions in the bundled seed are cleared instead of being published as player stats.
-- Trace engine 1.7.1-browser forces existing stored source games through the corrected event model without re-downloading raw game data.
+- Date-only fixture values remain calendar dates instead of being parsed as UTC midnight. This fixes Pacific-time display drift such as the Sep 5, 2026 ALBION match appearing as Sep 4.
+- Goal occurrence/timing is capped to the official Trace score.
+- Scorer attribution uses explicit Trace roles first, then an evidence-weighted best-effort model using superfollow/AOS involvement, Halo on-field evidence, season attacking profile, and unique Trace/GID evidence. Generic GID order is never treated as scorer order.
+- Assist attribution uses explicit roles first, then Trace sequence/predecessor evidence, superfollow/AOS, Halo presence, and season creation profile. Weak assist guesses remain unresolved.
+- Player G/A totals, match events, season totals, and heat-map G/A markers now come from the same canonical event model. Map markers are retained only when a stored tracked location matches the canonical player/event.
+- The bundled 108-match historical seed has been rebuilt with the same attribution policy.
+- Trace engine 1.8.0-browser reprocesses existing stored source games without re-downloading raw game/radar/Halo data; the background continuation also includes engine-only refresh work.
