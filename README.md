@@ -1,17 +1,17 @@
-# myTS 6.0.9
+# myTS 6.0.11
 
 Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
 
 ## Product flow
 
 - **Overview** combines TeamSnap schedule/availability with current-season Trace performance leaders and recent matches.
-- **Matches** is the single timeline for games, practices, and other team events. Opening a game gives a FotMob-style match center with score context, player stats, goal events, and TeamSnap availability.
+- **Schedule** is the single timeline for games, practices, and other team events. Opening a game gives a FotMob-style match center with score context, player stats, goal events, and TeamSnap availability.
 - **Player profiles** combine match/season performance, corrected Trace heat maps, position profile, tracked distance, attacking-third share, field coverage, match history, and TeamSnap availability. Trace-tagged shots/touch involvement remain available in the underlying dataset but are not presented as complete event counts. A player opened from a match starts in match context and can move naturally to the season profile.
-- **Team** combines roster, availability, appearances, starts, minutes, goals, assists, and rate stats in one table.
+- **Squad** combines a FotMob-inspired positional pitch with the roster, availability, appearances, starts, minutes, goals, assists, and rate stats. Primary positions are inferred from goalkeeper role data and normalized Trace movement, with historical Trace movement used only when the selected season has no positional samples.
 - **Reports** provides Excel and PDF exports without duplicating the normal dashboard workflow.
 - Opponent H2H is opened contextually from a match/opponent instead of living in a separate History section.
 
-Trace is a data source, not a separate product area. Owner controls for connecting Trace, checking for new games, exporting the unified dataset, or manually importing `myts_trace_data.json` live under **Account & Data Sources**. The separate **Settings** control contains only the pre-season inclusion toggle.
+Trace is a data source, not a separate product area. Owner controls for connecting Trace, checking for new games, exporting the unified dataset, manually importing `myts_trace_data.json`, and the pre-season inclusion setting live under **Account & Data Sources**.
 
 ## UI / table behavior
 
@@ -90,6 +90,27 @@ The current version is populated from the application version constant beside th
 - The bundled 108-match historical seed has been rebuilt with the same attribution policy.
 - Trace engine 1.8.0-browser reprocesses existing stored source games without re-downloading raw game/radar/Halo data; the background continuation also includes engine-only refresh work.
 
+
+
+
+## 6.0.11 squad and navigation pass
+
+- Renamed the mixed games/practices primary area from **Matches** to **Schedule**. Its report is also named Schedule, while match-specific views keep the word Match.
+- Renamed the roster-oriented primary area from **Team** to **Squad**.
+- Added an integrated FotMob-inspired **Squad map** above the existing player list. Every positioned player is clickable and opens the same player profile used throughout myTS.
+- Primary positions are inferred from TeamSnap position data when specific, Trace goalkeeper usage, and season-long normalized spatial movement. Selected-season movement is preferred; historical movement is only a fallback for current roster players with no positional samples in the selected season.
+- The pitch groups players into goalkeeper, defender, midfielder, and forward bands, then uses left/right movement to derive the displayed primary role (for example LB/CB/RB, LM/CM/RM, LW/ST/RW).
+- The inferred position is reused in Squad search/list rows, player profiles, match player rows, and player exports so the feature is part of the shared UI/data model rather than an isolated visualization.
+- The dominant tracked format (for example 9v9) is shown as context without pretending the squad map is a starting formation.
+
+## 6.0.10 native UI pass
+
+- Replaced the visible Team and Season browser `<select>` controls with app-native popover pickers.
+- Replaced the pre-season browser checkbox with an app-native switch.
+- Replaced browser confirmation dialogs with an in-app confirmation modal.
+- Standardized scrollbars across page, tables, drawers, modals, and picker menus with thin rounded app styling. Horizontal chip/tab scrollers remain scrollbar-free and touch-scrollable.
+- Added keyboard navigation for Team/Season pickers (arrows, Home/End, Enter, Escape) and retained dialog focus behavior.
+- Kept the OS file chooser behind the existing custom import drop zone; it is not exposed as a browser-styled control.
 
 ## 6.0.9 UI/UX pass
 
