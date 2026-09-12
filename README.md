@@ -1,4 +1,4 @@
-# myTS 6.0.3
+# myTS 6.0.4
 
 Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
 
@@ -44,7 +44,7 @@ Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, rep
 
 ## Version
 
-`v6.0.2` is shown beside the myTS logo on both the login screen and loaded dashboard, so the deployed version is visible immediately.
+`v6.0.4` is shown beside the myTS logo on both the login screen and loaded dashboard, so the deployed version is visible immediately.
 ## 6.0.2 season history fix
 
 - Season choices now come from the union of TeamSnap seasons, saved TeamSnap event dates, and the unified Trace dataset.
@@ -52,10 +52,10 @@ Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, rep
 - Trace-only historical seasons remain selectable even if TeamSnap no longer exposes an old team record.
 
 
-## 6.0.3 UI cleanup
+## 6.0.4 goal attribution safety
 
-- Match Player Stats now shows Player, Minutes, Start, Goals, Assists, and Attacking-third share only.
-- The compact Player Stats table fits the mobile viewport without horizontal scrolling.
-- Match entity headers use a flex layout so the title receives the available width instead of collapsing to an ellipsis.
-- Settings and Account & Data Sources are separate: Settings contains only the June pre-season inclusion toggle.
-- Visible version badge is 6.0.3 on both login and dashboard.
+- Goal occurrence/timing still reconciles against the official Trace score.
+- Player scorer/assist attribution now requires explicit role evidence from Trace.
+- Generic GID order, AOS/superfollow presence, and nearby touches are not treated as scorer/assist proof.
+- Ambiguous historical role attributions in the bundled seed are cleared instead of being published as player stats.
+- Trace engine 1.7.1-browser forces existing stored source games through the corrected event model without re-downloading raw game data.
