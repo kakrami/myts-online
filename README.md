@@ -1,4 +1,4 @@
-# myTS 6.0.14
+# myTS 6.0.17
 
 Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
 
@@ -46,6 +46,18 @@ Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, rep
 
 The current version is populated from the application version constant beside the myTS logo on both the login screen and loaded dashboard.
 
+## 6.0.15 finished UI polish
+
+- Consolidated the accumulated responsive CSS into one coherent mobile breakpoint system instead of overlapping duplicate rules.
+- Standardized surfaces, borders, corner radii, shadows, spacing, buttons, selectors, tables, cards, overlays, and account/data-source controls around one design system.
+- Simplified typography hierarchy and reduced unnecessary all-caps micro-labels while keeping soccer/stat abbreviations where they are conventional.
+- Refined the sticky desktop header and mobile bottom navigation so active state, spacing, and touch behavior match the rest of the app.
+- Reworked table headers, rows, search/filter controls, match rows, report cards, player/profile surfaces, and modal/entity chrome for consistent density and hover/focus behavior.
+- Cleaned several user-facing labels: Overview now calls the match-count metric **Trace matches**, Schedule copy is shorter, match player spatial share is labeled **Attacking**, and match lineup/contributor wording is more natural.
+- Removed presentation-only inline styles where values are not data-driven; the remaining inline styles are dynamic widths/coordinates used by availability bars, lineups, and spatial charts.
+- Preserved app-native Team/Season pickers, switches, confirmation dialogs, body-only modal scrolling, cancellation handling, game-specific lineup reconstruction, date fixes, Trace attribution, and performance caches.
+- `myts_trace_data.json` is unchanged.
+
 ## 6.0.8 tab-switch performance
 
 - Tab changes no longer rescan the full Trace dataset or rebuild timezone formatters.
@@ -92,6 +104,15 @@ The current version is populated from the application version constant beside th
 
 
 
+
+## 6.0.17 cancellation reconciliation
+
+- Fixed cancellation detection at the TeamSnap ingestion layer rather than only in the renderer.
+- TeamSnap schedule sync now merges the standard `events/search` collection with `events/overview` when available.
+- The nearest recent/current schedule records are then reconciled against their individual TeamSnap event endpoint; the individual event record wins for `is_canceled` and other current event state.
+- Recently stored event IDs participate in that reconciliation so an item that disappears from the list after cancellation can still be verified and retained as Cancelled instead of silently losing its state.
+- Event sanitization now retains cancellation-adjacent event metadata (`status`, notes, title/label, updated timestamp) and cancellation parsing accepts the common boolean/string encodings returned by TeamSnap clients.
+- Existing UI behavior remains: canceled items stay visible in Schedule but are excluded from Up next, W-D-L, availability totals, completed-match history, and Trace fixture matching.
 
 ## 6.0.14 cancelled event state
 
@@ -145,3 +166,13 @@ The current version is populated from the application version constant beside th
 - Trace quality wording is standardized as Trace coverage.
 - Dialogs support Escape, focus containment/restoration, backdrop dismissal, and labeled controls.
 - Working typography and mobile touch/readability were tightened without changing the data model.
+
+
+## D1 read-efficiency changes in 6.0.17
+
+- Scheduled maintenance runs every 5 minutes instead of every minute.
+- Fully synchronized Trace connections are skipped until their catalog refresh is due.
+- Read-only Trace status/data responses reuse the stored progress snapshot instead of rescanning the game catalog.
+- Unified dataset counts are recalculated only when a catalog refresh or newly published match can change them.
+- Composite indexes cover dataset lookup and the hot Trace game/source/Halo predicates.
+- Trace performance data and TeamSnap data contracts are unchanged.

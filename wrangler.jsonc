@@ -7,6 +7,6 @@
     { "binding": "DB" }
   ],
   "triggers": {
-    "crons": ["* * * * *"]
+    "crons": ["*/5 * * * *"]
   }
 }
