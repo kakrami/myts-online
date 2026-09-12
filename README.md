@@ -1,47 +1,41 @@
-# myTS
+# myTS 6.0.0
 
-Current app version: **5.1.0**
+Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
 
-myTS combines TeamSnap team management with Trace performance data. Trace is a data source for the normal team experience, not a separate analytics product.
+## Product flow
 
-## Where Trace data appears
+- **Overview** combines TeamSnap schedule/availability with current-season Trace performance leaders and recent matches.
+- **Matches** is the single timeline for games, practices, and other team events. Opening a game gives a FotMob-style match center with score context, player stats, goal events, and TeamSnap availability.
+- **Player profiles** combine match/season performance, corrected Trace heat maps, position profile, shots/touches/box involvement, match history, and TeamSnap availability. A player opened from a match starts in match context and can move naturally to the season profile.
+- **Team** combines roster, availability, appearances, starts, minutes, goals, assists, and rate stats in one table.
+- **Reports** provides Excel and PDF exports without duplicating the normal dashboard workflow.
+- Opponent H2H is opened contextually from a match/opponent instead of living in a separate History section.
 
-- **Overview** — season performance leaders and recent-match contributors.
-- **Fixtures** — match cards include score, format, data confidence, and contributors.
-- **Match Center** — Overview, Player stats, Events, and Availability live together in each game.
-- **Team** — roster rows combine TeamSnap availability with appearances, starts, minutes, and G+A.
-- **Player profiles** — Overview, Matches, Heat map, and Availability are combined in one profile.
+Trace is a data source, not a separate product area. Owner controls for connecting Trace, checking for new games, exporting the unified dataset, or manually importing `myts_trace_data.json` live under **Account & Data Sources**.
 
-There is no separate Stats tab in the main navigation.
+## Trace data
 
-## Trace data management
+- The included `myts_trace_data.json` is the unified historical seed/fallback dataset.
+- It contains 108 processed matches and spatial player-game data, including 24×16 heat-map grids and normalized event/stat data.
+- Manual import seeds existing history so a connected Trace account only needs to collect new or changed games.
+- Automatic Trace processing is incremental and stores the compact normalized result in D1.
+- R2 is not required.
 
-Admins can use **Team → Import Trace data** to drag/drop or choose the included `myts_trace_data.json`. **Trace settings** on the Team page manages the direct Trace connection.
+## Files
 
-The included unified dataset contains the 108 already-processed historical games in one `myts.trace` dataset, including the available player position/heat-map aggregates. It replaces the old three-ZIP workflow.
+- `worker.js` — deploy this Worker; the complete frontend is embedded.
+- `wrangler.jsonc` — Worker, D1, and scheduler configuration.
+- `package.json` — Wrangler package metadata.
+- `myts_trace_data.json` — unified Trace seed/fallback dataset.
+- `.dev.vars.example` — local `ADMIN_KEY` example.
+- `.gitignore`
 
-After Trace is connected, myTS can continue checking for new or changed Trace games. Existing published games are reused rather than rebuilding the historical set from scratch.
+There is intentionally no `index.html` or `tools/` folder in the production bundle.
 
-Private share-link users receive the same integrated read-only match and player experience, without Trace connection/import controls.
+## Deploy
 
-## Deployment
+Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, replace the repository files with this bundle, and deploy with Wrangler. TeamSnap OAuth continues to redirect to `/admin`.
 
-1. Keep the existing Cloudflare D1 binding named `DB` and existing `ADMIN_KEY` secret.
-2. Replace the production files with this bundle and deploy `worker.js` normally.
-3. Open `/admin` and connect TeamSnap if it is not already connected.
-4. On **Team**, import `myts_trace_data.json` to seed/replace historical Trace performance data.
-5. Use **Trace settings** if you want automatic collection of future Trace games.
+## Version
 
-R2 is **not required**.
-
-## Production files
-
-```text
-worker.js
-wrangler.jsonc
-package.json
-README.md
-.gitignore
-.dev.vars.example
-myts_trace_data.json
-```
+`v6.0.0` is shown beside the myTS logo on both the login screen and loaded dashboard, so the deployed version is visible immediately.
