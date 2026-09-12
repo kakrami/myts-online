@@ -1,4 +1,4 @@
-# myTS 6.0.5
+# myTS 6.0.7
 
 Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
 
@@ -44,7 +44,28 @@ Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, rep
 
 ## Version
 
-`v6.0.5` is shown beside the myTS logo on both the login screen and loaded dashboard, so the deployed version is visible immediately.
+`v6.0.7` is shown beside the myTS logo on both the login screen and loaded dashboard, so the deployed version is visible immediately.
+
+## 6.0.7 calendar-date consistency
+
+- Calendar dates and timestamps now use separate handling throughout the dashboard. A `YYYY-MM-DD` value is never timezone-shifted.
+- Trace `played_at` UTC timestamps are converted to the team calendar timezone before selecting a match day.
+- Trace catalog refreshes reconcile dates against current TeamSnap fixtures and the saved connection evidence, so older Trace connections self-correct without a reset.
+- Calendar-only corrections reuse the existing saved Trace source/Halo data and only queue a lightweight engine republish; historical raw tracking is not downloaded again.
+- The stats API now exposes `played_at`, allowing every Trace view to resolve the same canonical calendar day.
+- Overview, Fixtures, match details, Stats, player profiles, recent matches, History/H2H, reports, season filtering, and import/catalog views all use the same date helpers.
+- The bundled 108-match historical seed was migrated using `America/Los_Angeles`; 28 UTC-evening records that were one calendar day late were corrected.
+
+## 6.0.6 interface polish
+
+- Rebuilt the visual type scale so normal interface text is readable instead of relying on 6–10px labels and very heavy 900/950 weights.
+- Uses the native variable/system UI font stack for sharper rendering without adding another external font dependency.
+- Increased hierarchy and line-height across page titles, cards, tables, match rows, player profiles, reports, settings, and source controls.
+- Standardized buttons, inputs, selectors, cards, modal geometry, hover states, keyboard focus, and mobile touch targets.
+- Added tabular numerals for scores and stats so columns and scorelines align cleanly.
+- Simplified user-facing stats wording and removed the asterisk-style assist label while keeping the best-effort explanation in context.
+- Added accessible labels to icon-only controls and reduced-motion behavior.
+- Corrected the visible frontend version badge/runtime version so the UI now matches the deployed bundle version.
 ## 6.0.2 season history fix
 
 - Season choices now come from the union of TeamSnap seasons, saved TeamSnap event dates, and the unified Trace dataset.
