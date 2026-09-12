@@ -1,4 +1,4 @@
-# myTS 6.0.8
+# myTS 6.0.9
 
 Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
 
@@ -44,7 +44,7 @@ Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, rep
 
 ## Version
 
-`v6.0.8` is shown beside the myTS logo on both the login screen and loaded dashboard, so the deployed version is visible immediately.
+The current version is populated from the application version constant beside the myTS logo on both the login screen and loaded dashboard.
 
 ## 6.0.8 tab-switch performance
 
@@ -89,3 +89,16 @@ Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, rep
 - Player G/A totals, match events, season totals, and heat-map G/A markers now come from the same canonical event model. Map markers are retained only when a stored tracked location matches the canonical player/event.
 - The bundled 108-match historical seed has been rebuilt with the same attribution policy.
 - Trace engine 1.8.0-browser reprocesses existing stored source games without re-downloading raw game/radar/Halo data; the background continuation also includes engine-only refresh work.
+
+
+## 6.0.9 UI/UX pass
+
+- Team and Match search update results in place instead of remounting the full view.
+- Report switching preserves interaction behavior and sortable tables.
+- Mobile uses a bottom primary navigation and a compact five-column Team table.
+- Refresh and pre-season controls are consolidated into Account & Data Sources.
+- Match detail removes the duplicate Events subtab; goal timeline remains in Overview.
+- Soccer results use W-D-L terminology consistently.
+- Trace quality wording is standardized as Trace coverage.
+- Dialogs support Escape, focus containment/restoration, backdrop dismissal, and labeled controls.
+- Working typography and mobile touch/readability were tightened without changing the data model.
