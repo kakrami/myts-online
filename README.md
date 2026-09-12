@@ -1,4 +1,4 @@
-# myTS 6.0.12
+# myTS 6.0.14
 
 Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
 
@@ -92,6 +92,27 @@ The current version is populated from the application version constant beside th
 
 
 
+
+## 6.0.14 cancelled event state
+
+- Preserves TeamSnap `is_canceled` event data during server-side sanitization so cancellation status reaches the dashboard.
+- Shows a clear **Cancelled** indicator for canceled games, practices, and other schedule events, including event/match detail.
+- Canceled events remain visible in Schedule for reference but are excluded from **Up next**, recent played matches, season W-D-L, player availability percentages, and completed attendance history.
+- Canceled games do not display a score/result as if they were played and are excluded from TeamSnap-to-Trace fixture matching/fingerprints.
+- Schedule reports include an explicit **Status** column and suppress result/Trace/availability values for canceled items.
+- Existing RSVP responses remain visible inside the canceled event detail for reference without affecting aggregate availability.
+
+## 6.0.13 mobile support pass
+
+- Team and Season use app-native bottom selection sheets on phones instead of desktop-style anchored popovers. This removes viewport overflow, right-edge clipping, and bottom-navigation stacking conflicts.
+- Mobile picker sheets have their own scrim, sticky title/close row, scrollable options, larger touch targets, safe-area spacing, and close automatically on rotation/viewport-width changes. Desktop keeps the compact popover behavior.
+- Fixed mobile header grid placement so Account stays pinned to the right and Team/Season always occupy the intended context row.
+- Removed mobile `backdrop-filter` from the sticky header so the fixed bottom navigation and fixed picker sheets use the viewport consistently across browsers. Landscape phones collapse Team/Season into the main header row to preserve vertical space.
+- Account and Trace dialogs become full-screen mobile app surfaces with fixed safe-area-aware headers/footers and body-only scrolling. Confirm dialogs remain compact centered sheets.
+- Match/player entity drawers use the same safe-area-aware full-screen structure and larger Back/Close targets. Background page scrolling is locked consistently while any modal, entity drawer, or mobile selection sheet is open.
+- Schedule filters become a four-column mobile segmented control, search fields and buttons use touch-sized heights, and toasts sit above the fixed bottom navigation.
+- Team table widths were rebalanced for 320–360px screens; match Player stats reduces to Player / Min / G / A on narrow phones while retaining the full table on larger screens.
+- The match lineup pitch scales by viewport size and gets a compact landscape-phone treatment rather than forcing the portrait layout into a short viewport.
 
 ## 6.0.12 match lineup + scroll structure
 
