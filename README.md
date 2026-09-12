@@ -1,26 +1,40 @@
 # myTS
 
-Current app version: **5.0.1**
+Current app version: **5.1.0**
 
-## Initial setup
+myTS combines TeamSnap team management with Trace performance data. Trace is a data source for the normal team experience, not a separate analytics product.
 
-1. Deploy `worker.js` with the existing `wrangler.jsonc` and D1 binding.
-2. Open `/admin` and connect TeamSnap normally.
-3. Open **Stats**.
-4. Drag `myts_trace_data.json` onto **Load existing Trace data**. This seeds the 108 already-processed historical matches.
-5. Connect Trace. myTS reconciles the Trace catalog against the imported game IDs, marks those historical games complete, and only collects new or changed games.
+## Where Trace data appears
 
-The unified JSON replaces the old three-ZIP workflow. It is a compact processed `myts.trace` 1.0 dataset; raw radar/Halo responses are not stored. R2 is not required.
+- **Overview** — season performance leaders and recent-match contributors.
+- **Fixtures** — match cards include score, format, data confidence, and contributors.
+- **Match Center** — Overview, Player stats, Events, and Availability live together in each game.
+- **Team** — roster rows combine TeamSnap availability with appearances, starts, minutes, and G+A.
+- **Player profiles** — Overview, Matches, Heat map, and Availability are combined in one profile.
 
-## Manual data path
+There is no separate Stats tab in the main navigation.
 
-Admins can drag/drop or choose `myts_trace_data.json` directly from **Stats** at any time. Importing while Trace is already connected immediately reconciles matching game IDs and cancels temporary collection data for those matches. Share-link users only see the published stats.
+## Trace data management
 
-## Automatic Trace path
+Admins can use **Team → Import Trace data** to drag/drop or choose the included `myts_trace_data.json`. **Trace settings** on the Team page manages the direct Trace connection.
 
-After Trace is connected, scheduled sync checks the Trace game catalog and processes only games that are not already represented by the active unified dataset, or games whose catalog result changed.
+The included unified dataset contains the 108 already-processed historical games in one `myts.trace` dataset, including the available player position/heat-map aggregates. It replaces the old three-ZIP workflow.
 
-## Files
+After Trace is connected, myTS can continue checking for new or changed Trace games. Existing published games are reused rather than rebuilding the historical set from scratch.
+
+Private share-link users receive the same integrated read-only match and player experience, without Trace connection/import controls.
+
+## Deployment
+
+1. Keep the existing Cloudflare D1 binding named `DB` and existing `ADMIN_KEY` secret.
+2. Replace the production files with this bundle and deploy `worker.js` normally.
+3. Open `/admin` and connect TeamSnap if it is not already connected.
+4. On **Team**, import `myts_trace_data.json` to seed/replace historical Trace performance data.
+5. Use **Trace settings** if you want automatic collection of future Trace games.
+
+R2 is **not required**.
+
+## Production files
 
 ```text
 worker.js
@@ -29,5 +43,5 @@ package.json
 README.md
 .gitignore
 .dev.vars.example
-myts_trace_data.json   # one-time historical seed / manual backup
+myts_trace_data.json
 ```
