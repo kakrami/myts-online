@@ -1,4 +1,4 @@
-# myTS 6.0.7
+# myTS 6.0.8
 
 Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
 
@@ -44,7 +44,14 @@ Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, rep
 
 ## Version
 
-`v6.0.7` is shown beside the myTS logo on both the login screen and loaded dashboard, so the deployed version is visible immediately.
+`v6.0.8` is shown beside the myTS logo on both the login screen and loaded dashboard, so the deployed version is visible immediately.
+
+## 6.0.8 tab-switch performance
+
+- Tab changes no longer rescan the full Trace dataset or rebuild timezone formatters.
+- Trace game/date lookup, season rows, row-to-player matching, per-game rows, TeamSnap-to-Trace match pairing, merged timelines, availability summaries, and player/team aggregates are indexed and reused between renders.
+- View caches are invalidated only when the underlying team/Trace data, season, mapping context, or pre-season setting changes.
+- Date correctness from 6.0.7 is retained; timezone and calendar formatting now use cached formatters/results rather than constructing them repeatedly.
 
 ## 6.0.7 calendar-date consistency
 
