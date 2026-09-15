@@ -1,4 +1,4 @@
-# myTS 6.3.0
+# myTS 6.3.1
 
 Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
 
@@ -6,6 +6,7 @@ Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + T
 
 - **Overview** combines TeamSnap schedule/availability with current-season Trace performance leaders and recent matches.
 - **Schedule** is the single timeline for games, practices, and other team events. Opening a game gives a FotMob-style match center with score context, a game-specific reconstructed lineup/formation, player stats, goal events, and TeamSnap availability.
+- **Tournaments** groups each GotSport event separately and shows confirmed team fixtures alongside possible quarterfinal, semifinal, final, consolation, or placement slots from the public division schedule.
 - **Player profiles** combine match/season performance, corrected Trace heat maps, position profile, tracked distance, attacking-third share, field coverage, match history, and TeamSnap availability. Trace-tagged shots/touch involvement remain available in the underlying dataset but are not presented as complete event counts. A player opened from a match starts in match context and can move naturally to the season profile.
 - **Team** is the season roster/performance area. Match formations are not shown here; lineup reconstruction belongs to each individual game and uses that game’s starter, goalkeeper, minutes, and spatial evidence.
 - **Reports** provides Excel and PDF exports without duplicating the normal dashboard workflow.
@@ -47,11 +48,20 @@ Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, rep
 The current version is populated from the application version constant beside the myTS logo on both the login screen and loaded dashboard.
 
 
+## 6.3.1 Tournament schedules tab
+
+- Added a dedicated **Tournaments** primary tab between Schedule and Team.
+- Each GotSport tournament is grouped into its own card with confirmed team games and the public semifinal/final/placement path shown together.
+- Conditional playoff/final slots now appear only in **Tournaments** as **Possible / If qualified**; they no longer appear in the normal Schedule or as the Overview **Up next** event.
+- Confirmed tournament games remain in the normal Schedule because they are real team fixtures, and they also appear inside their tournament card for full event context.
+- Tournament cards show the event date range, confirmed/possible counts, and a direct GotSport public schedule link when available.
+- Navigation was expanded cleanly to five tabs with mobile sizing preserved. No D1/schema changes are required.
+
 ## 6.3.0 GotSport tournament-path schedules
 
 - GotSport discovery now follows the **public event/division schedule**, not only the team Rankings upcoming-games list. The Rankings team page remains the automatic tournament detector and supplies confirmed fixtures.
 - For each detected tournament, myTS resolves the GotSport event ID and the team's division/group, then reads the public division schedule for knockout placeholders such as quarterfinals, semifinals, finals, consolation, and placement matches.
-- Published knockout times are shown in Schedule as **Possible** / **If qualified** until GotSport assigns the team to that match. These conditional slots never affect W-D-L, scores, availability totals, or Trace matching.
+- Published knockout times are shown in the dedicated **Tournaments** tab as **Possible** / **If qualified** until GotSport assigns the team to that match. These conditional slots never affect W-D-L, scores, availability totals, or Trace matching.
 - When GotSport's public schedule responds normally, the Worker uses ordinary HTTP. If GotSport returns its JavaScript verification page, the Worker falls back to the included Cloudflare Browser Run `BROWSER` binding to render the same public page; it does not solve interactive CAPTCHAs.
 - Public schedule lookups are cached with the normal six-hour GotSport refresh cadence. Account & Data Sources reports confirmed games, possible playoff slots, and the first enrichment warning when an event/division cannot yet be resolved.
 - The parser accepts structured JSON/Next.js data and HTML schedule tables, preserves local tournament dates/times, and uses the confirmed tournament year when GotSport prints dates without a year.
