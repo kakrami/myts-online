@@ -1,4 +1,4 @@
-# myTS 6.1.0
+# myTS 6.3.0
 
 Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
 
@@ -40,23 +40,32 @@ There is intentionally no `index.html` or `tools/` folder in the production bund
 
 ## Deploy
 
-Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, replace the repository files with this bundle, and deploy with Wrangler. TeamSnap OAuth continues to redirect to `/admin`.
+Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, replace the repository files with this bundle, and deploy with Wrangler. TeamSnap OAuth continues to redirect to `/admin`. The included `wrangler.jsonc` also declares a Cloudflare Browser Run binding named `BROWSER`; it is used only when GotSport serves its public tournament schedule behind JavaScript verification.
 
 ## Version
 
 The current version is populated from the application version constant beside the myTS logo on both the login screen and loaded dashboard.
 
 
-## 6.1.0 GotSport schedule sync
+## 6.3.0 GotSport tournament-path schedules
 
-- Added GotSport as a first-class schedule source under **Account & Data Sources** using the team iCal subscription link.
-- GotSport calendar URLs are encrypted at rest and restricted to HTTPS GotSport hosts; redirects are revalidated before the Worker follows them.
-- The Worker parses iCal time zones, all-day entries, cancellations, opponent names, locations, and competition/tournament labels, then stores the normalized feed against the cross-season team family.
-- GotSport refreshes automatically in the existing scheduler and can also be synced or disconnected manually.
-- Published GotSport games merge into the normal Schedule and are deduplicated against TeamSnap by date/opponent evidence; unmatched GotSport games remain visible instead of being dropped.
-- GotSport-only fixtures can still pair with Trace by date/opponent, so later TeamSnap/Trace data enriches the same match rather than creating duplicate rows.
-- Match detail and schedule exports identify GotSport source/competition context, and the Account panel summarizes detected competitions.
-- This integration discovers **published GotSport schedule entries**. A tournament registration that has no published schedule yet is not exposed by the iCal feed and therefore cannot be discovered through this source alone.
+- GotSport discovery now follows the **public event/division schedule**, not only the team Rankings upcoming-games list. The Rankings team page remains the automatic tournament detector and supplies confirmed fixtures.
+- For each detected tournament, myTS resolves the GotSport event ID and the team's division/group, then reads the public division schedule for knockout placeholders such as quarterfinals, semifinals, finals, consolation, and placement matches.
+- Published knockout times are shown in Schedule as **Possible** / **If qualified** until GotSport assigns the team to that match. These conditional slots never affect W-D-L, scores, availability totals, or Trace matching.
+- When GotSport's public schedule responds normally, the Worker uses ordinary HTTP. If GotSport returns its JavaScript verification page, the Worker falls back to the included Cloudflare Browser Run `BROWSER` binding to render the same public page; it does not solve interactive CAPTCHAs.
+- Public schedule lookups are cached with the normal six-hour GotSport refresh cadence. Account & Data Sources reports confirmed games, possible playoff slots, and the first enrichment warning when an event/division cannot yet be resolved.
+- The parser accepts structured JSON/Next.js data and HTML schedule tables, preserves local tournament dates/times, and uses the confirmed tournament year when GotSport prints dates without a year.
+- No D1 reset is required. Existing GotSport team ID `212707` connections upgrade in place.
+
+## 6.2.0 GotSport Rankings discovery
+
+- Replaced the iCal-based GotSport setup with the public **GotSport Rankings team page**. Connect once with a URL such as `https://rankings.gotsport.com/teams/212707/upcoming-games` or just the numeric team ID.
+- The Worker stores the public GotSport Rankings team ID against the cross-season TeamSnap family and refreshes it automatically every six hours, with manual sync/disconnect controls under **Account & Data Sources**.
+- Upcoming GotSport games are normalized into the existing fixture model and merged into the normal Schedule. Date/opponent evidence deduplicates them against TeamSnap; unmatched GotSport fixtures remain visible and can still pair with Trace.
+- Tournament/competition names, opponent, kickoff, venue, status, and source URL are retained when the public page exposes them. The parser accepts structured SportsEvent JSON, Next.js page data, and common nested game payloads instead of depending on one brittle markup layout.
+- The Account panel shows the connected Rankings team ID, detected upcoming games, and tournament/competition names. Match detail identifies the public GotSport Rankings page as the source.
+- This source detects an event **after GotSport publishes an upcoming game for the team**. A registration with no published schedule/game is not exposed by `/upcoming-games`, so myTS does not label that state as a confirmed registration.
+- Existing 6.1.0 iCal rows are left intact in D1 but treated as needing reconnect; the new migration adds Rankings fields without requiring a database reset.
 
 ## 6.0.15 finished UI polish
 
