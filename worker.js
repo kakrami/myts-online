@@ -1,6 +1,6 @@
 import puppeteer from "@cloudflare/puppeteer";
 
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 const DEFAULT_TEAM_ID = "212707";
 const MAX_CAPTURE_BODY = 700_000;
 const MAX_EVENTS_TO_PROBE = 6;
@@ -271,6 +271,161 @@ function upcomingMatchFacts(capture, rankingsTeamId) {
   return out;
 }
 
+
+async function fetchText(url, headers = {}) {
+  const out = { url, status: 0, content_type: "", ok: false, error: "", text: "" };
+  try {
+    const r = await fetch(url, { headers });
+    out.status = r.status;
+    out.content_type = clean(r.headers.get("content-type") || "");
+    out.text = await r.text();
+    out.ok = r.ok;
+  } catch (e) { out.error = clean(e?.message || e); }
+  return out;
+}
+
+function apiSnippetsFromBundle(text, sourceUrl) {
+  const out = [];
+  const seen = new Set();
+  const s = String(text || "");
+  const terms = ["/api/v1/", "bracket_id", "schedule_id", "schedule_group_id", "group_id", "playoff_element"];
+  for (const term of terms) {
+    let pos = 0, count = 0;
+    while (count < 80) {
+      const i = s.indexOf(term, pos);
+      if (i < 0) break;
+      const start = Math.max(0, i - 500), end = Math.min(s.length, i + 900);
+      const snippet = s.slice(start, end);
+      const key = `${term}|${snippet.slice(0, 250)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push({ term, source_url: sourceUrl, snippet: short(snippet, 1400) });
+      }
+      pos = i + term.length;
+      count++;
+    }
+  }
+  return out;
+}
+
+async function discoverRankingsBundleRoutes(teamId) {
+  const pageUrl = `https://rankings.gotsport.com/teams/${teamId}/upcoming-games`;
+  const page = await fetchText(pageUrl, { accept: "text/html,*/*" });
+  const result = { page_url: pageUrl, status: page.status, error: page.error, scripts: [], api_snippets: [] };
+  if (!page.ok || !page.text) return result;
+  const scripts = [];
+  for (const m of page.text.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)) {
+    try { scripts.push(new URL(m[1], pageUrl).href); } catch {}
+  }
+  result.scripts = uniq(scripts).slice(0, 8);
+  for (const scriptUrl of result.scripts) {
+    const asset = await fetchText(scriptUrl, { accept: "application/javascript,text/javascript,*/*" });
+    if (!asset.ok || !asset.text) continue;
+    const snippets = apiSnippetsFromBundle(asset.text, scriptUrl);
+    result.api_snippets.push(...snippets);
+  }
+  // Keep only the portions most likely to describe data routes/keys.
+  result.api_snippets = result.api_snippets.filter(x => /api\/v1|bracket|schedule|group|playoff|match/i.test(x.snippet)).slice(0, 180);
+  return result;
+}
+
+function collectMatchLikeObjects(root) {
+  const out = [];
+  const seen = new Set();
+  const stack = [root];
+  let visited = 0;
+  while (stack.length && visited < 30000) {
+    const v = stack.pop();
+    if (!v || typeof v !== "object" || seen.has(v)) continue;
+    seen.add(v); visited++;
+    if (!Array.isArray(v)) {
+      const hasIdentity = v.id != null || v.match_id != null || v.matchTime != null || v.match_date != null;
+      const hasSchedule = v.bracket_id != null || v.schedule_id != null || v.playoff_element != null;
+      const hasTeams = v.homeTeam != null || v.awayTeam != null || v.home_team_reg_id != null || v.away_team_reg_id != null || v.title != null;
+      if (hasIdentity && hasSchedule && hasTeams) out.push(v);
+      for (const x of Object.values(v)) if (x && typeof x === "object") stack.push(x);
+    } else for (const x of v) if (x && typeof x === "object") stack.push(x);
+  }
+  return out;
+}
+
+function summarizeScheduleCandidate(parsed, sourceUrl, teamId, target) {
+  const matches = collectMatchLikeObjects(parsed).filter(m => {
+    const bid = clean(m.bracket_id), sid = clean(m.schedule_id), eid = clean(m.event_id);
+    return (target.bracket_id && bid === target.bracket_id) || (target.schedule_id && sid === target.schedule_id) || (target.event_id && eid === target.event_id);
+  });
+  if (!matches.length) return null;
+  const rows = matches.map(m => ({
+    match_id: clean(m.id ?? m.match_id), event_id: clean(m.event_id), bracket_id: clean(m.bracket_id), schedule_id: clean(m.schedule_id),
+    match_time: clean(m.matchTime ?? m.match_time), match_date: clean(m.match_date), title: clean(m.title), playoff_element: clean(m.playoff_element),
+    home_team_id: clean(m.homeTeam?.team_id ?? m.home_team_id), away_team_id: clean(m.awayTeam?.team_id ?? m.away_team_id),
+    home_team_reg_id: clean(m.home_team_reg_id), away_team_reg_id: clean(m.away_team_reg_id),
+    home_team_name: clean(m.homeTeam?.full_name ?? m.home_team_name), away_team_name: clean(m.awayTeam?.full_name ?? m.away_team_name),
+  }));
+  const others = rows.filter(r => r.home_team_id !== teamId && r.away_team_id !== teamId);
+  const playoffs = rows.filter(r => r.playoff_element || /quarter|semi|final|championship|consolation|winner|loser/i.test(`${r.title} ${r.home_team_name} ${r.away_team_name}`));
+  return { source_url: sourceUrl, match_count: rows.length, non_team_match_count: others.length, playoff_match_count: playoffs.length, rows: rows.slice(0, 220) };
+}
+
+function scheduleCandidatesFromResponses(records, teamId, target) {
+  const out = [];
+  for (const r of records || []) {
+    const parsed = parseJsonMaybe(r.body);
+    if (!parsed) continue;
+    const c = summarizeScheduleCandidate(parsed, r.url, teamId, target);
+    if (c) out.push(c);
+  }
+  return out.sort((a,b) => (b.non_team_match_count - a.non_team_match_count) || (b.playoff_match_count - a.playoff_match_count) || (b.match_count - a.match_count));
+}
+
+async function rankingsInteractionProbe(page, teamId, facts) {
+  const url = `https://rankings.gotsport.com/teams/${teamId}/upcoming-games`;
+  const recorder = createRecorder(page, "rankings-interaction");
+  const result = { url, navigation: null, elements: [], clicks: [], network_responses: [], schedule_candidates: [] };
+  try {
+    const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+    await waitForSettled(page);
+    result.navigation = { final_url: page.url(), status: response?.status?.() || 0, title: await page.title().catch(()=>"") };
+    const eventNames = uniq(facts.map(f => clean(f.event_name)).filter(Boolean));
+    const matchTitles = uniq(facts.map(f => clean(f.home_team_name && f.away_team_name ? `${f.home_team_name} vs. ${f.away_team_name}` : "")).filter(Boolean));
+    result.elements = await page.evaluate(({eventNames, matchTitles}) => {
+      const wanted = [...eventNames, ...matchTitles].map(x => x.toLowerCase());
+      const nodes = [...document.querySelectorAll("a,button,[role=button],[onclick]")];
+      return nodes.map((el,i) => {
+        const text = (el.innerText || el.textContent || "").replace(/\s+/g," ").trim();
+        if (!text) return null;
+        const low = text.toLowerCase();
+        if (!wanted.some(w => low === w || low.includes(w))) return null;
+        return { index:i, tag:el.tagName, text:text.slice(0,240), href:el.href || "", role:el.getAttribute("role")||"", outer:el.outerHTML.slice(0,700) };
+      }).filter(Boolean).slice(0,40);
+    }, {eventNames, matchTitles});
+
+    // Click only exact event-name controls. We are observing GotSport's own navigation/network behavior, not guessing URLs.
+    for (const eventName of eventNames.slice(0,4)) {
+      const before = page.url();
+      let clicked = false, error = "";
+      try {
+        clicked = await page.evaluate((name) => {
+          const target = [...document.querySelectorAll("a,button,[role=button],[onclick]")].find(el => ((el.innerText||el.textContent||"").replace(/\s+/g," ").trim()) === name);
+          if (!target) return false;
+          target.click(); return true;
+        }, eventName);
+        if (clicked) { await waitForSettled(page); await new Promise(r=>setTimeout(r,500)); }
+      } catch (e) { error = clean(e?.message || e); }
+      result.clicks.push({ event_name:eventName, clicked, before_url:before, after_url:page.url(), error });
+      if (clicked && page.url() !== url) {
+        try { await page.goto(url, { waitUntil:"domcontentloaded", timeout:45000 }); await waitForSettled(page); } catch {}
+      }
+    }
+  } finally {
+    await recorder.settle(); recorder.stop();
+    result.network_responses = compactResponses(recorder.records);
+    const first = facts[0] || {};
+    result.schedule_candidates = scheduleCandidatesFromResponses(recorder.records, teamId, { event_id:first.event_id, bracket_id:first.bracket_id, schedule_id:first.schedule_id });
+  }
+  return result;
+}
+
 async function directUpcoming(teamId) {
   const url = `https://system.gotsport.com/api/v1/teams/${teamId}/matches?upcoming=true`;
   const result = { url, status: 0, content_type: "", ok: false, error: "", facts: [], body_preview: "" };
@@ -399,6 +554,7 @@ async function runProbe(env, teamId) {
 
   report.stage = "upcoming-api";
   const direct = await directUpcoming(teamId);
+  report.rankings_bundle_discovery = await discoverRankingsBundleRoutes(teamId);
   let rankings = null, rankingsEvidence = [], pairs = { event_ids: [], team_pairs: [], group_pairs: [] }, teamLinks = [];
   let upcomingFacts = direct.ok ? direct.facts : [];
 
@@ -431,6 +587,29 @@ async function runProbe(env, teamId) {
       direct_team_schedule_links: teamLinks,
       network_responses: rankings ? compactResponses(rankings.responses) : [],
     };
+
+    // Observe GotSport Rankings' own event interactions and JSON calls before touching the captcha-protected schedule pages.
+    report.stage = "rankings-interaction";
+    report.rankings_interaction = await rankingsInteractionProbe(page, teamId, upcomingFacts);
+    const directScheduleCandidate = (report.rankings_interaction.schedule_candidates || []).find(c => c.non_team_match_count > 0 || c.playoff_match_count > 0);
+    if (directScheduleCandidate) {
+      report.success = true;
+      report.stage = "complete-public-json-schedule";
+      report.proof = {
+        concrete_paths: [{
+          event_id: clean(upcomingFacts[0]?.event_id),
+          event_team_id: clean(upcomingFacts[0]?.event_team_id),
+          bracket_id: clean(upcomingFacts[0]?.bracket_id),
+          schedule_id: clean(upcomingFacts[0]?.schedule_id),
+          schedule_api_url: directScheduleCandidate.source_url,
+          match_count: directScheduleCandidate.match_count,
+          non_team_match_count: directScheduleCandidate.non_team_match_count,
+          playoff_match_count: directScheduleCandidate.playoff_match_count,
+        }],
+        requirement: "The full schedule source was observed directly from GotSport Rankings network traffic and matched concrete event/bracket/schedule IDs from the team's public upcoming-match JSON."
+      };
+      return report;
+    }
 
     if (!upcomingRefs.length) {
       report.stage = "rankings-no-concrete-upcoming-event-team-id";

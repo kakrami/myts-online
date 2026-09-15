@@ -26,3 +26,8 @@ Then open the Worker URL. The probe starts automatically.
 
 - `/api/probe` — JSON diagnostic for team 212707
 - `/api/probe?team=123456` — test another GotSport Rankings team
+
+
+## v1.2 focus
+
+The probe now treats the captcha-protected public schedule page as a last-resort diagnostic only. It first uses GotSport's public upcoming-match JSON, inspects the Rankings JavaScript bundle for concrete API route evidence, and observes exact event-click network traffic looking for a bracket/schedule-level JSON source. It will accept a full schedule only when the returned data matches the concrete event/bracket/schedule IDs already supplied by GotSport.
