@@ -1,739 +1,399 @@
-import puppeteer from "@cloudflare/puppeteer";
-
-const VERSION = "1.2.0";
+// Public evidence collector. No browser sessions, logins, inferred IDs, or myTS writes.
+const VERSION = "1.2.1";
 const DEFAULT_TEAM_ID = "212707";
-const MAX_CAPTURE_BODY = 700_000;
-const MAX_EVENTS_TO_PROBE = 6;
-const MAX_REPORT_RESPONSES = 80;
+const SYSTEM_ORIGIN = "https://system.gotsport.com";
+const RANKINGS_ORIGIN = "https://rankings.gotsport.com";
+const MAX_API_BYTES = 2_000_000;
+const MAX_ASSET_BYTES = 8_000_000;
+const MAX_ASSETS = 5;
+const MAX_EXCERPTS = 120;
+const REPORT_TTL_MS = 15 * 60_000;
+const inFlight = new Map();
 
-function clean(v) { return String(v ?? "").trim(); }
-function uniq(values) { return [...new Set(values.filter(Boolean))]; }
-function now() { return new Date().toISOString(); }
-function asTeamId(raw) {
-  const v = clean(raw || DEFAULT_TEAM_ID);
-  if (!/^\d{3,12}$/.test(v)) throw new Error("Team ID must be numeric.");
-  return v;
+const clean = value => String(value ?? "").trim();
+const numericId = value => /^[1-9]\d{0,11}$/.test(clean(value)) ? clean(value) : "";
+const unique = values => [...new Set(values)];
+const iso = time => new Date(time).toISOString();
+const short = (value, size = 1000) => String(value ?? "").slice(0, size);
+
+function asTeamId(value) {
+  const id = numericId(value || DEFAULT_TEAM_ID);
+  if (!id) throw new Error("Team ID must be a positive numeric GotSport Rankings team ID.");
+  return id;
 }
-function short(s, n = 800) {
-  s = clean(s);
-  return s.length > n ? `${s.slice(0, n)}…` : s;
-}
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data, null, 2), {
+function json(value, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(value, null, 2), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extraHeaders },
   });
 }
-function isGotSportUrl(url) {
+function allowedUrl(raw) {
   try {
-    const h = new URL(url).hostname.toLowerCase();
-    return h === "rankings.gotsport.com" || h === "system.gotsport.com";
+    const url = new URL(raw);
+    return url.protocol === "https:" && !url.username && !url.password &&
+      [SYSTEM_ORIGIN, RANKINGS_ORIGIN].includes(url.origin);
   } catch { return false; }
 }
-function parseJsonMaybe(text) {
-  const s = clean(text);
-  if (!s || !["{", "["].includes(s[0])) return null;
-  try { return JSON.parse(s); } catch { return null; }
+function retryAfterMs(value, nowMs = Date.now()) {
+  if (!value) return 0;
+  if (/^\d+(?:\.\d+)?$/.test(clean(value))) return Math.ceil(Number(value) * 1000);
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed - nowMs) : 0;
 }
-function exactObjectEvidence(root, sourceUrl) {
-  const out = [];
-  const stack = [{ value: root, path: "$" }];
-  const seen = new Set();
-  let visited = 0;
-  const exactIdKeys = new Set(["event_id", "eventId", "org_event_id", "orgEventId"]);
-  const teamKeys = new Set(["event_team_id", "eventTeamId"]);
-  const groupKeys = new Set(["group_id", "groupId", "schedule_group_id", "scheduleGroupId"]);
-  const nameKeys = ["event_name", "eventName", "competition_name", "competitionName", "name", "title"];
-
-  while (stack.length && visited < 10000) {
-    const { value, path } = stack.pop();
-    if (!value || typeof value !== "object" || seen.has(value)) continue;
-    seen.add(value); visited++;
-    if (!Array.isArray(value)) {
-      let eventId = "", eventTeamId = "", groupId = "", name = "";
-      for (const [k, v] of Object.entries(value)) {
-        const sv = clean(v);
-        if (exactIdKeys.has(k) && /^\d+$/.test(sv)) eventId = sv;
-        if (teamKeys.has(k) && /^\d+$/.test(sv)) eventTeamId = sv;
-        if (groupKeys.has(k) && /^\d+$/.test(sv)) groupId = sv;
-      }
-      for (const k of nameKeys) {
-        if (typeof value[k] === "string" && clean(value[k])) { name = clean(value[k]); break; }
-      }
-      if (eventId || eventTeamId || groupId) {
-        out.push({ source: "json-exact-key", source_url: sourceUrl, path, event_id: eventId, event_team_id: eventTeamId, group_id: groupId, name: short(name, 180) });
-      }
-      for (const [k, v] of Object.entries(value)) if (v && typeof v === "object") stack.push({ value: v, path: `${path}.${k}` });
-    } else {
-      for (let i = value.length - 1; i >= 0; i--) if (value[i] && typeof value[i] === "object") stack.push({ value: value[i], path: `${path}[${i}]` });
-    }
+async function readBounded(response, maxBytes) {
+  if (Number(response.headers.get("content-length")) > maxBytes) {
+    void response.body?.cancel().catch(() => {});
+    throw new Error(`Response exceeds the ${maxBytes}-byte safety limit.`);
   }
-  return out;
-}
-function regexEvidence(text, sourceUrl) {
-  const out = [];
-  const s = String(text || "");
-  const add = (kind, m, eventId = "", eventTeamId = "", groupId = "") => out.push({
-    source: kind, source_url: sourceUrl, evidence: short(m[0], 260), event_id: eventId, event_team_id: eventTeamId, group_id: groupId,
-  });
-
-  for (const m of s.matchAll(/(?:https?:\/\/system\.gotsport\.com)?\/org_event\/events\/(\d+)\/schedules\?[^"'<>\s]*\bteam=(\d+)/gi)) add("team-schedule-url", m, m[1], m[2], "");
-  for (const m of s.matchAll(/(?:https?:\/\/system\.gotsport\.com)?\/org_event\/events\/(\d+)\/schedules\?[^"'<>\s]*\bgroup=(\d+)/gi)) add("group-schedule-url", m, m[1], "", m[2]);
-  for (const m of s.matchAll(/\/org_event\/events\/(\d+)(?:\/|\b)/gi)) add("event-url", m, m[1], "", "");
-  for (const m of s.matchAll(/"(?:event_id|eventId|org_event_id|orgEventId)"\s*:\s*"?(\d+)"?/g)) add("event-json-text", m, m[1], "", "");
-  for (const m of s.matchAll(/"(?:event_team_id|eventTeamId)"\s*:\s*"?(\d+)"?/g)) add("event-team-json-text", m, "", m[1], "");
-  for (const m of s.matchAll(/"(?:group_id|groupId|schedule_group_id|scheduleGroupId)"\s*:\s*"?(\d+)"?/g)) add("group-json-text", m, "", "", m[1]);
-  return out;
-}
-function mergeEvidence(items) {
-  const map = new Map();
-  for (const e of items) {
-    const key = [e.source, e.source_url, e.path || "", e.event_id || "", e.event_team_id || "", e.group_id || "", e.evidence || ""].join("|");
-    if (!map.has(key)) map.set(key, e);
-  }
-  return [...map.values()];
-}
-function evidencePairs(evidence) {
-  const eventIds = uniq(evidence.map(e => clean(e.event_id)).filter(x => /^\d+$/.test(x)));
-  const directTeamPairs = [];
-  const directGroupPairs = [];
-  for (const e of evidence) {
-    if (/^\d+$/.test(clean(e.event_id)) && /^\d+$/.test(clean(e.event_team_id))) directTeamPairs.push({ event_id: clean(e.event_id), event_team_id: clean(e.event_team_id), evidence: e.source, source_url: e.source_url });
-    if (/^\d+$/.test(clean(e.event_id)) && /^\d+$/.test(clean(e.group_id))) directGroupPairs.push({ event_id: clean(e.event_id), group_id: clean(e.group_id), evidence: e.source, source_url: e.source_url });
-  }
-  const dedupe = arr => [...new Map(arr.map(x => [`${x.event_id}|${x.event_team_id || x.group_id}`, x])).values()];
-  return { event_ids: eventIds, team_pairs: dedupe(directTeamPairs), group_pairs: dedupe(directGroupPairs) };
-}
-
-function createRecorder(page, label) {
-  const records = [];
-  const tasks = [];
-  const handler = response => {
-    const task = (async () => {
-      const url = response.url();
-      if (!isGotSportUrl(url)) return;
-      const status = response.status();
-      const headers = response.headers();
-      const contentType = clean(headers["content-type"] || "");
-      const interesting = /json|javascript|text\/html/i.test(contentType) || /api|graphql|rank|game|event|schedule|team|group/i.test(url);
-      let body = "";
-      if (interesting) {
-        try {
-          body = await response.text();
-          if (body.length > MAX_CAPTURE_BODY) body = body.slice(0, MAX_CAPTURE_BODY);
-        } catch {}
-      }
-      records.push({ label, url, status, content_type: contentType, body });
-    })();
-    tasks.push(task);
-  };
-  page.on("response", handler);
-  return {
-    records,
-    async settle() {
-      const snapshot = tasks.slice();
-      await Promise.allSettled(snapshot);
-    },
-    stop() { page.off("response", handler); },
-  };
-}
-
-async function waitForSettled(page) {
-  try { await page.waitForNetworkIdle({ idleTime: 800, timeout: 12000 }); } catch {}
-  try { await new Promise(r => setTimeout(r, 1000)); } catch {}
-}
-
-async function pageSnapshot(page) {
-  return page.evaluate(() => {
-    const text = (document.body?.innerText || "").replace(/\r/g, "").trim();
-    const links = [...document.querySelectorAll("a[href]")].map(a => ({
-      href: a.href,
-      text: (a.innerText || a.textContent || "").replace(/\s+/g, " ").trim(),
-    })).filter(x => x.href).slice(0, 1500);
-    const selects = [...document.querySelectorAll("select")].map((s, i) => ({
-      index: i,
-      name: s.getAttribute("name") || "",
-      id: s.id || "",
-      value: s.value || "",
-      options: [...s.options].map(o => ({ value: o.value, text: (o.textContent || "").replace(/\s+/g, " ").trim(), selected: o.selected })).slice(0, 300),
-    })).slice(0, 80);
-    const inputs = [...document.querySelectorAll("input")].map((x, i) => ({ index: i, name: x.getAttribute("name") || "", id: x.id || "", type: x.type || "", value: x.value || "" })).slice(0, 300);
-    const rows = [...document.querySelectorAll("table tr")].map(tr => [...tr.querySelectorAll("th,td")].map(c => (c.innerText || c.textContent || "").replace(/\s+/g, " ").trim()).filter(Boolean)).filter(r => r.length).slice(0, 1000);
-    const headings = [...document.querySelectorAll("h1,h2,h3,h4")].map(h => (h.innerText || h.textContent || "").replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 200);
-    return { title: document.title || "", url: location.href, text: text.slice(0, 180000), links, selects, inputs, rows, headings };
-  });
-}
-
-async function waitThroughVerification(page, requestedUrl) {
-  const state = { seen: false, passed: false, attempts: 0, urls: [] };
-  for (let i = 0; i < 12; i++) {
-    state.attempts++;
-    const u = page.url();
-    state.urls.push(u);
-    let body = "";
-    try { body = await page.evaluate(() => document.body?.innerText || ""); } catch {}
-    const blocked = /\/verify_captchas\/|Please verify to continue|Verifying, please wait|JavaScript is required to verify/i.test(`${u}\n${body}`);
-    if (!blocked) {
-      if (state.seen) state.passed = true;
-      return state;
-    }
-    state.seen = true;
-    await new Promise(r => setTimeout(r, 1500));
-  }
-  // One retry of the exact requested public URL after the JS challenge had time to establish state/cookies.
-  if (state.seen) {
-    try {
-      await page.goto(requestedUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
-      await waitForSettled(page);
-      const u = page.url();
-      state.urls.push(u);
-      let body = "";
-      try { body = await page.evaluate(() => document.body?.innerText || ""); } catch {}
-      const blocked = /\/verify_captchas\/|Please verify to continue|Verifying, please wait|JavaScript is required to verify/i.test(`${u}\n${body}`);
-      if (!blocked) state.passed = true;
-    } catch {}
-  }
-  return state;
-}
-
-async function navigateAndCapture(page, url, label) {
-  const recorder = createRecorder(page, label);
-  let navigation = { requested_url: url, final_url: "", status: 0, title: "", error: "" };
+  if (!response.body) return { text: "", bytes: 0 };
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "", bytes = 0;
   try {
-    const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
-    await waitForSettled(page);
-    navigation.verification = await waitThroughVerification(page, url);
-    navigation.final_url = page.url();
-    navigation.status = response?.status?.() || 0;
-    navigation.title = await page.title().catch(() => "");
-  } catch (e) {
-    navigation.error = clean(e?.message || e);
-    navigation.final_url = page.url();
-  }
-  await recorder.settle();
-  recorder.stop();
-  let snap;
-  try { snap = await pageSnapshot(page); } catch (e) { snap = { title: navigation.title, url: navigation.final_url, text: "", links: [], selects: [], rows: [], headings: [], snapshot_error: clean(e?.message || e) }; }
-  return { navigation, snapshot: snap, responses: recorder.records };
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > maxBytes) {
+        void reader.cancel().catch(() => {});
+        throw new Error(`Response exceeds the ${maxBytes}-byte safety limit.`);
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    return { text: text + decoder.decode(), bytes };
+  } finally { reader.releaseLock(); }
+}
+async function fetchPublic(url, accept, maxBytes, options) {
+  const { fetcher, clock, deadline } = options;
+  const result = { url, final_url: url, status: 0, content_type: "", ok: false, bytes: 0, text: "", error: "", retry_after_ms: 0 };
+  const controller = new AbortController();
+  const remaining = Math.max(1, Math.min(12_000, deadline - clock()));
+  if (deadline <= clock()) return { ...result, error: "Collection time budget reached." };
+  const timer = setTimeout(() => controller.abort(), remaining);
+  let next = url;
+  try {
+    for (let redirects = 0; redirects <= 3; redirects++) {
+      if (!allowedUrl(next)) throw new Error("Refused a request outside the two public GotSport origins.");
+      const response = await fetcher(next, {
+        method: "GET", redirect: "manual", credentials: "omit",
+        headers: { accept }, signal: controller.signal,
+      });
+      result.status = response.status;
+      result.final_url = next;
+      result.content_type = clean(response.headers.get("content-type"));
+      result.retry_after_ms = retryAfterMs(response.headers.get("retry-after"), clock());
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get("location");
+        void response.body?.cancel().catch(() => {});
+        if (!location) throw new Error("Redirect without a Location header.");
+        next = new URL(location, next).href;
+        if (/\/verify_captchas(?:\/|\?|$)/i.test(next)) throw new Error("Public request redirected to verification. No challenge was attempted.");
+        if (redirects === 3) throw new Error("Too many redirects.");
+        continue;
+      }
+      const body = await readBounded(response, maxBytes);
+      result.text = body.text;
+      result.bytes = body.bytes;
+      result.ok = response.ok;
+      if (!response.ok) result.error = `HTTP ${response.status}`;
+      return result;
+    }
+  } catch (error) { result.error = short(error?.message || error); }
+  finally { clearTimeout(timer); }
+  return result;
+}
+function publicResponseInfo(result) {
+  const { text, ...info } = result;
+  return info;
 }
 
-function evidenceFromCapture(capture) {
-  const out = [];
-  const snap = capture.snapshot || {};
-  const sourceUrl = snap.url || capture.navigation?.final_url || capture.navigation?.requested_url || "";
-  out.push(...regexEvidence(snap.text || "", sourceUrl));
-  for (const l of snap.links || []) out.push(...regexEvidence(`${l.href} ${l.text}`, l.href));
-  for (const s of snap.selects || []) {
-    out.push(...regexEvidence(`${s.name} ${s.id} ${s.value}`, sourceUrl));
-    for (const o of s.options || []) out.push(...regexEvidence(`${o.value} ${o.text}`, sourceUrl));
+// These exact field relationships were returned in the user's v1.1 diagnostic.
+function extractUpcoming(matches, teamId, sourceUrl) {
+  if (!Array.isArray(matches)) throw new Error("Expected the public upcoming-matches API to return a JSON array.");
+  const facts = [], errors = [], seen = new Map();
+  for (let index = 0; index < matches.length; index++) {
+    const match = matches[index];
+    if (!match || typeof match !== "object" || Array.isArray(match)) {
+      errors.push({ index, error: "Match is not an object." });
+      continue;
+    }
+    const homeId = numericId(match.homeTeam?.team_id), awayId = numericId(match.awayTeam?.team_id);
+    const home = homeId === teamId, away = awayId === teamId;
+    if (home === away) {
+      errors.push({ index, match_id: clean(match.id), error: "The requested team must match exactly one homeTeam/awayTeam team_id." });
+      continue;
+    }
+    const side = home ? "home" : "away";
+    const eventId = numericId(match.event_id), matchId = numericId(match.id);
+    const registrationId = numericId(match[`${side}_team_reg_id`]);
+    if (!eventId || !matchId || !registrationId) {
+      errors.push({ index, error: "Missing exact event_id, match id, or matching team registration id." });
+      continue;
+    }
+    const fact = {
+      match_id: matchId, event_id: eventId, event_name: clean(match.event_name),
+      event_team_id: registrationId, team_side: side,
+      bracket_id: numericId(match.bracket_id), schedule_id: numericId(match.schedule_id),
+      division_name: clean(match.division_name), match_date: clean(match.match_date), match_time: clean(match.matchTime),
+      home_team_id: homeId, away_team_id: awayId,
+      home_team_reg_id: numericId(match.home_team_reg_id), away_team_reg_id: numericId(match.away_team_reg_id),
+      home_team_name: clean(match.homeTeam?.full_name), away_team_name: clean(match.awayTeam?.full_name),
+      source_url: sourceUrl,
+      evidence: { team_id_path: `$[${index}].${side}Team.team_id`, registration_id_path: `$[${index}].${side}_team_reg_id`, event_id_path: `$[${index}].event_id` },
+    };
+    const signature = JSON.stringify({ ...fact, evidence: undefined });
+    if (seen.has(matchId)) {
+      if (seen.get(matchId) !== signature) errors.push({ index, match_id: matchId, error: "Conflicting duplicate match identity." });
+      continue;
+    }
+    seen.set(matchId, signature);
+    facts.push(fact);
   }
-  for (const i of snap.inputs || []) out.push(...regexEvidence(`${i.name} ${i.id} ${i.value}`, sourceUrl));
-  for (const r of snap.rows || []) out.push(...regexEvidence(r.join(" | "), sourceUrl));
-  for (const res of capture.responses || []) {
-    out.push(...regexEvidence(`${res.url}\n${res.body || ""}`, res.url));
-    const parsed = parseJsonMaybe(res.body);
-    if (parsed) out.push(...exactObjectEvidence(parsed, res.url));
-  }
-  return mergeEvidence(out);
-}
-
-function upcomingFactsFromArray(parsed, rankingsTeamId, sourceUrl) {
-  const out = [];
-  const teamId = clean(rankingsTeamId);
-  if (!Array.isArray(parsed)) return out;
-  for (const m of parsed) {
-    if (!m || typeof m !== "object") continue;
-    const homeTeamId = clean(m.homeTeam?.team_id ?? m.home_team_id ?? "");
-    const awayTeamId = clean(m.awayTeam?.team_id ?? m.away_team_id ?? "");
-    const homeReg = clean(m.home_team_reg_id ?? "");
-    const awayReg = clean(m.away_team_reg_id ?? "");
-    let eventTeamId = "", side = "";
-    if (homeTeamId === teamId && /^\d+$/.test(homeReg)) { eventTeamId = homeReg; side = "home"; }
-    if (awayTeamId === teamId && /^\d+$/.test(awayReg)) { eventTeamId = awayReg; side = "away"; }
-    out.push({
-      match_id: clean(m.id), event_id: clean(m.event_id), event_name: clean(m.event_name || m.competition_name),
-      event_team_id: eventTeamId, team_side: side, bracket_id: clean(m.bracket_id), schedule_id: clean(m.schedule_id),
-      division_name: clean(m.division_name), match_date: clean(m.match_date), match_time: clean(m.matchTime),
-      home_team_reg_id: homeReg, away_team_reg_id: awayReg, home_team_id: homeTeamId, away_team_id: awayTeamId,
-      home_team_name: clean(m.homeTeam?.full_name), away_team_name: clean(m.awayTeam?.full_name), source_url: sourceUrl,
+  const pairs = new Map();
+  for (const fact of facts) {
+    const key = `${fact.event_id}:${fact.event_team_id}`;
+    if (!pairs.has(key)) pairs.set(key, {
+      event_id: fact.event_id, event_name: fact.event_name, event_team_id: fact.event_team_id,
+      bracket_ids: [], schedule_ids: [], match_ids: [], source_url: sourceUrl,
     });
+    const ref = pairs.get(key);
+    ref.match_ids.push(fact.match_id);
+    if (fact.bracket_id) ref.bracket_ids = unique([...ref.bracket_ids, fact.bracket_id]);
+    if (fact.schedule_id) ref.schedule_ids = unique([...ref.schedule_ids, fact.schedule_id]);
   }
-  return out;
+  return { valid: !errors.length, facts, event_team_refs: [...pairs.values()], errors };
 }
-
-function upcomingMatchFacts(capture, rankingsTeamId) {
-  const out = [];
-  for (const res of capture.responses || []) {
-    if (!/\/api\/v1\/teams\/\d+\/matches\?[^#]*upcoming=true/i.test(res.url)) continue;
-    const parsed = parseJsonMaybe(res.body);
-    out.push(...upcomingFactsFromArray(parsed, rankingsTeamId, res.url));
-  }
-  return out;
-}
-
-
-async function fetchText(url, headers = {}) {
-  const out = { url, status: 0, content_type: "", ok: false, error: "", text: "" };
+function scriptUrl(raw, base) {
   try {
-    const r = await fetch(url, { headers });
-    out.status = r.status;
-    out.content_type = clean(r.headers.get("content-type") || "");
-    out.text = await r.text();
-    out.ok = r.ok;
-  } catch (e) { out.error = clean(e?.message || e); }
-  return out;
+    const url = new URL(raw.replaceAll("&amp;", "&"), base);
+    if (url.origin !== RANKINGS_ORIGIN || !/\.(?:m?js)$/.test(url.pathname) || url.username || url.password) return "";
+    return url.href;
+  } catch { return ""; }
 }
-
-function apiSnippetsFromBundle(text, sourceUrl) {
-  const out = [];
-  const seen = new Set();
-  const s = String(text || "");
-  const terms = ["/api/v1/", "bracket_id", "schedule_id", "schedule_group_id", "group_id", "playoff_element"];
-  for (const term of terms) {
-    let pos = 0, count = 0;
-    while (count < 80) {
-      const i = s.indexOf(term, pos);
-      if (i < 0) break;
-      const start = Math.max(0, i - 500), end = Math.min(s.length, i + 900);
-      const snippet = s.slice(start, end);
-      const key = `${term}|${snippet.slice(0, 250)}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        out.push({ term, source_url: sourceUrl, snippet: short(snippet, 1400) });
-      }
-      pos = i + term.length;
-      count++;
-    }
+function scriptReferences(html, pageUrl) {
+  const urls = [];
+  for (const match of html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi)) {
+    const url = scriptUrl(match[1], pageUrl);
+    if (url) urls.push(url);
   }
-  return out;
+  for (const match of html.matchAll(/<link\b[^>]*>/gi)) {
+    if (!/\brel\s*=\s*["']modulepreload["']/i.test(match[0])) continue;
+    const href = match[0].match(/\bhref\s*=\s*["']([^"']+)["']/i)?.[1];
+    const url = href ? scriptUrl(href, pageUrl) : "";
+    if (url) urls.push(url);
+  }
+  return unique(urls);
 }
-
-async function discoverRankingsBundleRoutes(teamId) {
-  const pageUrl = `https://rankings.gotsport.com/teams/${teamId}/upcoming-games`;
-  const page = await fetchText(pageUrl, { accept: "text/html,*/*" });
-  const result = { page_url: pageUrl, status: page.status, error: page.error, scripts: [], api_snippets: [] };
-  if (!page.ok || !page.text) return result;
-  const scripts = [];
-  for (const m of page.text.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)) {
-    try { scripts.push(new URL(m[1], pageUrl).href); } catch {}
-  }
-  result.scripts = uniq(scripts).slice(0, 8);
-  for (const scriptUrl of result.scripts) {
-    const asset = await fetchText(scriptUrl, { accept: "application/javascript,text/javascript,*/*" });
-    if (!asset.ok || !asset.text) continue;
-    const snippets = apiSnippetsFromBundle(asset.text, scriptUrl);
-    result.api_snippets.push(...snippets);
-  }
-  // Keep only the portions most likely to describe data routes/keys.
-  result.api_snippets = result.api_snippets.filter(x => /api\/v1|bracket|schedule|group|playoff|match/i.test(x.snippet)).slice(0, 180);
-  return result;
-}
-
-function collectMatchLikeObjects(root) {
-  const out = [];
-  const seen = new Set();
-  const stack = [root];
-  let visited = 0;
-  while (stack.length && visited < 30000) {
-    const v = stack.pop();
-    if (!v || typeof v !== "object" || seen.has(v)) continue;
-    seen.add(v); visited++;
-    if (!Array.isArray(v)) {
-      const hasIdentity = v.id != null || v.match_id != null || v.matchTime != null || v.match_date != null;
-      const hasSchedule = v.bracket_id != null || v.schedule_id != null || v.playoff_element != null;
-      const hasTeams = v.homeTeam != null || v.awayTeam != null || v.home_team_reg_id != null || v.away_team_reg_id != null || v.title != null;
-      if (hasIdentity && hasSchedule && hasTeams) out.push(v);
-      for (const x of Object.values(v)) if (x && typeof x === "object") stack.push(x);
-    } else for (const x of v) if (x && typeof x === "object") stack.push(x);
-  }
-  return out;
-}
-
-function summarizeScheduleCandidate(parsed, sourceUrl, teamId, target) {
-  const matches = collectMatchLikeObjects(parsed).filter(m => {
-    const bid = clean(m.bracket_id), sid = clean(m.schedule_id), eid = clean(m.event_id);
-    return (target.bracket_id && bid === target.bracket_id) || (target.schedule_id && sid === target.schedule_id) || (target.event_id && eid === target.event_id);
-  });
-  if (!matches.length) return null;
-  const rows = matches.map(m => ({
-    match_id: clean(m.id ?? m.match_id), event_id: clean(m.event_id), bracket_id: clean(m.bracket_id), schedule_id: clean(m.schedule_id),
-    match_time: clean(m.matchTime ?? m.match_time), match_date: clean(m.match_date), title: clean(m.title), playoff_element: clean(m.playoff_element),
-    home_team_id: clean(m.homeTeam?.team_id ?? m.home_team_id), away_team_id: clean(m.awayTeam?.team_id ?? m.away_team_id),
-    home_team_reg_id: clean(m.home_team_reg_id), away_team_reg_id: clean(m.away_team_reg_id),
-    home_team_name: clean(m.homeTeam?.full_name ?? m.home_team_name), away_team_name: clean(m.awayTeam?.full_name ?? m.away_team_name),
-  }));
-  const others = rows.filter(r => r.home_team_id !== teamId && r.away_team_id !== teamId);
-  const playoffs = rows.filter(r => r.playoff_element || /quarter|semi|final|championship|consolation|winner|loser/i.test(`${r.title} ${r.home_team_name} ${r.away_team_name}`));
-  return { source_url: sourceUrl, match_count: rows.length, non_team_match_count: others.length, playoff_match_count: playoffs.length, rows: rows.slice(0, 220) };
-}
-
-function scheduleCandidatesFromResponses(records, teamId, target) {
-  const out = [];
-  for (const r of records || []) {
-    const parsed = parseJsonMaybe(r.body);
-    if (!parsed) continue;
-    const c = summarizeScheduleCandidate(parsed, r.url, teamId, target);
-    if (c) out.push(c);
-  }
-  return out.sort((a,b) => (b.non_team_match_count - a.non_team_match_count) || (b.playoff_match_count - a.playoff_match_count) || (b.match_count - a.match_count));
-}
-
-async function rankingsInteractionProbe(page, teamId, facts) {
-  const url = `https://rankings.gotsport.com/teams/${teamId}/upcoming-games`;
-  const recorder = createRecorder(page, "rankings-interaction");
-  const result = { url, navigation: null, elements: [], clicks: [], network_responses: [], schedule_candidates: [] };
-  try {
-    const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
-    await waitForSettled(page);
-    result.navigation = { final_url: page.url(), status: response?.status?.() || 0, title: await page.title().catch(()=>"") };
-    const eventNames = uniq(facts.map(f => clean(f.event_name)).filter(Boolean));
-    const matchTitles = uniq(facts.map(f => clean(f.home_team_name && f.away_team_name ? `${f.home_team_name} vs. ${f.away_team_name}` : "")).filter(Boolean));
-    result.elements = await page.evaluate(({eventNames, matchTitles}) => {
-      const wanted = [...eventNames, ...matchTitles].map(x => x.toLowerCase());
-      const nodes = [...document.querySelectorAll("a,button,[role=button],[onclick]")];
-      return nodes.map((el,i) => {
-        const text = (el.innerText || el.textContent || "").replace(/\s+/g," ").trim();
-        if (!text) return null;
-        const low = text.toLowerCase();
-        if (!wanted.some(w => low === w || low.includes(w))) return null;
-        return { index:i, tag:el.tagName, text:text.slice(0,240), href:el.href || "", role:el.getAttribute("role")||"", outer:el.outerHTML.slice(0,700) };
-      }).filter(Boolean).slice(0,40);
-    }, {eventNames, matchTitles});
-
-    // Click only exact event-name controls. We are observing GotSport's own navigation/network behavior, not guessing URLs.
-    for (const eventName of eventNames.slice(0,4)) {
-      const before = page.url();
-      let clicked = false, error = "";
-      try {
-        clicked = await page.evaluate((name) => {
-          const target = [...document.querySelectorAll("a,button,[role=button],[onclick]")].find(el => ((el.innerText||el.textContent||"").replace(/\s+/g," ").trim()) === name);
-          if (!target) return false;
-          target.click(); return true;
-        }, eventName);
-        if (clicked) { await waitForSettled(page); await new Promise(r=>setTimeout(r,500)); }
-      } catch (e) { error = clean(e?.message || e); }
-      result.clicks.push({ event_name:eventName, clicked, before_url:before, after_url:page.url(), error });
-      if (clicked && page.url() !== url) {
-        try { await page.goto(url, { waitUntil:"domcontentloaded", timeout:45000 }); await waitForSettled(page); } catch {}
-      }
-    }
-  } finally {
-    await recorder.settle(); recorder.stop();
-    result.network_responses = compactResponses(recorder.records);
-    const first = facts[0] || {};
-    result.schedule_candidates = scheduleCandidatesFromResponses(recorder.records, teamId, { event_id:first.event_id, bracket_id:first.bracket_id, schedule_id:first.schedule_id });
-  }
-  return result;
-}
-
-async function directUpcoming(teamId) {
-  const url = `https://system.gotsport.com/api/v1/teams/${teamId}/matches?upcoming=true`;
-  const result = { url, status: 0, content_type: "", ok: false, error: "", facts: [], body_preview: "" };
-  try {
-    const r = await fetch(url, { headers: { accept: "application/json,text/plain,*/*" } });
-    result.status = r.status;
-    result.content_type = clean(r.headers.get("content-type") || "");
-    const body = await r.text();
-    result.body_preview = short(body, 5000);
-    const parsed = parseJsonMaybe(body);
-    result.facts = upcomingFactsFromArray(parsed, teamId, url);
-    result.ok = r.ok && Array.isArray(parsed);
-  } catch (e) {
-    result.error = clean(e?.message || e);
-  }
-  return result;
-}
-
-function eventTeamRefsFromUpcoming(facts) {
-  const byEvent = new Map();
-  for (const f of facts) {
-    if (!/^\d+$/.test(f.event_id) || !/^\d+$/.test(f.event_team_id)) continue;
-    if (!byEvent.has(f.event_id)) byEvent.set(f.event_id, new Set());
-    byEvent.get(f.event_id).add(f.event_team_id);
-  }
-  const out = [];
-  for (const [event_id, ids] of byEvent) {
-    if (ids.size === 1) out.push({ event_id, event_team_id: [...ids][0], evidence: "upcoming-match-team-registration", source_url: facts.find(f => f.event_id === event_id)?.source_url || "" });
-  }
-  return out;
-}
-
-function directTeamLinks(capture) {
-  const out = [];
-  for (const l of capture.snapshot?.links || []) {
-    const m = l.href.match(/\/org_event\/events\/(\d+)\/schedules\?[^#]*\bteam=(\d+)/i);
-    if (m) out.push({ event_id: m[1], event_team_id: m[2], url: l.href, label: l.text });
-  }
-  for (const r of capture.responses || []) {
-    for (const m of `${r.url}\n${r.body || ""}`.matchAll(/(?:https?:\/\/system\.gotsport\.com)?\/org_event\/events\/(\d+)\/schedules\?[^"'<>\s]*\bteam=(\d+)/gi)) {
-      out.push({ event_id: m[1], event_team_id: m[2], url: new URL(m[0], "https://system.gotsport.com").href, label: "network evidence" });
-    }
-  }
-  return [...new Map(out.map(x => [`${x.event_id}|${x.event_team_id}`, x])).values()];
-}
-
-function authoritativeGroupFromTeamCapture(capture, eventId) {
-  const candidates = [];
-  const add = (groupId, why, label = "", url = "") => {
-    groupId = clean(groupId);
-    if (/^\d+$/.test(groupId)) candidates.push({ group_id: groupId, evidence: why, label: short(label, 180), url });
-  };
-
-  // A selected group control is authoritative page state, not a name guess.
-  for (const s of capture.snapshot?.selects || []) {
-    const selected = (s.options || []).filter(o => o.selected);
-    for (const o of selected) {
-      const v = `${o.value} ${s.value}`;
-      let m = v.match(/(?:\bgroup=|^)(\d+)$/i) || v.match(/[?&]group=(\d+)/i);
-      if (m) add(m[1], "selected-group-control", o.text, capture.snapshot.url);
-    }
-  }
-
-  // Exact input/form state.
-  for (const i of capture.snapshot?.inputs || []) {
-    if (/group/i.test(`${i.name} ${i.id}`) && /^\d+$/.test(clean(i.value))) add(i.value, "team-page-group-input", `${i.name || i.id}`, capture.snapshot.url);
-    const m = clean(i.value).match(/[?&]group=(\d+)/i);
-    if (m) add(m[1], "team-page-group-input-url", `${i.name || i.id}`, capture.snapshot.url);
-  }
-
-  // Explicit group links already present on the team-filtered page.
-  for (const l of capture.snapshot?.links || []) {
-    const m = l.href.match(new RegExp(`/org_event/events/${eventId}/schedules\\?[^#]*\\bgroup=(\\d+)`, "i"));
-    if (m) add(m[1], "team-page-group-link", l.text, l.href);
-  }
-
-  // Exact group_id keys in JSON returned while the team page is loaded.
-  for (const res of capture.responses || []) {
-    const parsed = parseJsonMaybe(res.body);
-    if (!parsed) continue;
-    for (const e of exactObjectEvidence(parsed, res.url)) if (e.group_id) add(e.group_id, "team-page-json-group-id", e.name, res.url);
-  }
-
-  const unique = [...new Map(candidates.map(x => [x.group_id, x])).values()];
-  if (unique.length === 1) return { resolved: true, ...unique[0], all_candidates: unique };
-  return { resolved: false, group_id: "", evidence: unique.length ? "multiple-authoritative-group-candidates" : "no-authoritative-group-id", all_candidates: unique };
-}
-
-function playoffEvidence(capture) {
-  const text = [capture.snapshot?.text || "", ...(capture.snapshot?.rows || []).map(r => r.join(" | "))].join("\n");
-  const stages = [];
+function importedScripts(source, base) {
+  const urls = [];
+  // Only literal ECMAScript import references have a known URL resolution rule.
+  // Vite dependency arrays and interpolated paths are left in the evidence,
+  // not turned into speculative requests.
   const patterns = [
-    ["Quarterfinal", /\bquarter[ -]?final(?:s)?\b|\bQF\b/gi],
-    ["Semifinal", /\bsemi[ -]?final(?:s)?\b|\bSF\b/gi],
-    ["Final", /\bchampionship\b|\bfinal\b/gi],
-    ["Consolation", /\bconsolation\b|\bthird[ -]?place\b|\b3rd[ -]?place\b/gi],
+    /\bimport\s*\(\s*["']((?:\/|\.\.?\/)[^"'\\\s]{1,220}\.(?:m?js)(?:\?[^"'\\\s]*)?)["']/g,
+    /\b(?:from|import)\s*["']((?:\/|\.\.?\/)[^"'\\\s]{1,220}\.(?:m?js)(?:\?[^"'\\\s]*)?)["']/g,
   ];
-  for (const [name, re] of patterns) if (re.test(text)) stages.push(name);
-  const placeholders = uniq((text.match(/(?:winner|loser|first|second|1st|2nd)\s+(?:of\s+)?[^\n|]{0,80}/gi) || []).map(x => short(x, 120))).slice(0, 20);
-  return { stages: uniq(stages), placeholders, row_count: capture.snapshot?.rows?.length || 0 };
+  for (const pattern of patterns) for (const match of source.matchAll(pattern)) {
+    const url = scriptUrl(match[1], base);
+    if (url) urls.push(url);
+  }
+  return unique(urls);
+}
+function routeEvidence(source, sourceUrl, limit = MAX_EXCERPTS) {
+  const pattern = /\/api\/(?:v\d+\/)?|\bbracket_id\b|\bschedule_id\b|\bschedule_group_id\b|\bgroup_id\b|\bplayoff_element\b/g;
+  const hits = [];
+  for (const match of source.matchAll(pattern)) hits.push({ term: match[0], index: match.index });
+  const excerpts = [];
+  let coveredThrough = -1;
+  for (const hit of hits) {
+    if (hit.index < coveredThrough) continue;
+    if (excerpts.length >= limit) break;
+    const start = Math.max(0, hit.index - 450), end = Math.min(source.length, hit.index + 1000);
+    excerpts.push({ source_url: sourceUrl, character_offset: hit.index, term: hit.term, snippet: source.slice(start, end) });
+    coveredThrough = end;
+  }
+  return {
+    terms_found: unique(hits.map(hit => hit.term)), hit_count: hits.length,
+    excerpts, excerpt_limit_reached: hits.some(hit => hit.index >= coveredThrough),
+  };
+}
+async function discoverRoutes(teamId, options) {
+  const url = `${RANKINGS_ORIGIN}/teams/${teamId}/upcoming-games`;
+  const page = await fetchPublic(url, "text/html", 1_000_000, options);
+  const result = { page: publicResponseInfo(page), discovered_script_urls: [], assets: [], api_snippets: [], complete: false, errors: [] };
+  if (!page.ok || !/text\/html/i.test(page.content_type)) {
+    result.errors.push(page.error || "Rankings page did not return HTML.");
+    return result;
+  }
+  const queue = scriptReferences(page.text, url), queued = new Set(queue);
+  result.discovered_script_urls = [...queue];
+  if (!queue.length) result.errors.push("Rankings HTML contained no supported same-origin JavaScript reference.");
+  while (queue.length && result.assets.length < MAX_ASSETS && options.clock() < options.deadline) {
+    const assetUrl = queue.shift();
+    const asset = await fetchPublic(assetUrl, "application/javascript,text/javascript", MAX_ASSET_BYTES, options);
+    const info = { ...publicResponseInfo(asset), terms_found: [], hit_count: 0, excerpt_limit_reached: false };
+    if (asset.ok && /(?:javascript|ecmascript|text\/plain|application\/octet-stream)/i.test(asset.content_type) && !/^\s*</.test(asset.text)) {
+      const evidence = routeEvidence(asset.text, assetUrl, Math.max(0, MAX_EXCERPTS - result.api_snippets.length));
+      info.terms_found = evidence.terms_found;
+      info.hit_count = evidence.hit_count;
+      info.excerpt_limit_reached = evidence.excerpt_limit_reached;
+      result.api_snippets.push(...evidence.excerpts);
+      for (const imported of importedScripts(asset.text, assetUrl)) if (!queued.has(imported)) {
+        queued.add(imported); queue.push(imported); result.discovered_script_urls.push(imported);
+      }
+    } else {
+      info.ok = false;
+      info.error ||= "Script reference did not return a JavaScript response.";
+      result.errors.push(`${assetUrl}: ${info.error}`);
+    }
+    result.assets.push(info);
+    if (asset.status === 429) {
+      result.errors.push("Rankings asset requests stopped after HTTP 429; Retry-After is recorded.");
+      break;
+    }
+  }
+  result.uninspected_script_urls = queue;
+  result.complete = result.assets.length > 0 && !result.errors.length && !queue.length && !result.assets.some(asset => asset.excerpt_limit_reached);
+  return result;
 }
 
-function compactResponses(records) {
-  return records.slice(0, MAX_REPORT_RESPONSES).map(r => ({
-    label: r.label,
-    url: r.url,
-    status: r.status,
-    content_type: r.content_type,
-    body_preview: short(r.body, 2200),
-  }));
-}
-
-async function runProbe(env, teamId) {
-  const started = now();
-  const rankingsUrl = `https://rankings.gotsport.com/teams/${teamId}/upcoming-games`;
+async function runProbe(teamId, { fetcher = fetch, clock = Date.now } = {}) {
+  const started = clock();
+  const options = { fetcher, clock, deadline: started + 25_000 };
   const report = {
-    probe_version: VERSION,
-    started_at: started,
-    team_id: teamId,
-    input_only: { rankings_team_id: teamId },
-    success: false,
-    stage: "starting",
-    proof: {},
+    probe_version: VERSION, started_at: iso(started), team_id: teamId,
+    input_only: { rankings_team_id: teamId }, success: false, stage: "starting",
+    collection_status: "running", browser: { used: false, launch_attempts: 0 },
+    proof: { concrete_paths: [], team_event_registration_paths: [], missing: ["Authoritative division/group mapping", "Complete published division schedule, including playoff fixtures"] },
     warnings: [],
   };
-
-  report.stage = "upcoming-api";
-  const direct = await directUpcoming(teamId);
-  report.rankings_bundle_discovery = await discoverRankingsBundleRoutes(teamId);
-  let rankings = null, rankingsEvidence = [], pairs = { event_ids: [], team_pairs: [], group_pairs: [] }, teamLinks = [];
-  let upcomingFacts = direct.ok ? direct.facts : [];
-
-  const browser = await puppeteer.launch(env.BROWSER);
-  try {
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1365, height: 900 });
-
-    if (!upcomingFacts.length) {
-      report.stage = "rankings-browser-fallback";
-      rankings = await navigateAndCapture(page, rankingsUrl, "rankings");
-      rankingsEvidence = evidenceFromCapture(rankings);
-      pairs = evidencePairs(rankingsEvidence);
-      teamLinks = directTeamLinks(rankings);
-      upcomingFacts = upcomingMatchFacts(rankings, teamId);
+  // Attach every result immediately. An error later must not erase earlier evidence.
+  const apiUrl = `${SYSTEM_ORIGIN}/api/v1/teams/${teamId}/matches?upcoming=true`;
+  const api = await fetchPublic(apiUrl, "application/json", MAX_API_BYTES, options);
+  report.rankings = { discovery_method: "direct-public-json-api", direct_upcoming_api: publicResponseInfo(api), upcoming_matches: [], upcoming_event_team_refs: [] };
+  let valid = false;
+  if (api.ok) {
+    try {
+      if (!/application\/(?:[\w.+-]*\+)?json/i.test(api.content_type)) throw new Error("Upcoming endpoint did not return JSON content.");
+      const parsed = JSON.parse(api.text);
+      const extracted = extractUpcoming(parsed, teamId, apiUrl);
+      report.rankings.raw_upcoming_matches = parsed;
+      report.rankings.upcoming_matches = extracted.facts;
+      report.rankings.upcoming_event_team_refs = extracted.event_team_refs;
+      report.rankings.validation_errors = extracted.errors;
+      report.rankings.direct_upcoming_api.schema_valid = extracted.valid;
+      valid = extracted.valid;
+      report.proof.team_event_registration_paths = extracted.event_team_refs;
+      if (!extracted.valid) report.warnings.push("Some API records failed exact identity checks. Valid records are retained, but discovery is not marked complete.");
+    } catch (error) {
+      report.rankings.direct_upcoming_api.schema_valid = false;
+      report.rankings.direct_upcoming_api.error = short(error.message || error);
+      report.rankings.response_preview = short(api.text);
     }
-    const upcomingRefs = eventTeamRefsFromUpcoming(upcomingFacts);
-    report.rankings = {
-      discovery_method: direct.ok && direct.facts.length ? "direct-public-json-api" : "browser-network-fallback",
-      direct_upcoming_api: direct,
-      navigation: rankings?.navigation || null,
-      title: rankings?.snapshot?.title || "",
-      headings: rankings?.snapshot?.headings || [],
-      text_preview: rankings ? short(rankings.snapshot.text, 8000) : "",
-      upcoming_matches_api: uniq(upcomingFacts.map(x => x.source_url)),
-      upcoming_matches: upcomingFacts,
-      upcoming_event_team_refs: upcomingRefs,
-      exact_evidence: rankingsEvidence.slice(0, 200),
-      discovered_event_ids: uniq(upcomingFacts.map(x => x.event_id).filter(Boolean)),
-      direct_team_schedule_links: teamLinks,
-      network_responses: rankings ? compactResponses(rankings.responses) : [],
-    };
-
-    // Observe GotSport Rankings' own event interactions and JSON calls before touching the captcha-protected schedule pages.
-    report.stage = "rankings-interaction";
-    report.rankings_interaction = await rankingsInteractionProbe(page, teamId, upcomingFacts);
-    const directScheduleCandidate = (report.rankings_interaction.schedule_candidates || []).find(c => c.non_team_match_count > 0 || c.playoff_match_count > 0);
-    if (directScheduleCandidate) {
-      report.success = true;
-      report.stage = "complete-public-json-schedule";
-      report.proof = {
-        concrete_paths: [{
-          event_id: clean(upcomingFacts[0]?.event_id),
-          event_team_id: clean(upcomingFacts[0]?.event_team_id),
-          bracket_id: clean(upcomingFacts[0]?.bracket_id),
-          schedule_id: clean(upcomingFacts[0]?.schedule_id),
-          schedule_api_url: directScheduleCandidate.source_url,
-          match_count: directScheduleCandidate.match_count,
-          non_team_match_count: directScheduleCandidate.non_team_match_count,
-          playoff_match_count: directScheduleCandidate.playoff_match_count,
-        }],
-        requirement: "The full schedule source was observed directly from GotSport Rankings network traffic and matched concrete event/bracket/schedule IDs from the team's public upcoming-match JSON."
-      };
-      return report;
-    }
-
-    if (!upcomingRefs.length) {
-      report.stage = "rankings-no-concrete-upcoming-event-team-id";
-      report.warnings.push("Neither the direct public upcoming-matches API nor its browser fallback exposed one unambiguous event-team registration ID for an upcoming event. Production integration must stop here rather than infer one.");
-      return report;
-    }
-
-    // Only upcoming events with an event-team registration ID concretely tied to this rankings team.
-    const eventIds = uniq(upcomingRefs.map(x => x.event_id)).slice(0, MAX_EVENTS_TO_PROBE);
-    report.events = [];
-    for (const eventId of eventIds) {
-      const event = { event_id: eventId, team_schedule: null, group: null, division_schedule: null, success: false };
-      let teamRef = upcomingRefs.find(x => x.event_id === eventId) || teamLinks.find(x => x.event_id === eventId) || pairs.team_pairs.find(x => x.event_id === eventId);
-
-      if (!teamRef?.event_team_id) {
-        // Render the public event schedule to see whether GotSport exposes an exact team-filter link.
-        const baseUrl = `https://system.gotsport.com/org_event/events/${eventId}/schedules`;
-        const base = await navigateAndCapture(page, baseUrl, `event-${eventId}`);
-        const exact = directTeamLinks(base);
-        event.event_page = {
-          navigation: base.navigation,
-          team_schedule_links: exact,
-          network_responses: compactResponses(base.responses),
-        };
-        if (exact.length === 1) teamRef = exact[0];
-        else if (exact.length > 1) {
-          event.failure = "Event page exposed multiple team schedule links and none was authoritatively tied to the Rankings team. No name-scoring fallback was used.";
-          report.events.push(event);
-          continue;
-        }
-      }
-
-      if (!teamRef?.event_team_id) {
-        event.failure = "No concrete event-team ID was exposed for this event.";
-        report.events.push(event);
-        continue;
-      }
-
-      const teamUrl = teamRef.url || `https://system.gotsport.com/org_event/events/${eventId}/schedules?team=${teamRef.event_team_id}`;
-      report.stage = `event-${eventId}-team`;
-      const teamCapture = await navigateAndCapture(page, teamUrl, `event-${eventId}-team`);
-      const group = authoritativeGroupFromTeamCapture(teamCapture, eventId);
-      event.team_schedule = {
-        event_team_id: teamRef.event_team_id,
-        requested_url: teamUrl,
-        navigation: teamCapture.navigation,
-        group_resolution: group,
-        headings: teamCapture.snapshot.headings,
-        text_preview: short(teamCapture.snapshot.text, 5000),
-        network_responses: compactResponses(teamCapture.responses),
-      };
-
-      if (!group.resolved) {
-        event.failure = "The team-filtered public schedule did not expose exactly one authoritative group ID. No division-name/frequency guess was used.";
-        report.events.push(event);
-        continue;
-      }
-
-      const groupUrl = `https://system.gotsport.com/org_event/events/${eventId}/schedules?group=${group.group_id}`;
-      report.stage = `event-${eventId}-group`;
-      const groupCapture = await navigateAndCapture(page, groupUrl, `event-${eventId}-group`);
-      const playoffs = playoffEvidence(groupCapture);
-      event.group = { group_id: group.group_id, evidence: group.evidence, label: group.label || "" };
-      event.division_schedule = {
-        requested_url: groupUrl,
-        navigation: groupCapture.navigation,
-        headings: groupCapture.snapshot.headings,
-        rows: (groupCapture.snapshot.rows || []).slice(0, 250),
-        playoff_evidence: playoffs,
-        text_preview: short(groupCapture.snapshot.text, 8000),
-        network_responses: compactResponses(groupCapture.responses),
-      };
-      event.success = !!groupCapture.snapshot.text && !/Please verify to continue|JavaScript is required to verify/i.test(groupCapture.snapshot.text);
-      report.events.push(event);
-    }
-
-    const proven = report.events.filter(e => e.success && e.team_schedule?.event_team_id && e.group?.group_id);
-    report.success = proven.length > 0;
-    report.stage = report.success ? "complete" : "incomplete";
-    report.proof = {
-      concrete_paths: proven.map(e => ({
-        event_id: e.event_id,
-        event_team_id: e.team_schedule.event_team_id,
-        group_id: e.group.group_id,
-        team_schedule_url: e.team_schedule.requested_url,
-        group_schedule_url: e.division_schedule.requested_url,
-        playoff_stages_seen: e.division_schedule.playoff_evidence.stages,
-      })),
-      requirement: "Every ID above came from concrete DOM/network/page state. No name-scoring or frequency-based fallback was used.",
-    };
-    if (!report.success) report.warnings.push("The full zero-input chain was not proven. This report intentionally stops instead of guessing.");
-    return report;
-  } finally {
-    await browser.close().catch(() => {});
   }
+  try { report.rankings_bundle_discovery = await discoverRoutes(teamId, options); }
+  catch (error) { report.rankings_bundle_discovery = { complete: false, errors: [short(error?.message || error)] }; }
+  report.discovery_complete = valid;
+  const routesComplete = report.rankings_bundle_discovery.complete;
+  report.collection_status = valid && routesComplete ? "complete" : valid || routesComplete ? "partial" : "failed";
+  report.stage = valid ? (report.rankings.upcoming_matches.length ? "evidence-collected-division-unresolved" : "no-upcoming-matches") : "upcoming-api-unavailable";
+  report.warnings.push("This report does not prove a full tournament schedule. Bracket and schedule IDs are not substituted for group IDs. JavaScript excerpts are evidence for inspection, not a verified schedule API.");
+  const responses = [api, report.rankings_bundle_discovery.page, ...(report.rankings_bundle_discovery.assets || [])].filter(Boolean);
+  const transient = responses.some(response => response.status === 429 || response.status >= 500 || !response.status);
+  const requestedDelay = Math.max(0, ...responses.map(response => response.retry_after_ms || 0));
+  const finished = clock();
+  const ttlMs = transient ? Math.max(60_000, requestedDelay) : REPORT_TTL_MS;
+  report.finished_at = iso(finished);
+  report.next_check_at = iso(finished + ttlMs);
+  report.retry_recommended = transient;
+  report.retry_reason = transient ? "A public HTTP request was unavailable or rate-limited. No browser retry is involved." : "";
+  return report;
+}
+
+async function cachedProbe(teamId, origin, { cache, fetcher = fetch, clock = Date.now } = {}) {
+  const key = new Request(`${origin}/_probe_report/${VERSION}/${teamId}`);
+  let cacheError = "";
+  if (cache) {
+    try {
+      const response = await cache.match(key);
+      if (response) {
+        const report = await response.json();
+        if (report.probe_version === VERSION && Date.parse(report.next_check_at) > clock()) return { ...report, cached: true };
+      }
+    } catch (error) { cacheError = short(error?.message || error); }
+  }
+  if (inFlight.has(key.url)) return { ...await inFlight.get(key.url), shared_in_flight: true };
+  const task = (async () => {
+    const report = await runProbe(teamId, { fetcher, clock });
+    report.report_url = `${origin}/api/probe?team=${teamId}`;
+    report.cached = false;
+    if (cacheError) report.warnings.push(`Report cache read failed: ${cacheError}`);
+    if (cache) {
+      const maxAge = Math.max(1, Math.ceil((Date.parse(report.next_check_at) - clock()) / 1000));
+      try { await cache.put(key, json(report, 200, { "cache-control": `public, max-age=${maxAge}` })); }
+      catch (error) { report.warnings.push(`Report cache write failed: ${short(error?.message || error)}`); }
+    }
+    return report;
+  })();
+  inFlight.set(key.url, task);
+  try { return await task; } finally { inFlight.delete(key.url); }
 }
 
 const UI = `<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>myTS GotSport Probe</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GotSport diagnostic</title>
 <style>
-:root{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#18201c;background:#f4f6f5}*{box-sizing:border-box}body{margin:0}.wrap{max-width:920px;margin:auto;padding:28px 18px 70px}h1{font-size:26px;margin:0 0 6px}p{color:#64706a;line-height:1.5}.card{background:#fff;border:1px solid #dde3df;border-radius:14px;padding:18px;margin-top:16px}.status{display:flex;align-items:center;gap:10px;font-weight:700}.dot{width:10px;height:10px;border-radius:99px;background:#c18427}.ok .dot{background:#078b55}.bad .dot{background:#c94957}button{border:1px solid #ccd5d0;border-radius:10px;background:#fff;padding:10px 13px;font-weight:650}pre{white-space:pre-wrap;word-break:break-word;background:#111513;color:#eaf3ee;border-radius:12px;padding:14px;max-height:58vh;overflow:auto;font-size:12px}.muted{font-size:13px;color:#6c7771}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}</style></head>
-<body><div class="wrap"><h1>myTS GotSport Probe <small style="font-size:12px;color:#748078">v${VERSION}</small></h1>
-<p>Zero-input diagnostic for GotSport Rankings team <b>${DEFAULT_TEAM_ID}</b>. This does not modify myTS or any database.</p>
-<div class="card"><div id="status" class="status"><span class="dot"></span><span>Running live GotSport probe…</span></div><div id="summary" class="muted" style="margin-top:8px">Browser Run is tracing the actual page and network data.</div><div class="actions"><button id="rerun">Run again</button><button id="download" disabled>Download report</button></div></div>
-<div class="card"><b>Result</b><pre id="out">Waiting…</pre></div></div>
+:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#1c2521;background:#f4f6f5}*{box-sizing:border-box}body{margin:0}.wrap{max-width:880px;margin:auto;padding:22px 16px}header{display:flex;align-items:baseline;gap:10px}h1{font-size:22px;margin:0}small,.muted{color:#64716a}p{line-height:1.5}.card{background:white;border:1px solid #dce3df;border-radius:12px;padding:16px;margin-top:16px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}button{font:inherit;font-size:14px;border:1px solid #cbd6cf;background:#fff;border-radius:8px;padding:9px 12px;cursor:pointer}button:disabled{opacity:.5;cursor:default}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.45;max-height:55vh;overflow:auto;margin:10px 0 0}a{overflow-wrap:anywhere;color:inherit}#status{font-weight:650}#summary{margin:8px 0 0;font-size:14px}details summary{cursor:pointer;font-size:14px}.muted{font-size:13px}</style></head>
+<body><main class="wrap"><header><h1>GotSport diagnostic</h1><small>v${VERSION}</small></header>
+<p class="muted">Public API and JavaScript evidence only. No browser sessions. myTS is unchanged.</p>
+<section class="card"><div id="status" role="status" aria-live="polite">Collecting public evidence…</div><p id="summary">Starting with team ${DEFAULT_TEAM_ID}.</p><p id="next" class="muted"></p>
+<div class="actions"><button id="download" disabled>Download report</button><button id="copy" disabled>Copy report link</button></div><p id="link" class="muted"></p></section>
+<section class="card"><details><summary>Collected evidence</summary><pre id="output">Waiting…</pre></details></section></main>
 <script>
-let last=null; const out=document.getElementById('out'), status=document.getElementById('status'), summary=document.getElementById('summary'), dl=document.getElementById('download');
-async function run(){status.className='status';status.querySelector('span:last-child').textContent='Running live GotSport probe…';summary.textContent='Browser Run is tracing the actual page and network data.';out.textContent='Running…';dl.disabled=true;try{const r=await fetch('/api/probe',{cache:'no-store'}),j=await r.json();last=j;out.textContent=JSON.stringify(j,null,2);status.className='status '+(j.success?'ok':'bad');status.querySelector('span:last-child').textContent=j.success?'Concrete GotSport chain proven':'Probe stopped before proof';const n=j.proof?.concrete_paths?.length||0;summary.textContent=j.success?('Resolved '+n+' concrete event → team → group path'+(n===1?'':'s')+'.'):('Stopped at '+(j.stage||'unknown')+' rather than guessing.');dl.disabled=false;}catch(e){status.className='status bad';status.querySelector('span:last-child').textContent='Probe failed';summary.textContent=e.message;out.textContent=e.stack||e.message;}}
-document.getElementById('rerun').onclick=run;dl.onclick=()=>{if(!last)return;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(last,null,2)],{type:'application/json'}));a.download='gotsport_probe_'+Date.now()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};run();
+let last=null, busy=false, retries=0, retryTimer=null;
+const statusEl=document.getElementById('status'),summary=document.getElementById('summary'),next=document.getElementById('next'),out=document.getElementById('output'),download=document.getElementById('download'),copy=document.getElementById('copy'),link=document.getElementById('link');
+const team=new URLSearchParams(location.search).get('team')||'${DEFAULT_TEAM_ID}';
+async function run(){
+ if(busy)return;busy=true;clearTimeout(retryTimer);
+ try{
+  const response=await fetch('/api/probe?team='+encodeURIComponent(team),{cache:'no-store'}),j=await response.json();
+  if(!response.ok)throw new Error(j.error||('HTTP '+response.status));
+  last=j;out.textContent=JSON.stringify(j,null,2);
+  const matches=j.rankings?.upcoming_matches?.length||0,events=j.rankings?.upcoming_event_team_refs?.length||0;
+  statusEl.textContent=j.collection_status==='complete'?'Evidence collected':j.collection_status==='partial'?'Partial evidence retained':'Source unavailable';
+  summary.textContent=j.discovery_complete?(matches+' team matches across '+events+' event entries. Full division/playoff schedule is not yet proven.'):'The API response could not be validated. Any other collected evidence is retained below.';
+  next.textContent=j.cached?'Showing the saved report; no new source requests were needed.':'No Cloudflare browser was launched.';
+  if(j.report_url){const a=document.createElement('a');a.href=j.report_url;a.textContent=j.report_url;link.replaceChildren(a);copy.disabled=false;}
+  download.disabled=false;
+  if(j.retry_recommended&&retries<2){const delay=Math.max(1000,Date.parse(j.next_check_at)-Date.now()+1000);retries++;next.textContent+=' An HTTP retry is scheduled for '+new Date(j.next_check_at).toLocaleTimeString()+' while this page stays open.';retryTimer=setTimeout(run,Math.min(delay,2147483647));}
+ }catch(error){statusEl.textContent='Diagnostic request failed';summary.textContent=error.message;next.textContent='No browser sessions are used by this version.';if(!last)out.textContent=error.message;}
+ finally{busy=false;}
+}
+download.onclick=()=>{if(!last)return;const url=URL.createObjectURL(new Blob([JSON.stringify(last,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='gotsport_probe_'+Date.now()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+copy.onclick=async()=>{try{await navigator.clipboard.writeText(last.report_url);copy.textContent='Link copied';}catch{link.textContent=last.report_url;}};
+run();
 </script></body></html>`;
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === "/") return new Response(UI, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
-    if (url.pathname === "/api/probe") {
-      try {
-        const teamId = asTeamId(url.searchParams.get("team") || DEFAULT_TEAM_ID);
-        const report = await runProbe(env, teamId);
-        return json(report, report.success ? 200 : 422);
-      } catch (e) {
-        return json({ probe_version: VERSION, success: false, stage: "fatal", error: clean(e?.message || e), stack: short(e?.stack || "", 4000), at: now() }, 500);
-      }
+    if (!["GET", "HEAD"].includes(request.method)) return json({ error: "Method not allowed." }, 405, { allow: "GET, HEAD" });
+    if (url.pathname === "/favicon.ico") return new Response(null, { status: 204 });
+    if (url.pathname === "/") return new Response(request.method === "HEAD" ? null : UI, {
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" },
+    });
+    if (url.pathname !== "/api/probe") return new Response("Not found", { status: 404 });
+    if (request.method === "HEAD") return new Response(null, { status: 200 });
+    let teamId;
+    try { teamId = asTeamId(url.searchParams.get("team")); }
+    catch (error) { return json({ error: error.message, probe_version: VERSION }, 400); }
+    try {
+      const cache = typeof caches !== "undefined" ? caches.default : undefined;
+      return json(await cachedProbe(teamId, url.origin, { cache }));
+    } catch (error) {
+      return json({ probe_version: VERSION, success: false, stage: "collector-error", browser: { used: false, launch_attempts: 0 }, error: short(error?.message || error) }, 500);
     }
-    return new Response("Not found", { status: 404 });
   },
 };
+
+// Named exports let the regression tests exercise exactly the shipped implementation.
+export { VERSION, asTeamId, allowedUrl, retryAfterMs, readBounded, extractUpcoming, scriptReferences, importedScripts, routeEvidence, runProbe, cachedProbe };
