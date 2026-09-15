@@ -1,3 +1,17 @@
+## v6.6.1 — Loading recovery
+
+- TeamSnap availability renders independently of Trace and GotSport requests.
+- Restored the missing TeamSnap and Trace sync button handlers.
+- Automatically refreshes availability and tournament data; checks Trace status before downloading changed stats.
+- Retains loaded Trace data on request failures and rejects outdated team responses.
+- Shows source failures without returning the dashboard to the login screen.
+- Reuses the persisted database schema version and shares concurrent initialization.
+- Allows abandoned TeamSnap syncs to retry after five minutes.
+
+Validation: JavaScript syntax checks; mocked runtime tests for all five views, account handlers, delayed/failed Trace requests, team-switch races, concurrent schema initialization, and availability responses without GotSport. Live authenticated services were not available for verification.
+
+Deploy the contents using the existing deployment workflow. Keep the existing database and secrets.
+
 # myTS 6.6.0
 
 Cloudflare Worker + D1 team dashboard integrating TeamSnap operations, GotSport tournament intelligence, and Trace performance data.
