@@ -1,101 +1,122 @@
-# GotSport diagnostic — v1.2.1
+# GotSport diagnostic — v1.3.0
 
-Standalone public-data diagnostic. It does not change myTS, connect to D1,
-write to GotSport, or start a Cloudflare browser.
+Standalone diagnostic. No myTS changes, D1 access, browser sessions, logins,
+CAPTCHA attempts, or writes to GotSport.
 
-## Deploy over the existing probe
+## Deploy
 
-Replace the existing probe files with this ZIP's contents, then use the same
-deployment process as before. The Worker name remains `myts-gotsport-probe`.
-For command-line deployment:
+Replace the existing **probe** project with the ZIP contents and use the same
+deployment process. Keep the existing deployment's Worker name/address.
+The included configuration retains its original `myts-gotsport-probe` name;
+this ZIP does not automatically rename or deploy over the myTS application.
 
 ```sh
 npm install
 npm run deploy
 ```
 
-No dashboard configuration, browser binding, API key, tournament URL, or group
-ID is required. The default Rankings team remains `212707`.
+The default team is still `212707`. Opening the probe collects public evidence
+automatically. No tournament, registration, division, or calendar URL is needed.
+The existing `/api/probe?team=212707` address remains the main report URL.
+There is no need to download/upload JSON to read the resulting report remotely.
 
-Open the Worker URL. It collects automatically. Use **Copy report link** to
-share the public report URL; downloading and uploading JSON is optional.
+## Why this update exists
 
-## What changed
+The v1.2.1 report established the team/event/registration relationship and
+captured GotSport code that renders bracket matches and explicitly checks
+`playoff_element.tier_title` for finals, semifinals, and quarterfinals.
+It did not capture the request definitions supplying those matches.
 
-The previous version fetched the public JSON and JavaScript before launching a
-browser, but only attached much of that evidence after the launch succeeded.
-A browser-launch exception replaced the whole report with a fatal error.
+The previous keyword collector primarily searched `/api/` and data field names.
+Relative request paths supplied separately to the common API wrapper could be
+missed. This update retains full source and catalogs literal `path:` properties
+with their surrounding code, rather than requiring a rebuild for each excerpt.
 
-This version removes Puppeteer and the BROWSER binding altogether. It collects:
+## Evidence now available
 
-- The existing public `GET /api/v1/teams/<team>/matches?upcoming=true` response.
-- Exact home/away team IDs and their corresponding registration IDs.
-- Rankings HTML and its same-origin script/module references.
-- Bounded source excerpts mentioning API, bracket, schedule, group, and playoff
-  fields, with the source URL and character offsets.
+- The existing public upcoming-matches API, raw JSON, and exact identity checks.
+- Referenced public Rankings JavaScript, source hashes, and readable chunks.
+- Literal event/schedule/match path definitions, interpolation expressions,
+  source offsets, and surrounding code. Computed or unsupported paths are
+  reported instead of evaluated.
+- Source inspection by offset or literal search, with continuation URLs.
+- Bounded read-only testing of an eligible path definition from the collected
+  source. This is a diagnostic operation, not an automatically inferred API.
 
-It does not execute the JavaScript, click tournament links, attempt CAPTCHA
-verification, construct speculative API routes, or equate a bracket ID with a
-group ID. Literal ECMAScript import references may be followed; interpolated
-URLs and dependency-map strings are retained as evidence rather than guessed.
+The main report includes up to 1.2 million JavaScript characters. Any source
+omitted by that bound is explicitly marked incomplete and remains available
+through its source-inspection URL. At most five referenced assets are fetched;
+byte, time, excerpt, and definition limits remain explicit.
 
-## Reading the result
+## Remote inspection interfaces
 
-`collection_status` describes evidence collection: `complete`, `partial`, or
-`failed`. Complete means the supported collection steps completed within their
-limits, not that all possible JavaScript routes were discovered.
+These interfaces are for investigating the remaining data path. They are not
+setup fields for myTS users.
 
-`discovery_complete` means the upcoming-match response passed the exact team
-identity checks. A valid empty array is distinguished from a failed request.
+`GET /api/probe?team=212707`
+Returns the usual evidence report plus source chunks and inspection links.
 
-`success` remains **false** because the full division/playoff schedule has not
-been proven by this collector. The proven team/event/registration relationships
-are under `proof.team_event_registration_paths`. The missing proof is listed
-separately. This diagnostic is not a working tournament integration.
+`GET /api/catalog?team=212707`
+Returns literal path definitions and source links, without the full source body.
+Each definition has a `template_id`, source hash, context, and template slots.
+A source-literal candidate is not proof of an executed network request.
 
-Partial API and script evidence is returned even when another request fails.
-Raw upcoming JSON is retained; script bodies are represented by bounded
-excerpts. Truncation and uninspected script references are reported explicitly.
+`GET /api/source?team=212707&asset=0`
+Returns a source window. Optional fields: `offset`, `length`, `find`, `sha256`.
+Search is literal, not regular-expression execution. Offsets count JavaScript
+UTF-16 code units. Returned continuation URLs pin the source hash.
+`download=1` returns inert plain-text source as an attachment.
 
-## Requests and resource use
+`GET /api/request?team=212707`
+Required query fields: `template` (the exact catalog ID) and `sha256`.
+`slots` is a JSON array of positive numeric values, one per template slot.
+`query` is an optional JSON object of small primitive query parameters.
+The reviewer must read the source to establish what these values mean; the
+probe does not assign bracket IDs to group IDs or infer parameter semantics.
 
-Normal collection uses one public API request, one Rankings HTML request, and
-up to five referenced JavaScript asset requests, excluding bounded redirects.
-There are **zero browser acquisitions**. HTTP bodies and collection time are
-bounded. Redirects outside the two public GotSport origins are refused.
+Only eligible event/schedule/match resource paths actually present as literals
+in the captured source are accepted. The API base must also appear in that
+asset. Arbitrary URLs, writes, credential forwarding, private resource
+families, path traversal, executable query values, and stale source hashes
+are rejected. Source expressions are never executed. Requests use GET without
+cookies or authorization and include the public `X-Rankings-Client` header
+observed in the supplied Rankings wrapper code.
 
-Reports are cached for 15 minutes using the existing Workers Cache API, when
-available. Simultaneous requests within a Worker isolate share a running
-collection. Cache availability is best-effort and per Cloudflare data center;
-this is not a global singleton or a permanently stored report.
+An inspected response contains its status, exact request/source evidence,
+JSON body or failure preview, and `division_schedule_verified: false`.
+HTTP 200 does not prove the correct division or complete playoff coverage.
 
-A public HTTP 429 is recorded with its Retry-After header. The next check is
-not scheduled earlier than that delay. The page permits at most two automatic
-HTTP retries while it remains open. There are no scheduled background jobs,
-CAPTCHA loops, browser retries, or paid-plan upgrade requirements introduced
-by this change.
+## Resource use and safety
 
-`GET /api/probe` returns the report for `212707`.
-`GET /api/probe?team=<numeric-id>` retains the optional alternative team input.
-The report includes its own public `report_url`.
+Reports are cached for 15 minutes. JavaScript is cached separately for one hour.
+Changing the inspected source window does not download the bundle again while
+its captured source remains available. Identical inspection requests reuse
+cached results for 15 minutes. Failed requests are cached for at least one
+minute or the longer Retry-After delay. No challenge retry loop is present.
 
-## Verification included
+Caching is best-effort and local to a Cloudflare data center; concurrent work
+is shared within an isolate. This is not a durable/global coordination system.
+The memory cache is bounded. There are no scheduled background jobs. The UI
+retains its limited transient-error retry behavior while open.
+
+The diagnostic is public and should not be used to store private credentials.
+It cannot deploy changes or execute arbitrary code. It does not automatically
+try every listed request definition or enumerate event IDs.
+
+## Verification
 
 ```sh
 npm test
 npm run check
 ```
 
-The tests replay the selected match identity/date fields captured in the
-uploaded v1.1.0 report. Other upstream responses (HTML, JavaScript and error
-cases) are controlled test fixtures, not claimed live GotSport responses.
+The 50 regression tests cover the existing recorded team identities, partial
+failures, rate limits, caching, source reconstruction/pagination, literal path
+extraction, unsupported computed expressions, source hashes, request allowlists,
+no credentials/writes, and explicit unverified schedule state.
 
-Regression checks cover exact home/away registration selection, mismatches,
-empty responses, duplicate matches, invalid JSON content, API/asset HTTP 429,
-Retry-After, network failures, redirects, body limits, caching, concurrent
-requests, and a browser binding that throws the exact uploaded 429 if accessed.
-The shipped handler passes without accessing that binding.
-
-Local tests do not establish access from your deployed Worker or prove the
-remaining division-schedule endpoint. No production myTS files are included
-or modified.
+Test routes under `fixture_events` are synthetic fixtures. They are not
+claimed GotSport endpoints. Local tests verify the diagnostic implementation,
+not a successful live division/playoff integration. `success` remains false
+until the separate full-schedule proof is established; this collector does
+not manufacture that proof.
