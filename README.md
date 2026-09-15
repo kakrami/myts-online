@@ -1,12 +1,12 @@
-# myTS 6.4.0
+# myTS 6.5.0
 
-Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
+Cloudflare Worker + D1 team dashboard integrating TeamSnap operations, GotSport tournament intelligence, and Trace performance data.
 
 ## Product flow
 
 - **Overview** combines TeamSnap schedule/availability with current-season Trace performance leaders and recent matches.
 - **Schedule** is the single timeline for games, practices, and other team events. Opening a game gives a FotMob-style match center with score context, a game-specific reconstructed lineup/formation, player stats, goal events, and TeamSnap availability.
-- **Tournaments** groups each GotSport event separately and shows confirmed team fixtures alongside possible quarterfinal, semifinal, final, consolation, or placement slots from the public division schedule.
+- **Tournaments** is the tournament-specific view: confirmed team games stay together with the published division playoff/final schedule, while the normal Schedule remains limited to real team commitments.
 - **Player profiles** combine match/season performance, corrected Trace heat maps, position profile, tracked distance, attacking-third share, field coverage, match history, and TeamSnap availability. Trace-tagged shots/touch involvement remain available in the underlying dataset but are not presented as complete event counts. A player opened from a match starts in match context and can move naturally to the season profile.
 - **Team** is the season roster/performance area. Match formations are not shown here; lineup reconstruction belongs to each individual game and uses that game’s starter, goalkeeper, minutes, and spatial evidence.
 - **Reports** provides Excel and PDF exports without duplicating the normal dashboard workflow.
@@ -41,12 +41,23 @@ There is intentionally no `index.html` or `tools/` folder in the production bund
 
 ## Deploy
 
-Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, replace the repository files with this bundle, and deploy with Wrangler. TeamSnap OAuth continues to redirect to `/admin`. The included `wrangler.jsonc` also declares a Cloudflare Browser Run binding named `BROWSER`; it is used only when GotSport serves its public tournament schedule behind JavaScript verification.
+Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, replace the repository files with this bundle, and deploy with Wrangler. TeamSnap OAuth continues to redirect to `/admin`. The included `wrangler.jsonc` declares a Cloudflare Browser Run binding named `BROWSER`. GotSport Rankings discovery is rendered through it because that page is client-side; public event/group schedules use ordinary HTTP first and Browser Run only when GotSport requires JavaScript verification.
 
 ## Version
 
 The current version is populated from the application version constant beside the myTS logo on both the login screen and loaded dashboard.
 
+
+## 6.5.0 Automatic GotSport tournament intelligence
+
+- GotSport is now treated as an **enrichment source**, not a second schedule the user has to manage. The LVSA Boys White family remains auto-configured to Rankings team `212707`; the Account panel only shows connection health and a **Change team** action.
+- Rankings discovery is browser-rendered before parsing so client-side data is actually present. A blank/static shell can no longer be accepted as a successful `0 games` sync.
+- Failed GotSport requests never replace previously good tournament data. The last successful events remain available while the background scheduler retries automatically.
+- Resolved event-team and division/group relationships are cached. A known tournament refresh goes directly to its public group schedule instead of rediscovering the chain every time.
+- Refresh cadence is adaptive: normally 12 hours, every 3 hours during tournament week, and hourly around tournament day. Existing empty/legacy rows are retried quickly after upgrade.
+- **Schedule** contains confirmed commitments only. **Tournaments** shows each event as its own card with **Our games** and **Tournament path** sections; playoff/final placeholders never count as actual team fixtures until GotSport assigns the team.
+- Tournament cards show the published division name and public GotSport schedule link without exposing internal event/team/group IDs in the normal UI.
+- No D1 reset or schema migration is required.
 
 ## 6.4.0 Direct GotSport tournament schedules
 
