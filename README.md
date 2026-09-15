@@ -1,3 +1,15 @@
+## v6.6.2 — TeamSnap isolation and 503 recovery
+
+- Restores the pre-tournament TeamSnap dataset setup and saved-team query. GotSport initializes through its own source path.
+- Retries a transient TeamSnap 502/503/504 or network failure once; honors Retry-After and retains previously saved resources.
+- Shares an expiring database lease across automatic/manual TeamSnap syncs and records a persistent retry window after failures.
+- Preserves the failing service, HTTP status, and endpoint in error responses. Cloudflare HTML errors identify the myTS route instead of appearing as an unreadable response.
+- Reports partial/deferred updates accurately; reconnecting clears an old retry window.
+
+Validation: compared v6.0.17, v6.6.1, and v6.6.2; reproduced the tournament dependency failure; tested transient/persistent and availability-specific 503s, Retry-After, concurrent syncs, abandoned leases, saved-data reads, and API error provenance against SQLite with simulated upstream responses. Frontend runtime checks cover all five views, account actions, delayed/failed requests, team switching, and non-JSON 503 responses. These checks do not establish the cause of the reported live 503.
+
+Deploy through the existing workflow, preserving the current database and secrets. No reconnection or reimport is required for this update.
+
 ## v6.6.1 — Loading recovery
 
 - TeamSnap availability renders independently of Trace and GotSport requests.
