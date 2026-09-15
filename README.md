@@ -1,4 +1,4 @@
-# myTS 6.3.1
+# myTS 6.4.0
 
 Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
 
@@ -48,13 +48,16 @@ Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, rep
 The current version is populated from the application version constant beside the myTS logo on both the login screen and loaded dashboard.
 
 
-## 6.3.1 Tournament schedules tab
+## 6.4.0 Direct GotSport tournament schedules
 
-- Added a dedicated **Tournaments** primary tab between Schedule and Team.
-- Each GotSport tournament is grouped into its own card with confirmed team games and the public semifinal/final/placement path shown together.
-- Conditional playoff/final slots now appear only in **Tournaments** as **Possible / If qualified**; they no longer appear in the normal Schedule or as the Overview **Up next** event.
-- Confirmed tournament games remain in the normal Schedule because they are real team fixtures, and they also appear inside their tournament card for full event context.
-- Tournament cards show the event date range, confirmed/possible counts, and a direct GotSport public schedule link when available.
+- GotSport now follows one deterministic public chain: **Rankings team → event → event-team schedule → selected division/group → full public group schedule**. It no longer scans a long list of divisions trying to guess where the team belongs.
+- For the current LVSA Boys White team, GotSport Rankings team `212707` is auto-configured when that TeamSnap family is created; tournament links, event-team IDs, and group IDs require no manual entry.
+- The resolver reads the event's public team filter to identify the event-team ID, then reads that team's public schedule to identify the group ID. For the supplied example this resolves `55368 → 4360572 → 544000`.
+- The dedicated **Tournaments** tab keeps confirmed team games together with the published quarterfinal/semifinal/final/consolation path. Placeholder participants such as `Winner SF1 vs Winner SF2` are shown exactly as schedule context and remain **Possible / If qualified** until the team is assigned.
+- Two knockout matches at the same kickoff time are preserved separately instead of being collapsed into one row.
+- Confirmed tournament games remain in the normal Schedule because they are real fixtures; conditional tournament-path rows remain exclusive to **Tournaments** and do not affect W-D-L, availability, exports, or Trace matching.
+- Public GotSport pages are fetched normally first. The existing Cloudflare Browser Run binding is used only when GotSport returns its JavaScript verification page.
+- No D1 reset is required.
 - Navigation was expanded cleanly to five tabs with mobile sizing preserved. No D1/schema changes are required.
 
 ## 6.3.0 GotSport tournament-path schedules
