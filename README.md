@@ -1,4 +1,4 @@
-# myTS 6.0.17
+# myTS 6.1.0
 
 Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
 
@@ -45,6 +45,18 @@ Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, rep
 ## Version
 
 The current version is populated from the application version constant beside the myTS logo on both the login screen and loaded dashboard.
+
+
+## 6.1.0 GotSport schedule sync
+
+- Added GotSport as a first-class schedule source under **Account & Data Sources** using the team iCal subscription link.
+- GotSport calendar URLs are encrypted at rest and restricted to HTTPS GotSport hosts; redirects are revalidated before the Worker follows them.
+- The Worker parses iCal time zones, all-day entries, cancellations, opponent names, locations, and competition/tournament labels, then stores the normalized feed against the cross-season team family.
+- GotSport refreshes automatically in the existing scheduler and can also be synced or disconnected manually.
+- Published GotSport games merge into the normal Schedule and are deduplicated against TeamSnap by date/opponent evidence; unmatched GotSport games remain visible instead of being dropped.
+- GotSport-only fixtures can still pair with Trace by date/opponent, so later TeamSnap/Trace data enriches the same match rather than creating duplicate rows.
+- Match detail and schedule exports identify GotSport source/competition context, and the Account panel summarizes detected competitions.
+- This integration discovers **published GotSport schedule entries**. A tournament registration that has no published schedule yet is not exposed by the iCal feed and therefore cannot be discovered through this source alone.
 
 ## 6.0.15 finished UI polish
 
