@@ -1,3 +1,16 @@
+## v6.9.4 — Unified match identity and presentation
+
+Built from v6.9.3; deploy the same seven files. No reset, reconnect, or data reimport is needed.
+
+- TeamSnap/GotSport matching tolerates parenthesized US regional abbreviations such as (AZ), while retaining squad direction, age, color, and other name tokens. Timed fixtures require matching calendar dates and kickoffs within ten minutes; conflicting known venues reject a match. Date-only GotSport fixtures require matching venues. Every automatic link must be unique in both directions. Ambiguity remains separate instead of guessing.
+- Existing explicit Trace-to-TeamSnap ID mappings take precedence. Automatic Trace matching now requires unique same-day opponent evidence, respects score/time conflicts where available, and no longer uses permissive multi-day fuzzy-name matching. This deliberately leaves uncertain matches separate.
+- Shared merged items retain source IDs and combine TeamSnap availability/cancellation and schedule time, GotSport full opponent/competition/field details, and Trace statistics. A cancelled TeamSnap event is not automatically enriched with Trace performance. Names and field detail use the same precedence throughout the app.
+- Overview, Schedule and Competition game lists use one row renderer. Competition own-game rows use the existing merged item rather than rebuilding a GotSport-only copy. All own-game entry points resolve to the same match details. Division/playoff placeholders retain their non-team identity and cannot become team commitments merely by appearing in a competition.
+- Competition cards have only Schedule. Per-game links appear in game details: a verified supplied match URL when available, otherwise an accurately labeled GotSport schedule link. No guessed match URLs and no repeated source-link rows in game lists.
+- Loading indicators, safe-link checks, cancellation visibility, availability and keyboard/mobile behavior are retained.
+
+Validation: Chrome at desktop, 390px and 320px. The reported regional-name example produces one 9:05 AM entry with Field #17b and 8/12 available, shared by Schedule/Competitions/details. Tests cover three-source merging, cancellation, conflicting day/time/venue/age/color/squad, ambiguous candidates, single competition Schedule link, detail game link, loading states and view navigation. Worker startup, authentication and browser-independent background alarms passed. No production deployment performed.
+
 ## v6.9.3 — Shared loading and update states
 
 Built from v6.9.2. Deploy the same seven files; no reset, reimport, or new configuration is needed.
