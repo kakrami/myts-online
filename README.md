@@ -1,3 +1,9 @@
+## v6.7.11 — Eight Trace lanes and compact account settings
+
+Trace collection uses eight concurrent task lanes. The existing 24/40 request budgets, 22-second work budget, full-half checkpoints, segment fallback, and shared rate-limit pauses are retained. Existing tracking backlog is drained before preparing another game. The supplied diagnostics showed 24 successful full-half calls in 8,320 ms, followed by preparation of another game while 11 checks remained on the active one. Prioritizing the backlog also selects the existing 40-request pure-collection budget for that pass. Actual throughput depends on Trace response times and throttling.
+
+Account & Data Sources now groups providers into compact rows. TeamSnap progress aggregates repeated resource counts; Trace shows availability, active game, and tracking progress on separate lines. Import, export, and manual Trace refresh remain in Data tools. Pre-season is a single switch row; sharing keeps Copy/Replace actions without displaying the long private URL. Diagnostics and version share a footer. All source actions and drag-and-drop import remain available. No database reset is needed.
+
 ## v6.7.10 — Full-half Trace acquisition
 
 New player/half tasks request one complete half and only the ring field, using the request shape verified by the live Chrome comparison. Four existing concurrent task lanes, request budgets and the 22-second work budget remain in place. Completed full halves are checkpointed immediately. Existing partial segment checkpoints continue without being discarded; completed games are not invalidated. No schema or calculation-engine version changes are required.
@@ -371,3 +377,5 @@ Discovery begins when GotSport publishes a team match. This integration does not
 - Unified dataset counts are recalculated only when a catalog refresh or newly published match can change them.
 - Composite indexes cover dataset lookup and the hot Trace game/source/Halo predicates.
 - Trace performance data and TeamSnap data contracts are unchanged.
+
+Validation: eight concurrent lanes, request caps, checkpoint/fallback recovery, auth/rate handling, and backlog-first scheduling tested. Account UI rendered in Chromium at 900px and 390px with no horizontal overflow or runtime errors; Data tools and file picker interactions checked. External icon-font loading was blocked in the isolated preview; production retains the existing Bootstrap Icons stylesheet.
