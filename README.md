@@ -1,3 +1,16 @@
+## v6.9.8 — Canonical fixture identity and duplicate suppression
+
+Built from v6.9.7. Fixes duplicate games caused by one real fixture arriving from TeamSnap, GotSport, and Trace with slightly different opponent labels. The reported **ROA Soccer Academy 2016 Blue** / **Neveda ROA soccer academy 2016 blue** case is one fixture: TeamSnap has the authoritative 6:30 PM schedule/location/availability, while Trace carries the same 2–7 result under a misspelled opponent label.
+
+- Fixture linking no longer requires opponent text to be exactly identical. It uses normalized opponent similarity together with same-day evidence, kickoff proximity when known, venue evidence, and matching scores when available.
+- Conflicting known scores reject a merge. Different birth-year tokens are penalized, and distinct same-source IDs are never collapsed, so legitimate separate games stay separate.
+- Explicit Trace → TeamSnap event IDs now take precedence when they are present, followed by existing saved/manual mappings, then conservative evidence matching.
+- The same resolver is used for TeamSnap ↔ GotSport and GotSport ↔ Trace, removing the previous source-specific name rules that could disagree with one another.
+- A final canonical-fixture pass merges only complementary source records and preserves TeamSnap schedule time, location, cancellation, and availability while attaching GotSport links and Trace performance to that one game.
+- No D1 reset, reconnect, Trace reimport, or source-data deletion is required. The underlying source records remain intact; the UI now identifies them as one fixture.
+
+Validation: frontend JavaScript syntax; reported ROA/Neveda fixture collapses to one item; alias-name + matching score/time case; date-only completed case; conflicting-score case; different birth-year case; same opponent two hours later remains separate; distinct TeamSnap event IDs remain separate.
+
 ## v6.9.7 — Match detail click regression fix
 
 Built from v6.9.6. Restores the shared availability and spatial helpers that were accidentally removed during the detail-page UI refactor. That omission caused game taps to enter the match-detail handler and then stop on a JavaScript `ReferenceError` before the drawer could open. Player heat maps used the same removed spatial helpers, so they are restored in the same root-cause fix. No database reset, reconnect, or data reimport is required.
