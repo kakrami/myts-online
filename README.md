@@ -1,3 +1,35 @@
+# myTS v6.11.0 — Complete UI pass
+
+This release refines the existing interface across Overview, Schedule, Competitions, Team, Reports, player/game/event details, account and Trace dialogs, confirmations, and sign-in. Shared component rules were updated directly; no new visual framework or runtime dependency was added.
+
+## What changed
+
+- **Shared layout:** tighter page/card spacing, consistent action sizing, empty source-indicator containers removed, and a keyboard skip-to-content link. Existing table sorting, search clearing, keyboard tabs and dialog scrolling remain available.
+- **Mobile navigation:** one compact header row for identity, team, season and account; the full season label remains visible. Bottom navigation retains its existing placement.
+- **Overview:** three upcoming/today entries use the available card space; recent results use two columns on desktop. “All results” opens Games + Past.
+- **Schedule:** event type and date controls share one mobile row. Search remains directly below. Repeated practice labels were removed; cancellations and other meaningful exceptions remain visible.
+- **Players:** the Edit action lives beside the player identity. Its inline form has Save, Cancel and Reset; Cancel restores the unsaved fields and clears a prior error. Assigned position appears once in the header. Match context has its own compact line, and the avatar cannot shrink. Stats share a unified panel, with shorter match-log rows.
+- **Matches:** desktop lineup and scoring/leader information sit side by side. Duplicate format/status facts were removed; the format stays beside the date. Available external game links share the contextual information area. The experimental Trace heatmap warning remains visible.
+- **Team:** mobile tables show separate goals and assists. Jersey numbers and known positions replace repeated “Position not set” text in list rows. Full details remain in player views and reports.
+- **Competitions:** reduced nested padding and routine publication badges. Schedule links remain beside competition names; unconfirmed and full-division fixtures stay in their existing expandable sections.
+- **Reports:** compact mobile rows retain report values in two columns, with full-width descriptive fields. Empty values do not consume mobile rows. Excel/PDF exports retain their full existing schemas.
+- **Dialogs:** short account/connection dialogs use content-sized mobile bottom sheets. Detailed player/game views remain full-screen on mobile. Removed the redundant Account footer Close button; header close, Escape and existing dismissal behavior remain.
+
+## Verification
+
+- All **25 included browser workflow tests passed**. New checks cover the results shortcut, edit/cancel flow, responsive primary screens, mobile selectors, search clearing and mobile reports.
+- Primary screens checked at **320, 390, 768 and 1280 px**. Additional 320 px checks covered reports, match-player editing, player tabs, game tables, practices, Trace forms, confirmations and sign-in, with no horizontal page/dialog overflow or uncaught browser errors.
+- Inspected rendered desktop/mobile screens using the real 108-game Trace snapshot plus representative TeamSnap and competition fixtures.
+- Existing correction, schedule, mobile-avatar, export-data and source-reconciliation checks passed. Worker and embedded browser JavaScript syntax checks passed.
+
+Testing used local fixtures and Chromium; this release was not tested on physical iOS/Android devices. No live provider configuration was changed. Source data, D1 schema, synchronization behavior and deployment configuration remain unchanged.
+
+## Deploy
+
+Deploy the full ZIP using the existing workflow and refresh open tabs. No database reset, reconnect or reimport is needed. Existing filenames and archive paths are preserved. The reusable regression suite remains at `tests/workflows.mjs`; run it with `npm run test:workflows` after installing dependencies and the Playwright Chromium browser as documented below.
+
+---
+
 # myTS v6.10.2 — Workflow and failure-recovery review
 
 This release fixes reproducible failures while changing teams or seasons, saving edits, navigating game/player details, loading source settings, and recovering from failed requests. It includes a reusable Chromium regression suite in `tests/workflows.mjs`. Earlier release notes below describe previous versions.
