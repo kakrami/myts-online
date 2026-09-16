@@ -1,3 +1,17 @@
+# myTS v6.12.1 — Mobile roster and in-app navigation
+
+- Jersey values are normalized before display, so source or saved values containing `#` cannot produce doubled symbols.
+- Mobile Team is again a compact player list with visible, tappable sortable columns instead of separate player cards.
+- Player avatars use the assigned position code. Players without an assigned position show a neutral dash instead of invented initials or roles.
+- Competitions explicitly state when no games—or no team games—are confirmed. Unconfirmed placeholders remain available in their disclosure.
+- User-facing **Availability** labels are now **Attendance** across Team, schedule context, details, reports, and exports. Provider field names and stored data remain unchanged.
+- Player, match, event, opponent, and division details stay inside the application shell. The team/season header and mobile navigation remain visible.
+- Browser and phone Back now close an open detail, return from a nested player to its match, and move between previously visited application sections before leaving the URL.
+
+Validation includes the full API, synchronization, import, reconciliation, correction, and responsive browser suites plus new checks for hashed jersey values, position avatars, mobile roster sorting, explicit empty competitions, and browser Back behavior.
+
+---
+
 # myTS v6.12.0 — Structural UI redesign
 
 This release rebuilds the interface hierarchy across the entire application while preserving its data model and workflows. Desktop now uses a persistent application sidebar, mobile keeps a compact contextual header and bottom navigation, and detail views open in focused drawers or full-screen mobile panels.
