@@ -1,3 +1,23 @@
+## v6.7.10 — Full-half Trace acquisition
+
+New player/half tasks request one complete half and only the ring field, using the request shape verified by the live Chrome comparison. Four existing concurrent task lanes, request budgets and the 22-second work budget remain in place. Completed full halves are checkpointed immediately. Existing partial segment checkpoints continue without being discarded; completed games are not invalidated. No schema or calculation-engine version changes are required.
+
+Request failures, malformed responses and timeouts switch that task to the existing four-segment collector, with the fallback choice persisted across retries. Authentication failures, forbidden responses and rate limits stop/pause through the existing handling instead of triggering more requests. Empty successful rings retain the existing identity-candidate behavior. Silent upstream truncation cannot be detected from the response alone; live validation so far covers one outfield player's half, not every game or goalkeeper.
+
+Transport diagnostics add strategy, full_half_requests, full_half_completed and full_half_fallbacks alongside bytes, requests, completed tasks, elapsed time and stop reason. UI and TeamSnap/GotSport behavior are unchanged. No direct-stat endpoint or historical archive is used as a substitute for fresh collection.
+
+The supplied live comparison measured 898 ms versus 2,112 ms for four sequential requests with exactly matching intervals. Production already batches requests, so production improvement is not yet measured. Deploy normally, allow pending collection to continue, then export sync diagnostics to measure actual throughput. Do not clear saved data for this update.
+
+## v6.7.9 — Remove the measured per-game collection split
+
+Live v6.7.8 diagnostics at 2026-09-16T05:26:10.683Z confirmed batch mode, 24 requests, 92 chunks, 10,594,014 response bytes, 21,273 ms, 23 completed tasks, no fallback and no rate pause. The pending game had 26 player/half tasks. Both the 24-request cap and two-lane throughput made a full game span multiple passes. This measured raw input is megabytes even though calculated statistics are much smaller.
+
+Pure tracking collection now uses four task lanes and a 40-request hard cap. Passes that perform catalog refresh or allow source preparation keep the 24-request cap to reserve room for metadata requests. All passes retain the 22-second work budget, per-chunk checkpoints, fallback and Retry-After handling. Trace cron processes at most one eligible connection per invocation, ordered by update time, so the external request allowance is not multiplied across teams.
+
+Transport diagnostics now include request_limit, concurrency and stop_reason (time_budget, request_budget, task_budget, rate_pause, queue_drained). They continue reporting actual bytes, chunks, tasks and elapsed time. UI, attribution engine, source coverage and saved history are unchanged.
+
+Tests reproduce a 26-task game through a real GraphQL implementation and verify all 26 complete in one pure collection pass. Tests also verify four-request concurrency, 40-call pure/24-call mixed hard caps, checkpoint recovery, rate pauses, unchanged tracking segments, publication recovery, TeamSnap and GotSport regressions. This removes the avoidable pass split; the new live elapsed time and total archive completion time are not yet measured. No claim that all 108 games finish in seconds is made.
+
 ## v6.7.8 — Grouped Trace collection
 
 Replaces four separate per-player/half tracking requests with one GraphQL operation containing four named halo fields. Each field retains its original one-segment variables, time range and GID; responses remain separate and feed the unchanged segment extraction and calculation engine. Only the ring field needed by the engine is requested. No sampling reduction, speculative direct-minute substitution or incomplete-result publication is introduced.
