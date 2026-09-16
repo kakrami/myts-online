@@ -1,3 +1,11 @@
+## v6.7.12 — Preserve completed games when raw cache is absent
+
+The source queue previously considered a missing raw-source row sufficient reason to download a game again, even when its current-version calculated result was marked ready. This caused imported or retained published games to be re-collected ahead of missing games, replacing published rows while the available-game count stayed unchanged.
+
+A ready game with the current playing-engine version no longer enters source collection solely because raw source data is absent. New games, explicitly invalidated games, older-engine results, outdated existing source versions, and eligible error retries remain collectible. Already-running tasks finish from their checkpoints. No archived files are required for a new team; all its missing games are collected from Trace. Eight lanes and the v6.7.11 settings UI remain unchanged.
+
+The supplied diagnostics show 24 successful full-half requests in 4,098 ms with no fallback/rate block, publication timestamps advancing, and the same 26 published games. This release corrects queue eligibility, not the successful transport path. Deploy without resetting data.
+
 ## v6.7.11 — Eight Trace lanes and compact account settings
 
 Trace collection uses eight concurrent task lanes. The existing 24/40 request budgets, 22-second work budget, full-half checkpoints, segment fallback, and shared rate-limit pauses are retained. Existing tracking backlog is drained before preparing another game. The supplied diagnostics showed 24 successful full-half calls in 8,320 ms, followed by preparation of another game while 11 checks remained on the active one. Prioritizing the backlog also selects the existing 40-request pure-collection budget for that pass. Actual throughput depends on Trace response times and throttling.
