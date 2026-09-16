@@ -1,3 +1,9 @@
+## v6.7.6 — Trace progress counter correction
+
+Overall progress now measures published games against discovered games. Engine refresh statuses are no longer labeled as a cumulative calculated total: the publication migration legitimately requeues calculated games without deleting their saved calculations. Tracking detail identifies the current or next game and its completed checks, instead of presenting the changing multi-game queue as an overall completion fraction. Completed task deletion and new game discovery can therefore no longer make that fraction appear to reverse.
+
+Existing source collection, saved calculations, publication recovery and retry behavior are unchanged. Validation covers migration retention, publishing with an unfinished season, game-specific tracking counts and browser status rendering.
+
 ## v6.7.5 — Live sync progress and incremental Trace publication
 
 Trace previously calculated games but withheld publication until every source game in the season finished downloading. This release publishes the calculated subset after each engine commit, recalculating season attribution as further games arrive. It retains existing published games, validates all calculated game identities, and switches generations atomically. A one-time migration requeues previously completed calculations so unpublished results recover without reconnecting or deleting data.
