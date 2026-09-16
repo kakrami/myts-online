@@ -1,3 +1,15 @@
+## v6.9.6 — Clearer detail pages and contextual game links
+
+Built from v6.9.5. Same seven project files; no reset, reconnect, or data reimport is required.
+
+- Match details now put date/time, teams, result/status, location, competition/division, and the GotSport action in one compact hero instead of spreading the same context across multiple blocks. Upcoming games show **vs** instead of a score-like dash.
+- GotSport game actions no longer disappear when a dedicated match-detail URL is absent. myTS uses an actual supplied game URL when present, otherwise the already-resolved team/division schedule or event URL, labeled generically as **GotSport** so the UI never pretends a schedule URL is a direct game URL. Additional supplied GotSport game URL fields are preserved when present.
+- Oversized four-card detail summaries were replaced with a shared compact facts layout for match, event, player availability/season context, opponent history, and division-match details. This keeps labels and values easy to scan without consuming most of a phone screen.
+- Empty Player stats tabs and empty Match leaders cards are omitted. Player stats appear only when match performance exists; Availability appears only when that event actually tracks availability. Loading uses a small inline state instead of a large empty section.
+- Event and division-match dialogs now use the same information hierarchy and compact status treatment as match details, improving consistency across detail pages without changing the main page/navigation structure.
+
+Validation: frontend JavaScript syntax, Worker JavaScript syntax, embedded-HTML round trip, production seven-file bundle structure, and targeted match/link fallback behavior.
+
 ## v6.9.5 — Compact unconfirmed fixtures
 
 Built from v6.9.4. Same seven project files, no reset or reconnect required.
