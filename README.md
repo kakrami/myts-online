@@ -1,3 +1,15 @@
+## v6.9.5 — Compact unconfirmed fixtures
+
+Built from v6.9.4. Same seven project files, no reset or reconnect required.
+
+- Main Schedule and Overview include GotSport fixtures with a valid kickoff and field/venue assignment, published fixtures (including venue/time TBD), results, or independent TeamSnap/Trace confirmation. A link or an early kickoff does not determine scheduling status. Existing saved venue/field names support older records; new collection also retains venue_id and pitch_id. Metadata refreshes automatically.
+- Remaining fixtures stay in a collapsed Unconfirmed disclosure within their competition, with a count and the shared game rows. Counts include the division's unconfirmed fixtures. These rows show Time unconfirmed instead of presenting possible API placeholder times as commitments. Original source timestamps remain saved.
+- Full division schedule contains scheduled fixtures; unconfirmed fixtures are not repeated there. Empty Our games blocks and the long publication notice are omitted. Disclosures retain open state through refreshes and disappear when empty. Newly assigned fixtures move into scheduled lists automatically.
+- Schedule is inline with the competition title, with no dedicated link row. Game details show only actual supplied match URLs, never a substituted schedule link. Competition rows omit the redundant competition title already shown in the card header.
+- Existing merged identity, availability, cancellations, loading states and background collection are retained. This version does not redesign removal/reschedule reconciliation.
+
+Validation: saved league response yields 1 scheduled team game, 3 scheduled division games and 32 unconfirmed fixtures; first-load collapsed state, expansion persistence, field-assignment promotion, public/TeamSnap exceptions, legitimate early times, and missing game-link behavior. Chrome checks cover 320px, 390px and desktop layout, inline header-link position, deduplication and loading states. Worker startup, authentication, background alarms and API/public-time regression tests passed.
+
 ## v6.9.4 — Unified match identity and presentation
 
 Built from v6.9.3; deploy the same seven files. No reset, reconnect, or data reimport is needed.
