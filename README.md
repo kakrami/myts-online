@@ -1,3 +1,28 @@
+## v6.8.0 — Background sync on Workers Free
+
+The supplied Cloudflare logs contain `exceededCpu` failures for public reads and scheduled sync. Ordinary Workers Free requests have a 10 ms CPU allowance. Moving network calls around or increasing concurrency does not fix calculation and JSON-processing work that exceeds that allowance.
+
+This release adds the SQLite-backed `MyTSRuntime` Durable Object, supported on Workers Free with a default 30-second CPU allowance per invocation. The public Worker forwards API requests without parsing their bodies or building datasets. A separate object for each provider runs background work through persisted alarms; existing cron triggers wake these objects and provide a recovery path. Dashboard reads no longer launch provider sync. Closing Chrome or switching tabs does not stop the server-side alarm schedule.
+
+Trace retains full-half acquisition, eight task lanes, bounded passes, checkpoints, rate-limit pauses, and the completed-game queue fix from v6.7.12. Each active pass schedules its continuation. Recovery honors existing deployment leases before reclaiming abandoned tasks; saved chunks and completed results remain in D1. Ring extraction now tracks interval bounds without allocating timestamp arrays. New teams still collect their own games from Trace; the included historical file is not a replacement for collection. The compact settings UI is retained.
+
+### Deploy this release
+
+1. Deploy the complete project, including `worker.js` and **`wrangler.jsonc`**. Uploading only the Worker code will leave the required runtime binding missing.
+2. Preserve your existing deployment name, `DB` database binding/ID, secrets, and routes. The supplied configuration adds `MYTS_RUNTIME`, the `MyTSRuntime` class, and the `myts-runtime-v1` migration using `new_sqlite_classes`. Do not remove this migration from subsequent releases.
+3. Keep the existing cron schedules enabled. After deployment, their next ticks start provider alarms automatically (Trace within two minutes, GotSport within five). Manual Trace refresh can also wake its job.
+4. Do not clear or reset D1, reconnect providers, or reimport historical data for this update. Existing connections and published games are retained.
+
+Workers Logs are enabled in the configuration. Download diagnostics includes `background_runtime` with each provider's last run and next alarm. To verify unattended progress, note the current count, close the app for several minutes, then reopen it and download diagnostics. Advancing run timestamps demonstrate background execution; game counts may remain unchanged while a game is still being collected or calculated. Expired provider credentials and upstream rate limits still require their existing recovery paths.
+
+### Validation and limits
+
+Cloudflare's local workerd/Miniflare emulator successfully instantiated the SQLite-backed object, served authenticated data, rejected unauthorized reads, and executed a persisted alarm without browser polling. Lifecycle tests cover restart continuation, old-lease protection, retry scheduling, and durable manual requests. GraphQL/SQLite tests cover eight-lane collection, full-half fallback, checkpoints, rate/auth handling, publication recovery, and collection of 108 new fixture games without repeating completed games.
+
+Local profiling of 108 historical fixtures found median calculation CPU of 15.4 ms, p95 73.3 ms, and maximum 1,486 ms, supporting the need to move calculation out of the 10 ms runtime. These are local Node measurements, not production CPU or throughput guarantees. The emulator does not enforce the production Free CPU budget. Live deployment still needs verification; this release does not promise that an entire archive will finish in seconds. Cloudflare Free storage/request/duration quotas and upstream service limits still apply.
+
+References: https://developers.cloudflare.com/durable-objects/platform/limits/ and https://developers.cloudflare.com/durable-objects/platform/pricing/
+
 ## v6.7.12 — Preserve completed games when raw cache is absent
 
 The source queue previously considered a missing raw-source row sufficient reason to download a game again, even when its current-version calculated result was marked ready. This caused imported or retained published games to be re-collected ahead of missing games, replacing published rows while the available-game count stayed unchanged.

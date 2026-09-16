@@ -14,5 +14,24 @@
       "1-59/5 * * * *",
       "0-59/2 * * * *"
     ]
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MYTS_RUNTIME",
+        "class_name": "MyTSRuntime"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "myts-runtime-v1",
+      "new_sqlite_classes": [
+        "MyTSRuntime"
+      ]
+    }
+  ],
+  "observability": {
+    "enabled": true
   }
 }
