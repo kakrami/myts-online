@@ -1,3 +1,17 @@
+## v6.7.8 — Grouped Trace collection
+
+Replaces four separate per-player/half tracking requests with one GraphQL operation containing four named halo fields. Each field retains its original one-segment variables, time range and GID; responses remain separate and feed the unchanged segment extraction and calculation engine. Only the ring field needed by the engine is requested. No sampling reduction, speculative direct-minute substitution or incomplete-result publication is introduced.
+
+Two task lanes share a 24-HTTP-request and 22-second collection budget. A pass can now complete up to 24 tasks / 96 tracking chunks instead of six tasks / 24 chunks. HTTP overhead is reduced by up to 75% for uncached four-chunk tasks; this is not a measured 75% end-to-end speed increase. Failed or missing fields retry individually from existing checkpoints. GraphQL validation/HTTP 400 rejection automatically switches to single requests for 24 hours without discarding saved results. Authorization failures and rate limits do not trigger fallback; shared pauses honor HTTP Retry-After.
+
+The current source data, calculation engine, UI, scheduled cadence and published history remain unchanged. The initial 108-game backfill still has many upstream computations; seconds-level collection of that entire archive has not been verified. The normal new-game path reuses saved historical source data. Required live checks occur naturally during sync, with no manual probe or credential export.
+
+Existing Account > Download diagnostics includes status.progress.transport: mode, request count, chunks received, grouped response bytes, elapsed milliseconds, completed tasks, fallback and rate-pause state. response_bytes counts grouped responses only; single-request fallback bytes are not included. These are last-pass measurements, not total historical progress.
+
+Validation: queries executed through a real GraphQL implementation with deterministic tracking fixtures; 96 chunks in 24 calls, concurrency <=2, unchanged merged segments, partial-field retry, rejection fallback, strict request budget and Retry-After pause. Publication migration, tenant scoping, TeamSnap pagination, GotSport error recovery and embedded JavaScript regressions passed. No authenticated Trace live throughput benchmark was available.
+
+Reference: https://graphql.org/learn/queries/#aliases
+
 ## v6.7.7 — Quiet background updates and resumable tracking requests
 
 Removed the main-screen sync panel and its CSS. Live details are plain source notes within the existing Account & Data Sources cards. Background updates leave the dashboard usable and account controls intact.
