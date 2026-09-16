@@ -1,3 +1,15 @@
+## v6.7.4 — Trace dataset loading fix
+
+Reproduced browser regression: Account status refresh and Check new games could update state.trace.status.data_updated_at without loading the associated rows/games. The polling loop compared the next status timestamp to that status timestamp, considered it unchanged and did not fetch the dataset. An empty browser dataset could therefore remain empty indefinitely while the server advertised published games.
+
+Correction: successful /api/trace/data responses alone set dataLoaded, dataCursor and loadedAt. Polling compares the server's publication timestamp with dataCursor, never with status-only metadata; it also detects a missing initial load or missing published games. Dataset shape is validated before replacing loaded stats. Malformed responses retain prior data and cursor for recovery.
+
+The existing Account > Download diagnostics now includes the Trace diagnostic endpoint's connection/authentication indicators, published dataset summary, game processing errors, plus browser Trace row/game counts, loaded cursor and current status. It does not include owner credentials, cookies, authentication tokens or raw player records. This distinguishes a client loading failure from an unpublished or unavailable server dataset without changing the Trace processing engine.
+
+Validation: actual old and new browser functions executed in a VM with the same API fixtures. v6.7.3 issues zero data requests and remains empty after a status-only timestamp update; v6.7.4 loads the dataset, does not re-download unchanged data, loads later publications despite Account refreshing status first, retains data on malformed responses and recovers afterward. Embedded JavaScript compiles; HTML/CSS is unchanged; the entire server-side implementation is byte-identical except its version string.
+
+Live Trace storage has not been inspected. If Trace remains empty after deployment, send Account > Download diagnostics; that report now contains the Trace state needed to identify the remaining issue. Do not reset data or reconnect solely to apply this update.
+
 ## v6.7.3 — Live-report root causes corrected
 
 Continues from the user's attached v6.6.0 base through 6.7.2; original file structure and bundled Trace data remain intact.
