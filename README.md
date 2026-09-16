@@ -1,3 +1,14 @@
+# myTS v6.12.2 — Match contribution icons and release-safe taps
+
+- Goals now use soccer-ball icons and assists use boot icons in match timelines and lineup markers.
+- Every contribution gets its own marker. Multiple goals and assists stack vertically on the player instead of collapsing into text such as `2G`.
+- Stacked markers include an accessible summary such as “2 goals, 1 assist,” while decorative icons stay hidden from screen readers.
+- Modal, menu, and detail backdrops now act on click/tap release instead of pointer-down, preventing accidental actions while a touch is still in progress.
+
+Validation includes dedicated browser checks for mixed stacked contributions, timeline icon semantics, and release-safe behavior across all backdrop interaction paths.
+
+---
+
 # myTS v6.12.1 — Mobile roster and in-app navigation
 
 - Jersey values are normalized before display, so source or saved values containing `#` cannot produce doubled symbols.
