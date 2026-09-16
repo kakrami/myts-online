@@ -1,32 +1,31 @@
-# myTS v6.11.0 — Complete UI pass
+# myTS v6.12.0 — Structural UI redesign
 
-This release refines the existing interface across Overview, Schedule, Competitions, Team, Reports, player/game/event details, account and Trace dialogs, confirmations, and sign-in. Shared component rules were updated directly; no new visual framework or runtime dependency was added.
+This release rebuilds the interface hierarchy across the entire application while preserving its data model and workflows. Desktop now uses a persistent application sidebar, mobile keeps a compact contextual header and bottom navigation, and detail views open in focused drawers or full-screen mobile panels.
 
 ## What changed
 
-- **Shared layout:** tighter page/card spacing, consistent action sizing, empty source-indicator containers removed, and a keyboard skip-to-content link. Existing table sorting, search clearing, keyboard tabs and dialog scrolling remain available.
-- **Mobile navigation:** one compact header row for identity, team, season and account; the full season label remains visible. Bottom navigation retains its existing placement.
-- **Overview:** three upcoming/today entries use the available card space; recent results use two columns on desktop. “All results” opens Games + Past.
-- **Schedule:** event type and date controls share one mobile row. Search remains directly below. Repeated practice labels were removed; cancellations and other meaningful exceptions remain visible.
-- **Players:** the Edit action lives beside the player identity. Its inline form has Save, Cancel and Reset; Cancel restores the unsaved fields and clears a prior error. Assigned position appears once in the header. Match context has its own compact line, and the avatar cannot shrink. Stats share a unified panel, with shorter match-log rows.
-- **Matches:** desktop lineup and scoring/leader information sit side by side. Duplicate format/status facts were removed; the format stays beside the date. Available external game links share the contextual information area. The experimental Trace heatmap warning remains visible.
-- **Team:** mobile tables show separate goals and assists. Jersey numbers and known positions replace repeated “Position not set” text in list rows. Full details remain in player views and reports.
-- **Competitions:** reduced nested padding and routine publication badges. Schedule links remain beside competition names; unconfirmed and full-division fixtures stay in their existing expandable sections.
-- **Reports:** compact mobile rows retain report values in two columns, with full-width descriptive fields. Empty values do not consume mobile rows. Excel/PDF exports retain their full existing schemas.
-- **Dialogs:** short account/connection dialogs use content-sized mobile bottom sheets. Detailed player/game views remain full-screen on mobile. Removed the redundant Account footer Close button; header close, Escape and existing dismissal behavior remain.
+- **Application shell:** team and season context, primary navigation, and account access now have stable, predictable placement. Navigation no longer competes with page content.
+- **Overview:** a high-signal season summary leads into upcoming activity, recent results, and player leaders. Desktop uses a balanced two-column workspace; mobile becomes one intentional reading order.
+- **Schedule and competitions:** filters, search, date groups, status labels, and fixture actions share one consistent visual system. Routine completed/past pills remain removed; actionable exceptions such as cancellations remain visible.
+- **Team:** the desktop roster uses the full content width. On mobile, each player becomes a compact information card with jersey, appearances, minutes, goals, assists, and availability instead of a squeezed table.
+- **Reports:** report selection is a compact side rail on desktop and a two-column switcher on mobile. Export actions remain attached to the selected report.
+- **Player and match details:** desktop details use a right-side workspace drawer; mobile details remain full screen. Player identity, jersey, Edit control, metrics, heat map, and position profile are placed in a clear hierarchy. Avatars keep a fixed square footprint.
+- **Lineups:** the lineup keeps a prominent experimental warning and explicitly states that positions and starters are inferred from Trace heatmap data and may be inaccurate.
+- **Editing and data clarity:** saved position, jersey, goal, and assist corrections remain available from player headers. Known roster values are used; heatmap-derived roles stay confined to the experimental lineup.
+- **Dialogs and controls:** cards, buttons, segmented controls, tabs, search, tables, modal sheets, spacing, radii, color, and type now use one coherent system with less visual noise and more efficient use of space.
 
 ## Verification
 
-- All **25 included browser workflow tests passed**. New checks cover the results shortcut, edit/cancel flow, responsive primary screens, mobile selectors, search clearing and mobile reports.
-- Primary screens checked at **320, 390, 768 and 1280 px**. Additional 320 px checks covered reports, match-player editing, player tabs, game tables, practices, Trace forms, confirmations and sign-in, with no horizontal page/dialog overflow or uncaught browser errors.
-- Inspected rendered desktop/mobile screens using the real 108-game Trace snapshot plus representative TeamSnap and competition fixtures.
-- Existing correction, schedule, mobile-avatar, export-data and source-reconciliation checks passed. Worker and embedded browser JavaScript syntax checks passed.
+- All **25 browser workflow tests passed**, including delayed saves, stale responses, team and season changes, editor preservation, search clearing, mobile selectors, reports, and responsive layouts.
+- Primary screens were rendered and visually inspected at **390 and 1280 px**. Automated width checks cover **320, 390, 768, and 1280 px** with no horizontal page overflow.
+- Existing SQLite/API, import-publication, source-reconciliation, GotSport retry, correction persistence, jersey, position, G/A, lineup-warning, and browser-exception suites passed.
+- Frontend and Worker JavaScript syntax checks passed.
 
-Testing used local fixtures and Chromium; this release was not tested on physical iOS/Android devices. No live provider configuration was changed. Source data, D1 schema, synchronization behavior and deployment configuration remain unchanged.
+Testing used local fixtures and Chromium; no live provider configuration was changed. Source data, D1 schema, synchronization behavior, and deployment configuration remain unchanged.
 
 ## Deploy
 
-Deploy the full ZIP using the existing workflow and refresh open tabs. No database reset, reconnect or reimport is needed. Existing filenames and archive paths are preserved. The reusable regression suite remains at `tests/workflows.mjs`; run it with `npm run test:workflows` after installing dependencies and the Playwright Chromium browser as documented below.
+Deploy the full ZIP using the existing workflow and refresh open tabs. No database reset, reconnect, or reimport is needed. The regression suite remains at `tests/workflows.mjs`.
 
 ---
 
