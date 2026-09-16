@@ -1,3 +1,68 @@
+# myTS v6.10.1 — Data lifecycle and reconciliation review
+
+This release reviews the data path through source ingestion, identity matching, display, totals, manual corrections, imports and refreshes. It includes fixes for reproduced failures, rather than a visual redesign. Earlier release notes below are historical; this section describes the current behavior.
+
+## Findings and fixes
+
+| Finding | Reproduced behavior | Fix |
+| --- | --- | --- |
+| Competing fixture joins | The same inputs paired differently depending on load order. A date-only Trace game could be attached arbitrarily to one of two TeamSnap games. | One source reconciliation function now serves schedule, competition lookups, game details and all-season opponent history. Ambiguous groups do not receive an arbitrary pairing. |
+| Scores used as identity | Correcting a score could separate a TeamSnap game from its Trace copy. | A score disagreement no longer defeats strong, unique name/date/time evidence. Conflicting squad colors and birth years block automatic joins. |
+| Inconsistent result calculation | A Trace-only scored game appeared on the schedule but was omitted from the team record. A partial TeamSnap score displayed `2–null`. | One complete score-pair resolver supplies score display, result, record and exports. A partial score cannot combine values from different providers. |
+| Cancellation did not reach player totals | A matched cancelled game remained in Trace-based season appearances, minutes and G/A. GotSport cancellation could also leave the TeamSnap event in availability history. | Matched cancellations now propagate to record, player statistics and completed availability events. Source data is retained for reference. |
+| Player identity used reusable attributes | A real named Trace player was attached to a different named roster player solely because the jersey matched. Saved player mappings were ignored. | Explicit mappings/source member IDs take precedence, then a unique normalized full name. Jersey fallback is limited to placeholder Trace names with unambiguous per-game identity. Named mismatches and duplicate names remain unmatched. |
+| Corrections hidden by another scope | A TeamSnap-key season position correction hid a Trace-key game G/A correction. | Correction selection is scoped to season/game and reconciles the known roster/Trace aliases. The newest correction for that scope wins. |
+| Old editors could overwrite new corrections | Independent sessions had no version check. Reset removed the version history needed to detect stale writes. | A single conditional SQL write checks the version across verified aliases. Resets retain an empty correction record with a new version. Conflicts preserve the draft and ask the owner to reopen the player. |
+| Refresh could discard local editing state | An open editor could be rebuilt after focus moved away from an input. An in-flight team response could replace just-saved corrections. | Open correction editors are protected from automatic entity refresh; stale team responses preserve corrections saved after the request started. |
+| Import cleanup could delete active data | A failure after publication entered the same catch block as staging failure and deleted the newly active generation. Cleanup also deleted every other generation, including another request's staged work. | Publication is fenced against the generation read before staging. Cleanup removes only the publisher's own failed generation or the exact superseded generation. Post-publication follow-up failure retains the imported dataset and reports a warning. |
+| Reads could observe a removed generation | An old generation could be removed between the dataset-header read and the payload read, returning an apparent empty dataset. | Reads retry when the generation changes, or return an error without replacing displayed data. Incomplete saved datasets report an actionable recovery error. |
+| Empty GotSport schedule could never remove old games | An empty division response was always rejected, even when discovery agreed that the games were gone. | An empty flight is accepted only with successful discovery at least as recent as the prior flight and no contradictory known matches. Otherwise data is retained while discovery is checked again. |
+| Duplicate player rows inflated imported totals | Import validation checked duplicate game IDs but not duplicate player identities within a game. | Duplicate player identities within one imported game are rejected before publication. |
+
+## Source rules
+
+| Field or behavior | Current rule |
+| --- | --- |
+| Game identity | Unique explicit TeamSnap event references/manual game mappings first; otherwise unambiguous evidence across all available candidates. Existing source IDs are preserved. |
+| Date and venue | TeamSnap first, GotSport second, Trace date fallback. An explicit game link survives a changed date within the loaded season. |
+| Opponent display, competition and links | GotSport's named opponent and official competition/link metadata when matched, with TeamSnap/Trace name fallbacks. |
+| Team score | First complete pair from TeamSnap, then GotSport, then Trace. Both sides always come from the same source. |
+| Team record | Confirmed, dated, scored games that have started; matched cancellations are excluded. The same resolved games feed the season record and report. |
+| Ambiguous fixture groups | Source rows remain separate and are identified as possible duplicates. The highest-priority available schedule source in the group supplies the record; lower-priority possible duplicate copies do not inflate it. The ambiguity and source IDs are included in Diagnostics. |
+| Player identity | Saved mapping/source member ID, unique normalized full name, then restricted placeholder-name/jersey fallback. Jersey corrections do not silently remap people. |
+| Player G/A | Saved per-game correction, then Trace. Corrections update aggregates, not the source score or scoring timeline. Only the corrected event type loses its unmapped heatmap markers. |
+| Player position | Saved match role, saved season role, recognized roster role. Heatmap estimates remain confined to the experimental lineup. |
+| Unmatched players | Retained in game views. Roster totals exclude them and show a short explanation; Diagnostics includes their identities. |
+| Source removal | A successful full source snapshot replaces that source's records. Absence from an upcoming-only list is not proof that a historical recording or another provider's fixture should be deleted. |
+| Saved corrections | Stored separately from source imports. Reimporting/syncing Trace does not overwrite them. Owner-only writes and viewer read-only access are preserved. |
+
+## Validation
+
+- Tested with the attached 108-game Trace dataset, local TeamSnap fixtures, a SQLite implementation of the D1 calls and Chromium.
+- Browser regressions covered independent schedule filters, all of today's events, cancellation badges, correction save/reload/reset, source jersey aliases and zero, season/match role separation, G/A totals and exports, edit drafts during refresh and a delayed poll arriving after a save.
+- Fixture tests covered the ROA naming/date-only pattern, changed scores, all three providers, retained links, explicit date moves, source precedence, conflicting colors/birth years, ambiguous doubleheaders, and cancellation propagation into player/availability totals.
+- API tests covered owner/viewer permissions, invalid values, wrong player/season, stale editors, identity aliases, reset tombstones, correction persistence through imports, and duplicate-data protection.
+- Failure injection covered generation changes during reads, repeated generation changes, post-publication import failure, concurrent import publication, and another request's staged generation surviving cleanup.
+- GotSport tests covered 429 pauses, Retry-After, retired errors, corroborated empty schedules and contradictory deletion evidence.
+- Desktop and 320/390 px mobile correction workflows passed without uncaught browser exceptions or horizontal player-dialog overflow. Worker and embedded browser JavaScript syntax checks passed.
+
+## Limits and follow-up evidence
+
+- Live TeamSnap, Trace and GotSport accounts were not authenticated or changed during this review. The previously quoted generic GotSport delay cannot identify its precise upstream cause; the app now exposes that cause and its retry time.
+- Automatic cross-source inference is still evidence-based. A game moved to a different date without a stable shared reference cannot safely be identified from opponent names alone. Inferred joins are recomputed; this release does not introduce a new persistent cross-provider identity registry. Ambiguities remain visible and diagnosable instead of being silently guessed.
+- Cross-season game moves and team renames that change the existing family key still need real source history to define a safe migration. No historical data is rewritten on that assumption.
+- Name-only identities can remain unresolved after roster/Trace naming changes. Their source stats remain accessible, and the diagnostic export identifies them.
+- Manual player goal totals can differ from a provider's team score. Saving a player correction does not invent or rewrite a scoring timeline.
+- Trace JSON export remains the raw source dataset. Dashboard Excel/PDF reports use corrections; database backup is required to preserve corrections separately from a raw Trace export.
+
+## Deploy
+
+Deploy the entire ZIP through the existing workflow and refresh open browser tabs. Keep the current D1 database, bindings and secrets; no reset, reconnect, or Trace reimport is required. The archive keeps the original seven project paths. Frontend, backend and package versions are 6.10.1.
+
+---
+
+# Earlier releases
+
 # myTS v6.10.0
 
 ## This release
