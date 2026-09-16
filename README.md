@@ -1,3 +1,36 @@
+## v6.7.3 — Live-report root causes corrected
+
+Continues from the user's attached v6.6.0 base through 6.7.2; original file structure and bundled Trace data remain intact.
+
+### Findings from the supplied live diagnostic
+
+- Worker and browser were both 6.7.2.
+- TeamSnap had 697 saved events and 15 saved members but no availability resource. Its pre-upgrade discovery checkpoint had already found one team but remained on /v3/teams. A global retry record had accumulated 13 HTTP-200 parsing failures. That old retry gate prevented the new per-resource recovery code from running.
+- GotSport failed on its very first request with TypeError and no HTTP status. In the Cloudflare workerd runtime, the existing `runtime.fetcher = fetch; runtime.fetcher(...)` pattern reproduces exactly this result: `Illegal invocation: function called with incorrect this reference`. Earlier Node mocks did not enforce native Workers invocation semantics.
+- No scheduled-tick records were present. This does not prove whether cron was configured, but no 6.7.2 scheduled invocation was recorded in this database.
+
+### Corrections
+
+- The default GotSport fetch adapter now calls native fetch as a global function, preserving its runtime invocation context. This is verified using the actual Cloudflare runtime and a local mock upstream service.
+- A versioned recovery attempt rechecks pre-fix TypeError failures once, retaining upstream rate-limit pauses.
+- Exclude unfiltered /v3/teams catalog links from team discovery. Actual filtered listing/search links remain allowed.
+- Remove that catalog task from existing checkpoints and resume the team already discovered. Clear only the demonstrated legacy HTTP-200 parsing retry gate; do not bypass 429 pauses or expired authorization.
+- Retain redacted exception messages and distinguish illegal invocation from network failures in diagnostics.
+
+### Verification
+
+Cloudflare workerd 1.20260916.1, compatibility date 2026-09-09: the previous full GotSport collector fails at request 1 with the same diagnostic fields as production; the corrected full collector succeeds through a local mock upstream. This verifies runtime behavior, not a live GotSport response.
+
+SQLite recovery test seeded with the report's discovery/retry state and synthetic data matching its 697-event / 15-member size: the future global retry no longer blocks migration, neither /me nor the invalid catalog is re-requested, 10,455 synthetic availability records publish and match events/members, and scheduled checkpoints resume successfully. Those availability records are test fixtures, not downloaded user data.
+
+Existing regression tests also pass for pagination/resumption, retries, leases, cancellation reconciliation, rate limits, source isolation, diagnostics authentication and embedded script syntax.
+
+### Deployment
+
+Deploy all ZIP contents, including wrangler.jsonc, with the current DB binding and secrets. No database reset, reconnect or reimport. The dashboard also advances eligible TeamSnap work while open. An initial large availability collection takes multiple bounded batches; it becomes visible when its complete snapshot is saved.
+
+Cloudflare reference: https://developers.cloudflare.com/workers/observability/errors/#illegal-invocation-errors
+
 ## v6.7.2 — Independent resource recovery and live diagnostics
 
 Continues the v6.7.1 rebuild from the user's attached v6.6.0 archive.
