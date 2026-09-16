@@ -1,17 +1,52 @@
-# myTS 6.0.10
+## v6.7.1 — Rebuilt from the supplied v6.6.0 ZIP
 
-Cloudflare Worker + D1 team dashboard rebuilt around one integrated TeamSnap + Trace experience.
+Authoritative starting file: `myts (1).zip` attached on September 16, 2026.
+SHA-256: `ebedad7b7fc9c62a414c58bffdcf2e2b9dc1aa29055fe76373dc162fc50ba75e`.
+The starting worker and package both identify as 6.6.0. This release starts from that attachment, not the prior 6.6.2/6.7.0 archive. Original HTML/CSS, the five primary view renderers, Account renderer, Trace calculations, GotSport data contracts and bundled Trace data are preserved.
+
+### Root-cause work
+
+The attached version couples TeamSnap resource reads and dataset initialization to GotSport, waits for Trace before rendering the page, and runs all three provider syncs in one scheduled invocation. Its TeamSnap collection downloads have no persistent pagination cursor and can issue hundreds of requests before finishing. A failure discards completed pages and retries the full collection. These are code-level defects; live production exception logs were not available.
+
+Changes:
+- Decouple TeamSnap reads and dataset setup from GotSport. Load Trace and GotSport independently after TeamSnap renders.
+- Persist TeamSnap pages and cursors in the existing database; resume failed pages across Worker restarts. Each invocation makes at most six sequential upstream requests within a bounded work window.
+- Atomically publish completed resources with checkpoint advancement. Never replace saved complete data with a partial collection.
+- Include event overview/cancellation details in the same request budget.
+- Use a database lease for duplicate sync exclusion, persistent backoff/Retry-After, and separate authorization-expiry handling.
+- Run TeamSnap, GotSport and Trace in independent cron invocations. TeamSnap checks each minute but fetches only when due or resuming; GotSport and Trace retain five-minute cadence at offsets 1 and 2.
+- Distinguish Worker-limit, timeout, redirect, HTTP and transport failures. Close rejected GotSport response bodies.
+- Share schema initialization and reuse the persisted schema version, avoiding repeated migrations on fresh Worker instances.
+- Restore the attached Account buttons' missing sync handlers and automatically refresh data using the existing UI controls and toast style.
+
+### Validation
+
+- Regression against the actual attachment: a GotSport dependency failure breaks the old TeamSnap read; the rebuilt read succeeds.
+- Actual loading functions render TeamSnap while Trace and GotSport promises remain pending.
+- Exact comparison of attached HTML/CSS and primary page/account render functions.
+- SQLite integration: 65 availability pages / 6,500 records; 13 invocations; fresh-module restarts; failure and retry at page 9 without replaying earlier successful pages; complete snapshot retention; duplicate leases; cancellation reconciliation.
+- Pagination origin/loop protection, GotSport 302/429/503 and transport handling, provider cron isolation, expired authorization, admin HTML and embedded JavaScript syntax.
+- Live authenticated provider calls and deployment were not tested.
+
+### Deployment
+
+Deploy all seven original paths in this ZIP, including `wrangler.jsonc` so the three cron expressions are installed. Preserve the existing DB binding and secrets. No database reset, reconnect or Trace reimport is required. A large initial refresh can span several minute ticks while saved data remains available.
+
+# myTS 6.6.0
+
+Cloudflare Worker + D1 team dashboard integrating TeamSnap operations, GotSport tournament intelligence, and Trace performance data.
 
 ## Product flow
 
 - **Overview** combines TeamSnap schedule/availability with current-season Trace performance leaders and recent matches.
-- **Matches** is the single timeline for games, practices, and other team events. Opening a game gives a FotMob-style match center with score context, player stats, goal events, and TeamSnap availability.
+- **Schedule** is the single timeline for games, practices, and other team events. Opening a game gives a FotMob-style match center with score context, a game-specific reconstructed lineup/formation, player stats, goal events, and TeamSnap availability.
+- **Tournaments** is the tournament-specific view: Our games, published Playoffs & finals, and an expandable full division schedule. The normal Schedule remains limited to real team commitments.
 - **Player profiles** combine match/season performance, corrected Trace heat maps, position profile, tracked distance, attacking-third share, field coverage, match history, and TeamSnap availability. Trace-tagged shots/touch involvement remain available in the underlying dataset but are not presented as complete event counts. A player opened from a match starts in match context and can move naturally to the season profile.
-- **Team** combines roster, availability, appearances, starts, minutes, goals, assists, and rate stats in one table.
+- **Team** is the season roster/performance area. Match formations are not shown here; lineup reconstruction belongs to each individual game and uses that game’s starter, goalkeeper, minutes, and spatial evidence.
 - **Reports** provides Excel and PDF exports without duplicating the normal dashboard workflow.
 - Opponent H2H is opened contextually from a match/opponent instead of living in a separate History section.
 
-Trace is a data source, not a separate product area. Owner controls for connecting Trace, checking for new games, exporting the unified dataset, or manually importing `myts_trace_data.json` live under **Account & Data Sources**. The separate **Settings** control contains only the pre-season inclusion toggle.
+Trace is a data source, not a separate product area. Owner controls for connecting Trace, checking for new games, exporting the unified dataset, manually importing `myts_trace_data.json`, and the pre-season inclusion setting live under **Account & Data Sources**.
 
 ## UI / table behavior
 
@@ -40,11 +75,60 @@ There is intentionally no `index.html` or `tools/` folder in the production bund
 
 ## Deploy
 
-Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret, replace the repository files with this bundle, and deploy with Wrangler. TeamSnap OAuth continues to redirect to `/admin`.
+Keep the existing D1 binding named `DB` and the existing `ADMIN_KEY` secret. Replace the main myTS repository files with this bundle and deploy through the existing deployment workflow. This is the myTS application, not the standalone diagnostic probe. TeamSnap OAuth continues to redirect to `/admin`.
+
+The existing database upgrades automatically: GotSport adds an indexed next-check timestamp and a fenced per-team sync lease. Do not reset D1. No new secrets, service bindings, or manual tournament setup are required. The obsolete `BROWSER` binding is removed from `wrangler.jsonc`. The existing five-minute scheduler remains enabled.
 
 ## Version
 
 The current version is populated from the application version constant beside the myTS logo on both the login screen and loaded dashboard.
+
+
+## 6.6.0 Verified public JSON tournament schedules
+
+The old Rankings HTML parser, guessed event/division lookup, and Browser Run fallback have been removed. Production only uses these three read-only JSON contracts:
+
+1. `GET /api/v1/teams/{team_id}/matches?upcoming=true` — verifies the canonical team ID on the home or away side and reads that side's event registration ID, plus the event and bracket IDs.
+2. `GET /api/v1/event_ranking_data/event_details?event_id={event_id}` — finds the unique schedule group containing the exact bracket ID. The explicit `tournament` and `league` booleans classify the event. `event_ranking_data: null` does not suppress the event.
+3. `GET /api/v1/event_ranking_data/flight_matches?event_id={event_id}&flight_id={group_id}` — reads the entire published division response. Playoff rows with null team objects or a null bracket ID are retained. All matches use GotSport's actual match ID for identity.
+
+The single saved team identity is enough. Existing connections are reused. The user's already-established LVSA family is linked to team `212707` by its exact known family aliases only; there is no general name-scoring team selection. Event, registration, bracket, and group IDs are never hardcoded. No event URLs, group IDs, iCal feeds, browser sessions, logins, or routine sync clicks are required.
+
+### Presentation
+
+- **Tournaments:** Our games; Playoffs & finals with the organizer's round and qualification labels; and the complete division schedule behind a standard expandable section. Other teams' games open in read-only division details.
+- **Schedule / Overview / match exports:** only confirmed own-team fixtures enter the operational fixture collection. An unassigned final is not a potential team fixture. When the API assigns the team, that same match ID enters Schedule; reassignment removes it again.
+- **TeamSnap and Trace:** existing roster, availability, performance, and historical seed data remain separate. Cross-source schedule matching uses a unique normalized opponent/date pair, with exact kickoff evidence to disambiguate doubleheaders. Ambiguous pairs are not silently combined.
+- UTC `matchTime` timestamps retain their offsets. Tournament display explicitly names the selected team/browser time zone. Date-only matches show Time TBD rather than an invented kickoff.
+
+### Automatic lifecycle and resource use
+
+- New-event discovery runs every twelve hours. Validated event/group relationships and full flight snapshots are saved in D1.
+- Known tournament schedules refresh approximately every twelve hours when distant, every three hours during tournament week, and hourly around tournament days. The five-minute cron services due work, including while the app is closed.
+- An authenticated dashboard/status read can also queue a due update. The UI reads saved results quietly and does not reload TeamSnap or Trace to refresh GotSport.
+- A cached tournament continues updating after its team matches leave the upcoming feed. After the event ends, one final refresh outside a three-day settling window archives the schedule and stops flight polling. An archived event rediscovered with future matches reopens automatically.
+- Each run has a request/time budget. Remaining work is queued for a later automatic pass. Per-family database leases prevent overlapping refreshes and fence late results after disconnection or a team change.
+- Failed, invalid, HTML, empty-known-flight, or inconsistent responses do not replace the last validated flight snapshot. Source status records partial/delayed updates instead of reporting a false successful zero-game result. HTTP 429 pauses honor Retry-After. Disconnection persists and is not undone by default-team setup.
+
+### Validation performed for this release
+
+52 automated tests passed against the user's captured upcoming-match, event-details, and flight-matches responses, plus explicit synthetic failure and lifecycle cases. SQLite-backed D1-adapter tests cover migration, persistence, due indexing, leases, authorization, and automatic status-triggered updates. Another 34 Chromium desktop/mobile UI checks passed using mocked API responses, including schedule separation, local kickoff display, export exclusion, playoff promotion, and no horizontal page overflow. Full Worker and embedded frontend syntax checks passed.
+
+These are local replay and regression tests, not a claim that this release was deployed or tested live against GotSport from the development session. Test files, diagnostic collectors, temporary HTML, and captured responses are not included in the production ZIP.
+
+Discovery begins when GotSport publishes a team match. This integration does not expose private registrations before any team games are published.
+
+## 6.0.15 finished UI polish
+
+- Consolidated the accumulated responsive CSS into one coherent mobile breakpoint system instead of overlapping duplicate rules.
+- Standardized surfaces, borders, corner radii, shadows, spacing, buttons, selectors, tables, cards, overlays, and account/data-source controls around one design system.
+- Simplified typography hierarchy and reduced unnecessary all-caps micro-labels while keeping soccer/stat abbreviations where they are conventional.
+- Refined the sticky desktop header and mobile bottom navigation so active state, spacing, and touch behavior match the rest of the app.
+- Reworked table headers, rows, search/filter controls, match rows, report cards, player/profile surfaces, and modal/entity chrome for consistent density and hover/focus behavior.
+- Cleaned several user-facing labels: Overview now calls the match-count metric **Trace matches**, Schedule copy is shorter, match player spatial share is labeled **Attacking**, and match lineup/contributor wording is more natural.
+- Removed presentation-only inline styles where values are not data-driven; the remaining inline styles are dynamic widths/coordinates used by availability bars, lineups, and spatial charts.
+- Preserved app-native Team/Season pickers, switches, confirmation dialogs, body-only modal scrolling, cancellation handling, game-specific lineup reconstruction, date fixes, Trace attribution, and performance caches.
+- `myts_trace_data.json` is unchanged.
 
 ## 6.0.8 tab-switch performance
 
@@ -92,6 +176,48 @@ The current version is populated from the application version constant beside th
 
 
 
+
+## 6.0.17 cancellation reconciliation
+
+- Fixed cancellation detection at the TeamSnap ingestion layer rather than only in the renderer.
+- TeamSnap schedule sync now merges the standard `events/search` collection with `events/overview` when available.
+- The nearest recent/current schedule records are then reconciled against their individual TeamSnap event endpoint; the individual event record wins for `is_canceled` and other current event state.
+- Recently stored event IDs participate in that reconciliation so an item that disappears from the list after cancellation can still be verified and retained as Cancelled instead of silently losing its state.
+- Event sanitization now retains cancellation-adjacent event metadata (`status`, notes, title/label, updated timestamp) and cancellation parsing accepts the common boolean/string encodings returned by TeamSnap clients.
+- Existing UI behavior remains: canceled items stay visible in Schedule but are excluded from Up next, W-D-L, availability totals, completed-match history, and Trace fixture matching.
+
+## 6.0.14 cancelled event state
+
+- Preserves TeamSnap `is_canceled` event data during server-side sanitization so cancellation status reaches the dashboard.
+- Shows a clear **Cancelled** indicator for canceled games, practices, and other schedule events, including event/match detail.
+- Canceled events remain visible in Schedule for reference but are excluded from **Up next**, recent played matches, season W-D-L, player availability percentages, and completed attendance history.
+- Canceled games do not display a score/result as if they were played and are excluded from TeamSnap-to-Trace fixture matching/fingerprints.
+- Schedule reports include an explicit **Status** column and suppress result/Trace/availability values for canceled items.
+- Existing RSVP responses remain visible inside the canceled event detail for reference without affecting aggregate availability.
+
+## 6.0.13 mobile support pass
+
+- Team and Season use app-native bottom selection sheets on phones instead of desktop-style anchored popovers. This removes viewport overflow, right-edge clipping, and bottom-navigation stacking conflicts.
+- Mobile picker sheets have their own scrim, sticky title/close row, scrollable options, larger touch targets, safe-area spacing, and close automatically on rotation/viewport-width changes. Desktop keeps the compact popover behavior.
+- Fixed mobile header grid placement so Account stays pinned to the right and Team/Season always occupy the intended context row.
+- Removed mobile `backdrop-filter` from the sticky header so the fixed bottom navigation and fixed picker sheets use the viewport consistently across browsers. Landscape phones collapse Team/Season into the main header row to preserve vertical space.
+- Account and Trace dialogs become full-screen mobile app surfaces with fixed safe-area-aware headers/footers and body-only scrolling. Confirm dialogs remain compact centered sheets.
+- Match/player entity drawers use the same safe-area-aware full-screen structure and larger Back/Close targets. Background page scrolling is locked consistently while any modal, entity drawer, or mobile selection sheet is open.
+- Schedule filters become a four-column mobile segmented control, search fields and buttons use touch-sized heights, and toasts sit above the fixed bottom navigation.
+- Team table widths were rebalanced for 320–360px screens; match Player stats reduces to Player / Min / G / A on narrow phones while retaining the full table on larger screens.
+- The match lineup pitch scales by viewport size and gets a compact landscape-phone treatment rather than forcing the portrait layout into a short viewport.
+
+## 6.0.12 match lineup + scroll structure
+
+- Removed the season-wide Squad pitch. The primary roster area is **Team** again.
+- Added a FotMob-style **Lineup** card inside each match Overview. It reconstructs that game independently from the game format, Trace starter flags, goalkeeper usage/role, player minutes, and match-specific normalized spatial movement.
+- When Trace start flags are incomplete, the lineup fills only the missing starting spots using the strongest match participation evidence and labels the result as best-effort.
+- Formation is inferred per game from the attacking-depth gaps of the reconstructed starting field players; left/right roles use that match’s tactical movement.
+- Match position labels are reused in the match player table, top contributors, and match-scoped player profile so the same game has one position model across views.
+- Substitutes and other appearances are kept off the pitch and shown directly under the reconstructed starting lineup.
+- Fixed modal scrolling structurally: modal shells no longer scroll. Header and footer are fixed regions; only `.modal-body` owns vertical overflow, so the scrollbar starts below the header and ends above the footer.
+- Applied the same structure to match/player entity drawers: the title bar stays outside the scroll region and only the content body scrolls.
+
 ## 6.0.10 native UI pass
 
 - Replaced the visible Team and Season browser `<select>` controls with app-native popover pickers.
@@ -112,3 +238,13 @@ The current version is populated from the application version constant beside th
 - Trace quality wording is standardized as Trace coverage.
 - Dialogs support Escape, focus containment/restoration, backdrop dismissal, and labeled controls.
 - Working typography and mobile touch/readability were tightened without changing the data model.
+
+
+## D1 read-efficiency changes in 6.0.17
+
+- Scheduled maintenance runs every 5 minutes instead of every minute.
+- Fully synchronized Trace connections are skipped until their catalog refresh is due.
+- Read-only Trace status/data responses reuse the stored progress snapshot instead of rescanning the game catalog.
+- Unified dataset counts are recalculated only when a catalog refresh or newly published match can change them.
+- Composite indexes cover dataset lookup and the hot Trace game/source/Halo predicates.
+- Trace performance data and TeamSnap data contracts are unchanged.
