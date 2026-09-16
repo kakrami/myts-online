@@ -1,3 +1,11 @@
+# myTS v6.12.3 — Refined match icons
+
+- Replaced the rough custom goal and assist artwork with clean, professionally drawn soccer-ball and cleat silhouettes.
+- Both symbols now use the app’s neutral monochrome palette instead of the distracting orange assist treatment.
+- Tightened the stacked lineup markers so multiple contributions remain compact and legible.
+
+---
+
 # myTS v6.12.2 — Match contribution icons and release-safe taps
 
 - Goals now use soccer-ball icons and assists use boot icons in match timelines and lineup markers.
