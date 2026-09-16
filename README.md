@@ -1,3 +1,56 @@
+# myTS v6.10.2 — Workflow and failure-recovery review
+
+This release fixes reproducible failures while changing teams or seasons, saving edits, navigating game/player details, loading source settings, and recovering from failed requests. It includes a reusable Chromium regression suite in `tests/workflows.mjs`. Earlier release notes below describe previous versions.
+
+## Findings and changes
+
+| Workflow | Confirmed problem | Current behavior |
+| --- | --- | --- |
+| Save, then close or open another player | A delayed success reopened the old profile; a delayed failure wrote into the new editor. | Responses update saved corrections and only refresh their original, still-open editor. |
+| Edit while a cached team reloads | A response captured before the save could erase the correction locally. | Successful saves update family caches; older in-flight team reads preserve the saved correction. Correction responses merge by record timestamp. |
+| Return to a team while an earlier update is pending | A previous visit's GotSport response could be accepted on returning to the same family. | Requests belong to a particular team visit. A new team's polls can start while the previous team's request finishes. |
+| Change season with an open editor | An old-season player dialog remained open under the new season. | Team/season changes close context-specific dialogs. A save already submitted remains attached to its original player and season. |
+| Open Account, start typing, then receive status | The background status response rebuilt the GotSport form and discarded the draft. | Status loading preserves an active team-connection form. Closed or superseded Account requests cannot modify another team's status. |
+| Close/reopen Trace connection | An earlier sign-in response replaced the newer dialog; returning from team candidates could hide the update button. | Each dialog invocation owns its responses, and connected controls reset when opened. |
+| Select an import, then switch team while it reads | The import used whichever team was selected after the file finished reading. | The import destination is captured when the file is selected and retained through a mismatch confirmation. |
+| Queue Trace sync, then switch team | Its returned status could overwrite the new team's status. | Completion only updates the originating team visit. GotSport connection changes and viewer-link updates also retain their initiating family. |
+| Recover from a mapping outage | A successful Trace map reload left the prior mapping error present, and normal polls did not retry it. | Mapping failures trigger retry during data polling and clear after success. |
+| Navigate back from player to match | The Back callback reopened an old source object and showed an outdated score. Saving also added duplicate Back entries. | Back resolves the current fixture and saves preserve the existing navigation stack. |
+| Remove an open match or its player data during refresh | A removed game remained visible; missing match-player data silently became a season editor. | The dialog explicitly reports that the data is no longer available. It can recover if the data returns. |
+
+Automatic team-load retry remains active when no cached data is available. Failed corrections retain the draft; Trace data failures retain loaded stats. No database migration, data reset, reconnect, or Trace reimport is required.
+
+## Validation
+
+- 19 browser workflow cases passed with controlled response delays, HTTP errors, fresh browser contexts, two team families and two seasons. The failure cases above were reproduced against v6.10.1 before correction.
+- Existing browser checks passed against the 108-game Trace snapshot: correction save/reload/reset, stale poll protection, schedule filters, reports, experimental lineup messaging and 320/390 px layouts.
+- Existing reconciliation and SQLite-backed API checks passed: source precedence, ambiguity handling, cancellations, owner/viewer permissions, correction conflicts, import publication races, failed follow-up operations, and GotSport retry/deletion protection.
+- Worker and embedded browser JavaScript passed syntax checks. Source data and deployment configuration remain unchanged.
+
+### Run the included workflow tests
+
+From the extracted project directory, using Node.js 20 or newer:
+
+```sh
+npm install
+npx playwright install chromium
+npm run test:workflows
+```
+
+The tests load the HTML embedded in `worker.js`, intercept all browser requests and use local fixtures. They require no credentials, deployed Worker, or live provider access. Playwright is a development dependency; it is not imported by the Worker.
+
+For an existing browser/runtime installation, optional `MYTS_CHROMIUM` and `MYTS_PLAYWRIGHT_MODULE` environment variables select the browser executable and Playwright module. `MYTS_TEST_FILTER` runs cases whose names contain the specified text.
+
+## Remaining limits
+
+These checks validate application behavior with simulated provider responses. Live authentication, provider outages, actual rate limits, and the precise cause of the earlier GotSport delay remain unverified. The existing data-identity and backup limitations documented below still apply. This is a focused workflow review, not a security audit or a guarantee against every concurrency issue.
+
+## Deploy
+
+Deploy the updated project through the existing Cloudflare workflow and refresh open tabs. All seven original project paths retain their names; the archive adds only `tests/workflows.mjs`. Frontend, Worker and package versions are 6.10.2.
+
+---
+
 # myTS v6.10.1 — Data lifecycle and reconciliation review
 
 This release reviews the data path through source ingestion, identity matching, display, totals, manual corrections, imports and refreshes. It includes fixes for reproduced failures, rather than a visual redesign. Earlier release notes below are historical; this section describes the current behavior.
