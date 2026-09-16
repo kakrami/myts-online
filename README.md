@@ -1,3 +1,15 @@
+## v6.7.7 — Quiet background updates and resumable tracking requests
+
+Removed the main-screen sync panel and its CSS. Live details are plain source notes within the existing Account & Data Sources cards. Background updates leave the dashboard usable and account controls intact.
+
+Trace delay was caused by four serial tracking requests per player/half, six tasks per batch, five-minute scheduled gaps, and no checkpoint inside a task. At roughly 2,100 queued tasks this represents thousands of requests, regardless of individual response size.
+
+Tracking now runs at most two requests concurrently and checkpoints each completed pair, including successes when the other request fails. Retries fetch only missing chunks. The schema migration adds chunks_json with an empty default and preserves existing completed tasks, source data and published results. Empty successful chunks are also cached. New roster preparation is deferred while two or more games are already collecting, allowing existing work to finish. Requests have an eight-second timeout and tracking work yields within the invocation's 22-second working budget.
+
+The Trace cron changes from every five minutes to every two minutes in wrangler.jsonc. The old expression remains recognized during propagation. Provider invocation isolation, six-task request cap, shared rate-limit pauses and publication checks remain in force. Deploy the included configuration with worker.js for the new cadence. Upstream limits still apply; a complete historical import is not instant.
+
+Validation: SQLite-backed checkpoint/retry/concurrency/deadline/rate-pause tests, existing publication recovery and tenant scoping, TeamSnap pagination and GotSport regression checks, new cron routing, embedded JavaScript syntax and exact restoration of original app CSS. Authenticated live throughput has not been measured. Cloudflare lifecycle reference: https://developers.cloudflare.com/workers/platform/limits/
+
 ## v6.7.6 — Trace progress counter correction
 
 Overall progress now measures published games against discovered games. Engine refresh statuses are no longer labeled as a cumulative calculated total: the publication migration legitimately requeues calculated games without deleting their saved calculations. Tracking detail identifies the current or next game and its completed checks, instead of presenting the changing multi-game queue as an overall completion fraction. Completed task deletion and new game discovery can therefore no longer make that fraction appear to reverse.
