@@ -1,3 +1,7 @@
+## v6.9.7 — Match detail click regression fix
+
+Built from v6.9.6. Restores the shared availability and spatial helpers that were accidentally removed during the detail-page UI refactor. That omission caused game taps to enter the match-detail handler and then stop on a JavaScript `ReferenceError` before the drawer could open. Player heat maps used the same removed spatial helpers, so they are restored in the same root-cause fix. No database reset, reconnect, or data reimport is required.
+
 ## v6.9.6 — Clearer detail pages and contextual game links
 
 Built from v6.9.5. Same seven project files; no reset, reconnect, or data reimport is required.
