@@ -1,3 +1,13 @@
+## v6.7.5 — Live sync progress and incremental Trace publication
+
+Trace previously calculated games but withheld publication until every source game in the season finished downloading. This release publishes the calculated subset after each engine commit, recalculating season attribution as further games arrive. It retains existing published games, validates all calculated game identities, and switches generations atomically. A one-time migration requeues previously completed calculations so unpublished results recover without reconnecting or deleting data.
+
+A persistent panel above each dashboard view shows TeamSnap resource rows/pages, GotSport request stages, and Trace calculation/publication counts plus current tracking task counts. Timestamps and errors distinguish queued, active and delayed work. Active TeamSnap/Trace work polls every five seconds; GotSport polls independently. Trace tracking task counts describe the current collection, not the whole historical catalog.
+
+Trace cron, manual and polling triggers share an expiring database lease. Tracking requests now retain game priority across batches so completed games become available sooner. Already calculated games are processed before preparing another download. Existing authentication, request budgets and retry delays remain in force.
+
+Validation: SQLite-backed publication, recovery, tenant scoping and lease tests; browser-function progress and loading tests; TeamSnap pagination and GotSport retry regression tests. Live authenticated provider verification requires deployment to the user's Worker.
+
 ## v6.7.4 — Trace dataset loading fix
 
 Reproduced browser regression: Account status refresh and Check new games could update state.trace.status.data_updated_at without loading the associated rows/games. The polling loop compared the next status timestamp to that status timestamp, considered it unchanged and did not fetch the dataset. An empty browser dataset could therefore remain empty indefinitely while the server advertised published games.
@@ -6,7 +16,7 @@ Correction: successful /api/trace/data responses alone set dataLoaded, dataCurso
 
 The existing Account > Download diagnostics now includes the Trace diagnostic endpoint's connection/authentication indicators, published dataset summary, game processing errors, plus browser Trace row/game counts, loaded cursor and current status. It does not include owner credentials, cookies, authentication tokens or raw player records. This distinguishes a client loading failure from an unpublished or unavailable server dataset without changing the Trace processing engine.
 
-Validation: actual old and new browser functions executed in a VM with the same API fixtures. v6.7.3 issues zero data requests and remains empty after a status-only timestamp update; v6.7.4 loads the dataset, does not re-download unchanged data, loads later publications despite Account refreshing status first, retains data on malformed responses and recovers afterward. Embedded JavaScript compiles; HTML/CSS is unchanged; the entire server-side implementation is byte-identical except its version string.
+Validation: actual old and new browser functions executed in a VM with the same API fixtures. v6.7.3 issues zero data requests and remains empty after a status-only timestamp update; v6.7.5 loads the dataset, does not re-download unchanged data, loads later publications despite Account refreshing status first, retains data on malformed responses and recovers afterward. Embedded JavaScript compiles; HTML/CSS is unchanged; the entire server-side implementation is byte-identical except its version string.
 
 Live Trace storage has not been inspected. If Trace remains empty after deployment, send Account > Download diagnostics; that report now contains the Trace state needed to identify the remaining issue. Do not reset data or reconnect solely to apply this update.
 
