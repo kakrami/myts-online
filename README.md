@@ -1,3 +1,16 @@
+## v6.9.1 — GotSport fixture verification
+
+Built from v6.9.0. Deploy all seven files with the existing D1 and Durable Object bindings. No data reset or Trace reimport is needed.
+
+- League and tournament divisions both resolve through verified event/bracket IDs. League links open the Rankings event overview, division schedule, and division standings separately.
+- Team names are enriched from GotSport's ID-matched team profiles, cached for seven days and shared across games. Public schedule labels take precedence when verified. Club prefixes are not duplicated; display names never establish team identity.
+- API match discovery is not evidence of organizer publication. Each division's public HTML schedule is checked within the existing request/time budget. Unique match numbers are matched within that division. A kickoff is shown only when its API timestamp agrees with the public date, clock time, and recognized timezone. Valid early games and games without venues are not rejected based on those attributes.
+- Verified fixtures appear in Schedule; unverified fixtures remain visible in Competitions under Awaiting schedule confirmation, with Time TBD. Independently scheduled TeamSnap events remain visible. Completed results remain available. Publication labels no longer follow API synchronization success.
+- GotSport can redirect public schedule requests to a verification challenge. myTS does not bypass it or treat it as an empty schedule. Previously verified, unchanged fixtures retain their saved proof; new or changed fixtures remain unverified. Public verification problems are included in source diagnostics. Consequently, a successful API sync alone may leave fixtures awaiting confirmation, including tournaments.
+- Saved metadata migrates automatically through background jobs. Club lookups use remaining request capacity and resume in later passes; no per-game profile downloads. Existing Trace collection, eight-lane concurrency, TeamSnap availability, and durable alarm runtime are unchanged.
+
+Validation: live API response shapes checked; fixture-based workerd tests cover publication HTML parsing, one published/nine unverified league games, valid 5 AM kickoff with no venue, identity-based names, division links, migration, ten-request budget, continuation, and saved verification after a public-page redirect. Chromium checks cover all five views and dialogs at desktop/mobile widths, plus unverified fixture exclusion from Schedule and its Competition disclosure. Runtime authentication, large TeamSnap response, and browser-independent alarm execution passed. Production publication verification remains dependent on GotSport allowing the public page request.
+
 ## v6.9.0 — Product and workflow refinement
 
 Built directly from v6.8.0. Deploy the complete seven-file project with the existing Durable Object configuration, D1 binding, secrets, and routes. No reset, reimport, or Trace recollection is required. The background alarm runtime, eight-lane full-half collection, calculation engine, and saved data are retained.
