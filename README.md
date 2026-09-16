@@ -1,3 +1,29 @@
+## v6.9.3 — Shared loading and update states
+
+Built from v6.9.2. Deploy the same seven files; no reset, reimport, or new configuration is needed.
+
+- Shared source states distinguish active requests, current background work, queued/retry work, delayed updates, disconnected sources, and completed loads. Small spinners appear next to headings; first-load placeholders use skeleton rows. Stale activity stops spinning. Reduced-motion preferences are respected.
+- Overview, Schedule, Competitions, Team, report previews, match statistics, player history, heat maps and availability use source-aware placeholders. Empty-result copy is shown after relevant sources finish, not while waiting. Search with no matches remains a search result, rather than becoming a loading state.
+- Same-team refresh retains GotSport and Trace content. Team switching clears the old team's data and uses the selected team's cache only. Failed reads preserve existing content and show delayed status.
+- Match statistics remain accessible before Trace arrives. Open match, event and player dialogs refresh on data changes while retaining their active tabs, scroll and Back history. Status-only updates do not replace dialog contents or page content. TeamSnap response timestamps now include resource updates so newly loaded availability updates an open dialog.
+- Trace counts use actual published and total games. Queue/retry states use a clock; failures use a warning. Detailed progress remains in Account. No changes to Trace collection concurrency, GotSport fixture interpretation or source authentication.
+
+Validation: Chromium at 1280, 390 and 320 pixels, including populated refresh states, first-load skeletons, failures, stale/queued/retry work, disconnection, genuine empty results, preserved saved content, match-tab updates, keyboard navigation and mobile overflow. Worker startup, authentication, 5,292-row availability response and browser-independent durable alarm execution passed.
+
+## v6.9.2 — Preserve GotSport kickoff times
+
+Corrects the v6.9.1 regression where public-page verification was required to display an API-supplied kickoff or include a game in Schedule.
+
+- Publication evidence and kickoff availability are independent. A blocked public page, a missing row on a date-filtered page, or an unfamiliar time format no longer converts a supplied kickoff to TBD or hides the game.
+- API-listed fixtures appear in Schedule and Our games with their supplied times. The competition says Fixtures listed until all rows have publication evidence; it does not falsely claim the entire schedule is published. GotSport's API still does not distinguish all organizer placeholders from published fixtures, so listed games may include tentative entries.
+- Time TBD means no time is available, or the public row explicitly says TBD/TBA. A parsed public date/time takes precedence over the API time, including reschedules. Unchanged saved publication evidence survives failed checks and filtered pages.
+- v6.9.1 saved reported_start_at values are restored on read, without a reset or new download. A background metadata revision also schedules refreshes automatically.
+- Names, division links, TeamSnap and Trace processing remain unchanged.
+
+Validation: actual workerd tests with saved league API fixtures and controlled public-page responses cover first-run redirects, filtered rows, unrecognized time formats, explicit TBD, missing API time, changed public kickoff, saved-cache repair, request budgets and continuation. Chromium tests verify that listed games retain times in Schedule and Competitions, plus desktop/mobile layouts. Runtime startup, authentication and background alarm checks passed. No production deployment performed.
+
+Earlier release notes below describe the behavior of those versions; v6.9.2 supersedes the v6.9.1 requirement for public proof before showing a time or game.
+
 ## v6.9.1 — GotSport fixture verification
 
 Built from v6.9.0. Deploy all seven files with the existing D1 and Durable Object bindings. No data reset or Trace reimport is needed.
