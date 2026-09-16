@@ -1,3 +1,19 @@
+## v6.7.2 — Independent resource recovery and live diagnostics
+
+Continues the v6.7.1 rebuild from the user's attached v6.6.0 archive.
+
+Confirmed regressions addressed:
+- A persisted pre-6.7 GotSport network error could be displayed unchanged for 12 hours without making a new request. Legacy unclassified network failures now receive one bounded transport-recovery attempt. A recorded rate-limit pause is never bypassed. New results retain their typed error details and normal backoff.
+- TeamSnap waited for all discovery collections before publishing any team resources. Successfully discovered teams now proceed independently. Unsupported optional discovery endpoints cannot block known teams.
+- A failed TeamSnap resource previously put the entire sync into backoff. Each resource now retains its own cursor, failure and retry timestamp while other resources proceed. Availability is queued after events and members, ahead of ancillary lookup resources.
+- Visible-team polling can resume eligible work independently of cron triggers; provider execution remains isolated and budgeted.
+
+Account > Download diagnostics produces myts_sync_diagnostics.json. It includes the browser/backend version, selected team, saved resource counts/timestamps, availability event/member match counts, pending cursors/retries, GotSport error provenance, and last scheduled invocation per provider. It excludes authentication tokens, owner keys, player names, and raw resource records. The endpoint requires owner authentication. Diagnostics is read-only and does not force a sync or reset data.
+
+Validation: legacy 12-hour backoff reproduced with zero HTTP requests before the change; one-time fresh recovery and fresh error preservation; rate-limit pause preserved; denied archive discovery plus a persistent roster 503 with successful independent availability publication; per-task retry enforcement; diagnostic accuracy and authentication; existing 65-page/6,500-record restart/resume, complete publication, cancellation, lease, pagination, provider isolation and script checks.
+
+Live cause remains unconfirmed until the diagnostic report is collected from the deployed Worker. Deploy all ZIP contents, including wrangler.jsonc, preserving the existing DB binding and secrets. No data reset or reimport is required.
+
 ## v6.7.1 — Rebuilt from the supplied v6.6.0 ZIP
 
 Authoritative starting file: `myts (1).zip` attached on September 16, 2026.
