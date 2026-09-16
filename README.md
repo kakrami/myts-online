@@ -1,3 +1,53 @@
+## v6.9.0 — Product and workflow refinement
+
+Built directly from v6.8.0. Deploy the complete seven-file project with the existing Durable Object configuration, D1 binding, secrets, and routes. No reset, reimport, or Trace recollection is required. The background alarm runtime, eight-lane full-half collection, calculation engine, and saved data are retained.
+
+### UI and workflow review
+
+- Shared typography, surfaces, spacing, buttons, cards, search/clear controls, external links, event states, and mobile touch targets were reviewed together. Overview has actionable Today & next and compact recent results; Team remains season analysis; Schedule manages events; Competitions covers discovered leagues and tournaments; Reports provides Excel/PDF exports.
+- Schedule defaults to Upcoming unless a deliberately selected view was saved. Its four views are Upcoming, Games, Practices, and Past Events. Today's events stay in Upcoming for the entire browser-local calendar day, ordered latest time first; future dates follow chronologically. Past Events excludes today and sorts newest first. Games/Practices include both future and past, with current/future events before history. Cancellation stays visible. Postponed/rescheduled flags are shown when supplied by the provider. Date rollover updates an open page and is checked again after returning to a hidden tab.
+- Schedule dates/times and event details use local time consistently. Season grouping remains based on the team's season calendar. June exclusion now also applies to Trace season statistics and positions.
+- Long names wrap on mobile. Recent results form a grid instead of a horizontal strip. Team and match tables retain a compact mobile summary with full player details available. Report tables become labeled records on phones, with sorting available through a compact control that reuses desktop sort logic. Reports show all rows instead of silently stopping at 30.
+- Report choices use compact shared controls. Team totals are outside the sortable body and reflect search results. Sorting survives search and refresh. Player Overview no longer repeats the match log already present in its Matches tab. Empty match tabs and empty playoff panels are omitted.
+- Detail tabs support keyboard arrows, Home/End, and ARIA selected states. Dialogs isolate background controls, preserve Back-tab context, reset detail scroll on opening, and retain focus behavior. Mobile picker focus is contained. Source polling avoids rebuilding a view while its menus/dialogs are open. Account refresh preserves the Data tools disclosure, focus, and scroll.
+- All-season opponent history excludes cancelled games from scored totals and cannot overwrite a different detail view after a slow response. Source error toasts use concise user-facing wording; technical failure details remain in diagnostics.
+
+### Position methodology audit and replacement
+
+Previously, `squadProfiles` averaged selected-season spatial data but could fall back to all historical seasons, treated TeamSnap's static position as an override, assigned approximately 30% of otherwise unclassified players to defense and 30% to attack, and then assigned specific left/right labels by roster order. Match positions also fell back to season positions. These rules could yield specific but unsupported labels and couple an individual game's position to the team-level result.
+
+The new model:
+
+1. Uses distinct appearances from the selected season only, respecting pre-season inclusion. A single duplicated game does not increase supporting-match counts.
+2. Classifies each appearance independently using confirmed goalkeeper minutes or normalized spatial evidence. Field evidence requires finite in-range average coordinates, at least 30 samples, and a declared own-goal/attacking orientation.
+3. Uses depth, attacking/defensive third occupancy, and a bounded correction for the team's average depth in that game. It does not allocate a fixed percentage of the roster to any position. Goals or assists do not force an attacking position.
+4. Uses heat-map occupied-zone majorities and average lateral location for left/center/right labels only when tactical lateral orientation is supplied. Otherwise it retains DEF/MID/FWD rather than inventing a side.
+5. Aggregates match evidence using playing minutes (capped at 60 per match) and sample quality (saturating at 500 samples). Frame counts cannot give one densely sampled game unlimited influence.
+6. Requires at least three supporting appearances, coverage of at least half of played appearances, and consistent positional evidence before using a specific season position. A meaningful repeated secondary position can appear alongside the primary. Players with substantial evidence in different lines and no dominant line are labeled Utility. No evidence yields Position pending.
+7. Shows evidence strength and supporting appearances in the season profile. Strength reflects sample adequacy, match count, coverage, and consistency; it is a heuristic, not a calibrated accuracy percentage. Per-match labels use only that game's evidence. Pitch shape is estimated, and missing positions are not filled from the season profile.
+
+Limitations: normalized heat maps are available only where the saved match payload contains them. The existing fresh-game collector retains time-interval summaries for playing time; it does not currently create new normalized per-player heat maps. This release does not fabricate location data or use the historical import as a substitute for a team's live collection. Spatial orientation itself is inferred upstream and can be uncertain. Position estimates need coach validation; this is not a validated position classifier or a claim of known tactical assignments.
+
+### GotSport links
+
+Resource IDs and public links are retained in normalized match data. Existing saved records are enriched when read, without forcing rediscovery. Match details, Schedule rows, and competition headers expose consistent GotSport links for verified event pages, schedules/divisions, standings, team schedules, and supplied match/bracket URLs. League records from existing discovery now appear alongside tournaments. Unsafe URLs are rejected. When no verified individual-game URL exists, the action explicitly identifies the GotSport schedule rather than inventing a game-specific route.
+
+URL formats were checked against GotSport's public event page and its published Schedule, Results/Standings, and team links:
+- https://system.gotsport.com/org_event/events/50847
+- https://system.gotsport.com/org_event/events/50847/results?group=456213
+
+Some GotSport pages require browser verification. myTS does not bypass that verification.
+
+### Validation
+
+- Real Chromium render and interaction checks at 1280, 390, and 320 px: all five main views plus player/account dialogs; no page or dialog horizontal overflow or uncaught runtime errors. Existing Bootstrap Icons assets were supplied locally only to the isolated test browser; deployment continues using the existing CDN assets.
+- Local-calendar ordering, same-day completed events, cancellations, midnight rollover, differing team/browser time zones, search and clear, keyboard detail tabs and mobile pickers, modal background isolation, Back-tab restoration, and mobile report sorting.
+- Position fixtures: a one-match role change does not override a stable season role; match labels remain independent; rotating players; one-game and missing/null/unoriented evidence; prior-season and excluded-June isolation; repeated-game deduplication; input-order invariance; increased evidence strength with consistent additional games.
+- Provider tests: saved/public link projection, team-registration URL paths, league exposure, unsafe URLs/IDs, and event-state preservation.
+- Existing workerd/Miniflare runtime, authenticated 5,292-row D1 reads, alarms without a browser, lifecycle/restart/retry, full-half/fallback/checkpoint/auth/rate handling, request budgets, publication recovery, and 108-game queue-completion tests passed against this build.
+
+No production deployment was performed. Live spatial accuracy and provider-link availability still depend on source data; local tests do not establish production CPU usage or live sync speed.
+
 ## v6.8.0 — Background sync on Workers Free
 
 The supplied Cloudflare logs contain `exceededCpu` failures for public reads and scheduled sync. Ordinary Workers Free requests have a 10 ms CPU allowance. Moving network calls around or increasing concurrency does not fix calculation and JSON-processing work that exceeds that allowance.
