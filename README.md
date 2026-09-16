@@ -1,3 +1,30 @@
+# myTS v6.10.0
+
+## This release
+
+- Schedule: independent All / Games / Practices and Upcoming / Past controls. Upcoming is the initial date range and includes all of today, including games completed earlier today. Existing calendar ordering is preserved.
+- Removed Completed and Past event pills from event rows. Cancelled, Postponed, Rescheduled and other actionable states remain.
+- Lineup has an explicit experimental warning: it uses Trace heatmap data and can misidentify positions and starters.
+- Assigned player positions no longer come from heatmap guesses. Standard roster positions or saved owner corrections appear in profiles, player tables and reports. Automatic estimates are confined to the experimental lineup.
+- Owner player profiles include Edit player details for season position and jersey. Inside a game, Edit match stats & position changes the match position, goals and assists. Blank goals/assists use Trace; zero is an explicit correction. Reset restores source values. The season role and the match role have separate scopes.
+- Corrections are stored in D1 independently of Trace imports and sync generations. They are visible to private viewers, who cannot edit them. Match G/A changes flow through leaders, lineup contributions, player stats, season totals and Excel/PDF reports. Trace scoring timelines remain source evidence and are labeled accordingly when totals are corrected; manually edited G/A are not assigned fabricated heatmap locations.
+- Jersey rendering recognizes jersey_no and uniform_no as well as existing fields, preserves zero and normalizes numeric .0 suffixes. Display priority is saved season correction, TeamSnap roster, then Trace. Player avatars and jersey numbers cannot shrink; long match descriptions wrap.
+- GotSport optional HTML verification obeys the shared rate-limit pause and Retry-After. Failed verification retries independently of the longer JSON schedule refresh interval. Pending bracket assignments are not treated as upstream failures, and retired competitions cannot indefinitely keep the active sync in an error/pending state. Saved schedules remain available. The actual source error is shown in the toast and Account, with the next automatic check time.
+
+## Deploy
+
+Deploy the complete seven-file package using the existing workflow. Keep existing D1 bindings and secrets. The database migration runs automatically; do not reset the database or reimport Trace data. Frontend, backend and package versions are 6.10.0.
+
+## Verification and limits
+
+JavaScript syntax checks passed. Local SQLite-backed API checks covered migration, authenticated correction writes, viewer reads, invalid-input rejection and reset. Chromium interaction checks used the attached Trace dataset with a local TeamSnap fixture, covering independent schedule filters, today's completed games, cancellation labels, jersey zero, season/match roles, G/A aggregation and report consistency, reload persistence, reset, and mobile widths 320/390 px. No uncaught browser exceptions or player-dialog horizontal overflow occurred. GotSport fixtures covered shared 429 pauses, Retry-After and retired-error recovery.
+
+The quoted GotSport toast contains no upstream diagnostic details, so the exact live failure is not proven resolved. Account now preserves the reason and retry time; the existing Diagnostics export remains available. The local checks do not authenticate against the live providers or deploy this archive.
+
+Trace JSON export preserves the imported/source dataset; corrections are stored separately in D1. Dashboard Excel/PDF reports include corrections.
+
+---
+
 ## v6.9.8 — Canonical fixture identity and duplicate suppression
 
 Built from v6.9.7. Fixes duplicate games caused by one real fixture arriving from TeamSnap, GotSport, and Trace with slightly different opponent labels. The reported **ROA Soccer Academy 2016 Blue** / **Neveda ROA soccer academy 2016 blue** case is one fixture: TeamSnap has the authoritative 6:30 PM schedule/location/availability, while Trace carries the same 2–7 result under a misspelled opponent label.
