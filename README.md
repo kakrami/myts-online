@@ -1,3 +1,11 @@
+# myTS v6.12.23 — Nested disclosure diagnostics
+
+- Adds bounded, local disclosure transition capture to the existing Diagnostics export: transition events, content heights, parent clipping, scroll movement, browser capabilities, and node replacement.
+- Retains at most 24 interactions and 45 animation-frame samples per interaction. No network requests or disclosure/style/scroll mutations are added.
+- Animation implementation is unchanged pending evidence of the last-child opening failure.
+
+---
+
 # myTS v6.12.22 — Smooth collapsible sections
 
 - One native 240 ms content-size/visibility transition animates all details elements: competitions, nested division and unconfirmed lists, Data tools, and player editing.
