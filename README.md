@@ -1,3 +1,12 @@
+# myTS v6.12.18 — One-button theme cycling
+
+- One compact icon beside Settings cycles Light → Dark → Soccer Green → Light.
+- Removed the Appearance row, theme picker, and its styles from Settings.
+- Soccer Green replaces Midnight with a field-inspired green palette and subtle pitch stripes; saved Midnight selections open Soccer Green.
+- Theme startup, validation, persistence, browser color, and cycling use one shared theme definition. No added dependencies.
+
+---
+
 # myTS v6.12.17 — Collapsible competitions
 
 - Competitions start collapsed with a full-width, keyboard-accessible heading and expansion chevron. Names, dates, divisions, and GotSport schedule links remain visible.
