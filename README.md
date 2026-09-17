@@ -1,3 +1,16 @@
+# myTS v6.13.1 — Consistent team search
+
+- Find a team now uses the shared search field, toolbar, app dropdowns, card headers and selectable list rows. The game-range dropdown uses the same component. Recent teams are collapsed and no longer mixed into search results.
+- Search explicitly displays results first, including a single match; only choosing a row opens that team’s games. New searches clear previous results. Back navigation restores the last successful results and filters.
+- Team/club name is optional. Age group and Boys/Girls remain required by GotSport. Added optional State filtering, using GotSport’s state-association choices (including split associations such as California North/South).
+- State choices and validation share one server-owned list. Requests send both team_association and filter_by=state; responses outside the requested state are rejected. A live blank-name Nevada U11 Boys query returned 70 teams, all with NV association. Sending the state alone was verified to return nationwide results instead.
+- Shared dropdown menus mount outside scrolling/transformed sheets while open, then return to their owner on close. This prevents clipping without search-specific layering overrides. Keyboard handling, dismissal, focus restoration, resizing and overlay closure use the same lifecycle for header and sheet selectors.
+- Existing persistent snapshots, explicit team selection, on-open refreshes and scheduler isolation remain intact. No database migration or new configuration is needed.
+
+Validation: Worker and embedded-script parsing; team browsing SQLite/lifecycle/search/dropdown tests; Trace, GotSport history and season tests passed. Browser workflow selectors were updated for shared menu ownership. Visual browser testing remains unavailable in this environment; no visual pass is claimed.
+
+---
+
 # myTS v6.13.0 — Find a team
 
 - Competitions → Find a team searches GotSport’s USA rankings directory by name, age group and boys/girls. Search filters and the latest result page are remembered on the device; pagination supports additional results.
