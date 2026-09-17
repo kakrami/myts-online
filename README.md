@@ -1,3 +1,12 @@
+# myTS v6.12.15 — Unified mobile sheet chrome
+
+- Unified the backdrop color and blur across detail, modal, team, and season sheets.
+- Standardized mobile sheet headers around one surface, blur, height, spacing, typography, and close-control geometry.
+- Detail and modal sheets now share the same bottom-sheet top boundary, keeping the app context visible behind the overlay.
+- Removed the selector-only app-header override that conflicted with the shared overlay lifecycle.
+
+---
+
 # myTS v6.12.14 — Button-controlled mobile sheets
 
 - Removed swipe-to-dismiss and its entire pointer-capture/drag state machine.
