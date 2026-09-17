@@ -1,3 +1,12 @@
+# myTS v6.12.30 — GotSport history and competition periods
+
+- Removes the upcoming-only filter from verified team match discovery. The live team endpoint returned 174 matches across 37 competition references, compared with 11 upcoming matches; existing identity/schema validation accepted the full response.
+- Uses the existing fixture reconciliation, season filtering, publication checks, retry budget, and cached archival flow for history. Past leagues must load their division before being treated as archived. The data revision triggers automatic rediscovery after deployment.
+- Adds Upcoming/Past controls to Competitions using the existing segmented controls. Games within an ongoing competition can appear in either period. Past games sort newest first; today remains Upcoming, matching Schedule. Filters respect the selected season and pre-season preference.
+- Adds regression coverage for historical discovery, old leagues, repeated sync, failed-request retention, and date boundaries. Script and Trace regression checks also pass. Browser visual verification is unavailable.
+
+---
+
 # myTS v6.12.29 — Attendance terminology correction
 
 - Restores Attendance as the player summary label.
