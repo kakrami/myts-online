@@ -1,3 +1,14 @@
+# myTS v6.12.13 — Native input lifecycle rebuild
+
+- Removed the global synthetic touch activation system in full. Buttons, links, rows, menus, and dialogs now use their native `click` and keyboard activation paths exclusively.
+- Declared `touch-action: manipulation` at the application root so browsers can deliver taps without double-tap gesture delay while preserving panning and pinch zoom.
+- Kept Pointer Events only on sheet drag handles, where `touch-action: none` declares the custom vertical gesture before it begins.
+- Rebuilt sheet drag state around pointer capture, `pointerup`, `pointercancel`, `lostpointercapture`, `animationend`, and `transitionend`; no interaction timers or duplicate-click filters remain.
+- Restored one modal focus-return path for button, keyboard, backdrop, and swipe dismissals.
+- Expanded diagnostics to record capture changes, trust, event phase, computed touch policy, inert state, and target connectivity without affecting input behavior.
+
+---
+
 # myTS v6.12.12 — Single-owner touch activation
 
 - The shared touch lifecycle now owns primary touch activation from `pointerdown` through `pointerup`, suppressing the browser compatibility click at its defined source.
