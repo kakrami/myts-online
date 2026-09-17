@@ -1,3 +1,20 @@
+# myTS v6.12.29 — Attendance terminology correction
+
+- Restores Attendance as the player summary label.
+- Uses Yes for counts and percentages in schedule, match, and event summaries.
+- No layout, calculation, data, or interaction changes.
+
+---
+
+# myTS v6.12.28 — Consistent detail layout and RSVP wording
+
+- Detail bodies, tab panels, and match sidebar stacks own their spacing through one 12 px gap token. Direct children do not add competing margins. Player panels use the same container as match panels; fixed-height scroll bodies keep content-sized rows.
+- Consolidates detail tabs into one rounded, bordered container with 44 px buttons, horizontal overflow, and a consistent sticky position. Removes conflicting desktop/mobile container overrides.
+- Schedule rows, match summaries, event summaries, and player response summaries describe Yes RSVPs rather than implying actual attendance. Counts and denominators are unchanged.
+- Script and existing regression checks passed; browser visual verification remains unavailable.
+
+---
+
 # myTS v6.12.27 — Shared component corrections
 
 - Goal and assist badges now own their common foreground, background, border, and padding in the shared icon component. Removes redundant assist/timeline rules and lineup color overrides; local rules retain size and placement only.

@@ -1,6 +1,6 @@
 {
   "name": "myts",
-  "version": "6.12.27",
+  "version": "6.12.29",
   "private": true,
   "type": "module",
   "devDependencies": {
