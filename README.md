@@ -1,3 +1,11 @@
+# myTS v6.12.26 — Lineup contribution icons
+
+- Uses the same dark glyphs on white badges in every theme.
+- Raises substitute contributions above the avatar and name.
+- Anchors goal and assist stacks closer to the player center, retaining the existing overlap.
+
+---
+
 # myTS v6.12.25 — Lineup badge placement
 
 - Moves lineup position badges to the bottom right of player circles.
