@@ -1,3 +1,13 @@
+# myTS v6.12.11 — Touch-release activation
+
+- Diagnostics confirmed the failed retap delivered `pointerdown` and `pointerup` but the browser withheld the compatibility `click`; the app never received an activation event.
+- Mobile buttons, links, summaries, labels, and keyboard-accessible custom rows now activate directly from a stationary primary-touch `pointerup`.
+- Movement beyond 10 pixels cancels activation so scrolling and dragging remain gestures, not taps.
+- A pointer-identity guard blocks only a later duplicate native click from the same touch. A new touch has a new pointer identity and remains immediately usable without a timer.
+- Mouse and keyboard activation retain their existing native behavior.
+
+---
+
 # myTS v6.12.10 — Diagnostic collector startup fix
 
 - Fixed the interaction collector using a single-element query where a modal collection was required.
