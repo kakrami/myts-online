@@ -1,3 +1,11 @@
+# myTS v6.12.22 — Smooth collapsible sections
+
+- One native 240 ms content-size/visibility transition animates all details elements: competitions, nested division and unconfirmed lists, Data tools, and player editing.
+- Native open state, summary links, keyboard interaction, and refresh restoration remain unchanged. No click interception, timers, or fixed content heights.
+- Reduced-motion preferences disable disclosure animation. Browsers without native intrinsic-size transition support retain functional instant expansion.
+
+---
+
 # myTS v6.12.21 — Reconnect recovery and Settings scrolling
 
 - One authentication-state check routes expired or missing Trace sessions to the email/code form from the alert, Settings, and retry actions. Existing connections and saved stats are retained.
