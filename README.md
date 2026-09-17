@@ -1,3 +1,12 @@
+# myTS v6.12.12 — Single-owner touch activation
+
+- The shared touch lifecycle now owns primary touch activation from `pointerdown` through `pointerup`, suppressing the browser compatibility click at its defined source.
+- A stationary release invokes the semantic control exactly once; movement beyond 10 pixels cancels it as a gesture.
+- Removed the pointer-identity duplicate-click filter and the sheet-specific synthetic-click guard, which were competing legacy activation paths.
+- Mouse and keyboard remain on their native activation paths. There are no debounce windows, delayed releases, or menu-specific exceptions.
+
+---
+
 # myTS v6.12.11 — Touch-release activation
 
 - Diagnostics confirmed the failed retap delivered `pointerdown` and `pointerup` but the browser withheld the compatibility `click`; the app never received an activation event.
