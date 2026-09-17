@@ -1,3 +1,15 @@
+# myTS v6.13.2 — Shared GotSport request runtime
+
+- Fixed a calling-context regression introduced by team browsing. Its runtime stored native fetch directly and invoked it as runtime.fetcher(), which passes the runtime object as this. Cloudflare Workers rejects that invocation before the upstream request runs. Existing scheduled collection used a safe global-call wrapper, but the new path did not reuse it.
+- Replaced the separate browsing runtime and collector construction with one gsRuntime factory. Its global-call wrapper is now shared by search, team refresh and scheduled collection. Request budgets and timeouts remain unchanged.
+- Transport errors no longer promise automatic resumption. Internal calling-context errors are distinguished from network failures and marked non-retryable.
+- The latest search outcome for each team family is included in Diagnostics with endpoint, classified failure, sanitized exception, duration and request count. Successful searches replace stale failure diagnostics. No search queries, credentials or raw URLs are recorded.
+- Added a regression test that exercises production defaults with a receiver-checking fetch implementation. It reproduced the exact reported error before the fix and passes after it. Existing mocks did not enforce this Workers calling convention.
+
+Validation: `test:gotsport-transport`, `test:team-browse`, `test:gotsport`, `test:trace`, `test:seasons` and Worker syntax checks passed. Tests cover the production-default search and team-refresh paths, repeated requests, diagnostic persistence and recovery. This is a controlled platform-contract reproduction, not a live deployed-Worker verification. No UI or deployment configuration changes.
+
+---
+
 # myTS v6.13.1 — Consistent team search
 
 - Find a team now uses the shared search field, toolbar, app dropdowns, card headers and selectable list rows. The game-range dropdown uses the same component. Recent teams are collapsed and no longer mixed into search results.
