@@ -1,3 +1,28 @@
+# myTS v6.12.21 — Reconnect recovery and Settings scrolling
+
+- One authentication-state check routes expired or missing Trace sessions to the email/code form from the alert, Settings, and retry actions. Existing connections and saved stats are retained.
+- Settings updates its Reconnect label and sync availability as authentication changes.
+- Account grid rows retain their full content height inside the shared scrollable sheet body, preventing expanded Data tools or connection fields from being clipped.
+
+---
+
+# myTS v6.12.20 — Stable notification placement
+
+- Removed source status indicators from page and card headers. A single floating status area sits above mobile navigation and outside document flow.
+- Source notifications retain tap/keyboard access to update details; repeated source errors no longer create duplicate toasts.
+- Toasts and source indicators share one fixed stack to prevent overlap. Source indicators hide while a dialog is open.
+
+---
+
+# myTS v6.12.19 — Trace sync recovery and actionable alerts
+
+- Restored the four missing shared Trace endpoint constants from the earlier implementation, fixing catalog refresh, sign-in, GraphQL, and profile requests.
+- Source alerts now open a compact details dialog with the actual error, last successful update, recovery guidance, and owner-only diagnostics and Trace retry/reconnect actions.
+- Settings uses the same error state as the alert; saved completed data no longer makes a failed refresh appear up to date.
+- Background diagnostics record returned Trace failures as failures instead of completed runs.
+
+---
+
 # myTS v6.12.18 — One-button theme cycling
 
 - One compact icon beside Settings cycles Light → Dark → Soccer Green → Light.
