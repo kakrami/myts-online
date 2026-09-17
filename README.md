@@ -1,3 +1,10 @@
+# myTS v6.12.25 — Lineup badge placement
+
+- Moves lineup position badges to the bottom right of player circles.
+- Increases goal/assist icon overlap from 8 px to 12 px for starters and substitutes.
+
+---
+
 # myTS v6.12.24 — Visible transitions for tall disclosures
 
 - Device diagnostics show that opening transitions run correctly, including the last nested disclosure. The 24-match content reaches 3,240 px in 240 ms; its visible portion is revealed within the first few frames. The smaller 275 px list takes the same duration, making its expansion much easier to see.
