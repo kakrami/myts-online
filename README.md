@@ -1,3 +1,12 @@
+# myTS v6.12.6 — Complete mobile sheet lifecycle
+
+- Bottom navigation is removed while a mobile detail, modal, or selection sheet is open, matching its inert interaction state.
+- Detail sheets extend through the navigation area while preserving the app header above them.
+- Drag dismissal releases pointer capture and closes the overlay synchronously, so an invisible closing backdrop cannot swallow the next touch.
+- Lineup assists stack to the left of the player and goals stack to the right, including substitutes.
+
+---
+
 # myTS v6.12.5 — Swipeable mobile sheets
 
 - Mobile detail views, account panels, Trace panels, and team/season pickers now slide up when opened.
