@@ -1,3 +1,21 @@
+# myTS v6.12.17 — Collapsible competitions
+
+- Competitions start collapsed with a full-width, keyboard-accessible heading and expansion chevron. Names, dates, divisions, and GotSport schedule links remain visible.
+- Reuses native disclosures and the existing render state restoration; competition and nested disclosure identities are scoped by team and season.
+- Retains match actions, inner section headings, themes, and division/unconfirmed disclosures.
+
+---
+
+# myTS v6.12.16 — Shared theme system
+
+- Added Dark and Midnight alongside the existing Light theme.
+- Consolidated the duplicated color roots into one semantic token system shared by the dashboard, login, settings, dialogs, sheets, tables, inputs, status colors, navigation, and loading states.
+- Theme choice is stored on the device and applied before first paint, including the browser theme color, so reloads do not flash the Light theme.
+- Settings and appearance are available to both owners and private-link viewers; data-source controls remain owner-only.
+- Added theme state to diagnostics and workflow coverage for switching, repeated selection, persistence, reload, and viewer access.
+
+---
+
 # myTS v6.12.15 — Unified mobile sheet chrome
 
 - Unified the backdrop color and blur across detail, modal, team, and season sheets.
