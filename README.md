@@ -1,3 +1,12 @@
+# myTS v6.12.9 — Mobile interaction diagnostics
+
+- The existing Diagnostics download now includes a bounded 160-entry interaction trace for mobile sheet investigation.
+- It records pointer down/up/cancel, click capture and settled state, sheet drag decisions, synthetic-click suppression, sheet open/close requests, focus, coordinates, pointer identity, overlay state, and history state.
+- The trace contains no input values and stays in memory only until the page reloads.
+- Reproduce the issue, then open Account & Data Sources and select **Diagnostics** without refreshing the page.
+
+---
+
 # myTS v6.12.8 — Immediate post-swipe retaps
 
 - Removed `preventDefault()` from sheet drag completion so mobile browsers do not start a coordinate-based ghost-click suppression window.
