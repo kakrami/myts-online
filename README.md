@@ -1,3 +1,12 @@
+# myTS v6.12.24 — Visible transitions for tall disclosures
+
+- Device diagnostics show that opening transitions run correctly, including the last nested disclosure. The 24-match content reaches 3,240 px in 240 ms; its visible portion is revealed within the first few frames. The smaller 275 px list takes the same duration, making its expansion much easier to see.
+- Updates the shared native disclosure transition to animate opacity alongside intrinsic size. Content fades throughout the transition even when the expanding edge has moved below the viewport. Applies to every disclosure, with no per-list rules, duration timers, or interaction handlers.
+- Preserves native open state, keyboard activation, reversal, refresh restoration, and reduced-motion behavior. Diagnostics now include content opacity for device verification.
+- Validation: embedded-script parsing and existing Trace regressions passed. Live browser visual validation is unavailable in this environment; verify the tall-list opening on the device.
+
+---
+
 # myTS v6.12.23 — Nested disclosure diagnostics
 
 - Adds bounded, local disclosure transition capture to the existing Diagnostics export: transition events, content heights, parent clipping, scroll movement, browser capabilities, and node replacement.
