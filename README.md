@@ -1,3 +1,27 @@
+# myTS v6.13.0 — Find a team
+
+- Competitions → Find a team searches GotSport’s USA rankings directory by name, age group and boys/girls. Search filters and the latest result page are remembered on the device; pagination supports additional results.
+- Opened teams appear in Recent teams. Their full validated match snapshots are saved in D1, scoped to the selected team family, and retained across reloads. Private-link viewers can browse the same family’s recent teams.
+- Opening a team displays saved games and requests a fresh snapshot. No browsing entries are added to connected feeds or scheduled syncs. Back navigation and range changes do not initiate new upstream requests; an explicit refresh is available.
+- Ranges: last 6 months, last year, this season, all past games, custom dates and upcoming. This season uses the current calendar season and the existing pre-season setting, independently of the home team’s selected season. Undated fixtures appear under Upcoming/Unconfirmed.
+- The full match endpoint is used because the paginated past endpoint omitted older history in verified responses. A validated replacement reflects changed scores, rescheduled games and removals; failed or invalid responses preserve the previous snapshot and last-success timestamp.
+- Match rows, details, candidate buttons, disclosure animations and theme styles reuse the app’s components. Match context is attached to the row lifecycle so background rebinding cannot switch a browsed game to the home team. Back navigation restores the existing stack without accumulating duplicate entries.
+- Search and refresh require existing owner/viewer access, use explicit GotSport endpoint allowlists and input validation, and are rate limited. A D1 lease prevents concurrent upstream refreshes for the same family/team. Update details are clickable; diagnostics include recent browsing errors.
+- D1 schema migration is automatic. No new secrets, scheduled jobs or deployment configuration are needed.
+
+Validation: `npm run test:team-browse` (Node 24), `npm run test:trace`, `npm run test:gotsport`, `npm run test:seasons`, Worker and embedded script syntax checks passed. New tests execute the data layer against SQLite and exercise UI lifecycle functions with controlled DOM/HTTP boundaries. Visual browser verification was unavailable because the Chromium download timed out; these tests are not a visual pass.
+
+---
+
+# myTS v6.12.31 — Season-aware date views
+
+- One shared season rule makes Schedule and Competitions show past data in previous seasons and removes their redundant date controls.
+- Overview omits Today & next for previous seasons.
+- Uses the existing season calendar, including its June pre-season boundary. Current-season filter preferences are preserved when switching back; filtering is enforced at read time so refreshes, saved preferences, and navigation cannot select Upcoming in a past season.
+- No style, attendance terminology, data-fetching, or calculation changes.
+
+---
+
 # myTS v6.12.30 — GotSport history and competition periods
 
 - Removes the upcoming-only filter from verified team match discovery. The live team endpoint returned 174 matches across 37 competition references, compared with 11 upcoming matches; existing identity/schema validation accepted the full response.
