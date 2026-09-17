@@ -1,3 +1,20 @@
+# myTS v6.12.5 — Swipeable mobile sheets
+
+- Mobile detail views, account panels, Trace panels, and team/season pickers now slide up when opened.
+- Sheet headers include a standard grab handle and can be dragged down to dismiss.
+- Short or upward drags snap the sheet back into place so an accidental touch does not close it.
+- Confirmation prompts remain centered and unchanged.
+
+---
+
+# myTS v6.12.4 — Horizontal stacks and substitute contributions
+
+- Contribution icons now overlap horizontally, extending left of the lineup player.
+- Substitutes show the same stacked goal and assist icons beside their names.
+- Browser regression verifies overlap geometry and mixed contributions at mobile and desktop widths.
+
+---
+
 # myTS v6.12.3 — Refined match icons
 
 - Replaced the rough custom goal and assist artwork with clean, professionally drawn soccer-ball and cleat silhouettes.
