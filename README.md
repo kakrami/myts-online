@@ -1,3 +1,11 @@
+# myTS v6.12.10 — Diagnostic collector startup fix
+
+- Fixed the interaction collector using a single-element query where a modal collection was required.
+- With no modal open, the old collector attempted `.map()` on `null`, interrupting captured clicks before Login or Account handlers could run.
+- The collector now always returns an array and is covered for zero, one, and closed-modal states.
+
+---
+
 # myTS v6.12.9 — Mobile interaction diagnostics
 
 - The existing Diagnostics download now includes a bounded 160-entry interaction trace for mobile sheet investigation.
