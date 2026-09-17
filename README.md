@@ -1,3 +1,13 @@
+# myTS v6.12.14 — Button-controlled mobile sheets
+
+- Removed swipe-to-dismiss and its entire pointer-capture/drag state machine.
+- Mobile sheets now rise automatically when opened and fall automatically when closed through native controls.
+- Opening and closing complete through `animationend`/`animationcancel`; there are no gesture delays, click suppressors, or interaction timers.
+- The overlay and navigation lock remain active until the closing animation completes, then focus returns to the opening control.
+- Account, detail, Trace, team, and season sheets share the same animation lifecycle.
+
+---
+
 # myTS v6.12.13 — Native input lifecycle rebuild
 
 - Removed the global synthetic touch activation system in full. Buttons, links, rows, menus, and dialogs now use their native `click` and keyboard activation paths exclusively.
