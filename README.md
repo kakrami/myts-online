@@ -1,3 +1,12 @@
+# myTS v6.12.7 — Gesture-aware sheet dismissal
+
+- Swipe dismissal now carries an explicit gesture context through the shared sheet lifecycle.
+- Gesture closes clear focus from the hidden sheet without restoring it to the opening item, preventing the first retap of that same item from being consumed.
+- Button, keyboard, Back, and accessibility-driven closes still restore focus to the opener normally.
+- The behavior is shared by entity sheets and modal sheets; mobile selection sheets retain the same one-tap reopening behavior.
+
+---
+
 # myTS v6.12.6 — Complete mobile sheet lifecycle
 
 - Bottom navigation is removed while a mobile detail, modal, or selection sheet is open, matching its inert interaction state.
