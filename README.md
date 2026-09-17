@@ -1,3 +1,14 @@
+# myTS v6.12.27 — Shared component corrections
+
+- Goal and assist badges now own their common foreground, background, border, and padding in the shared icon component. Removes redundant assist/timeline rules and lineup color overrides; local rules retain size and placement only.
+- Error toasts use the same danger foreground token as destructive buttons; attendance dividers use the shared line token.
+- Consolidates keyboard focus across links, buttons, fields, selects, summaries, and table sorting. Removes field outline suppression and search-specific important overrides. Clipped controls retain only their inset outline placement.
+- Consolidates loading spinner appearance and animation; reduced motion now covers both spinner sizes.
+- Preserves intentional fixed pitch/heatmap colors and responsive layout differences. No data, authentication, or rendering lifecycle changes.
+- Validation: script parsing and existing regressions passed. Browser visual verification remains unavailable in this environment.
+
+---
+
 # myTS v6.12.26 — Lineup contribution icons
 
 - Uses the same dark glyphs on white badges in every theme.
