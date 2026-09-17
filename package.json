@@ -1,6 +1,6 @@
 {
   "name": "myts",
-  "version": "6.13.3",
+  "version": "6.13.4",
   "private": true,
   "type": "module",
   "devDependencies": {
@@ -14,6 +14,7 @@
     "test:seasons": "node tests/season-context.mjs",
     "test:team-browse": "node tests/team-browse.mjs",
     "test:gotsport-transport": "node tests/gotsport-transport.mjs",
-    "test:indicators": "node tests/match-indicators.mjs"
+    "test:indicators": "node tests/match-indicators.mjs",
+    "test:team-navigation": "node tests/team-navigation.mjs"
   }
 }

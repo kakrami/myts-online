@@ -1,4 +1,4 @@
-# myTS v6.13.3 — Match result and team indicators
+# myTS v6.13.4 — Match result and team indicators
 
 - Shared W/L/D badges now accompany match scores in Schedule, Overview, Competitions, browsed team histories, head-to-head meetings and match details. Player match logs and report result cells use the same badge renderer. Existing exports retain their textual Result column.
 - Badges retain the app’s theme-aware green/red/neutral colors and include full accessible Win/Loss/Draw labels. The result belongs to the team being viewed; division fixtures label both participants independently to avoid an ambiguous single result.
@@ -1063,3 +1063,5 @@ Discovery begins when GotSport publishes a team match. This integration does not
 - Trace performance data and TeamSnap data contracts are unchanged.
 
 Validation: eight concurrent lanes, request caps, checkpoint/fallback recovery, auth/rate handling, and backlog-first scheduling tested. Account UI rendered in Chromium at 900px and 390px with no horizontal overflow or runtime errors; Data tools and file picker interactions checked. External icon-font loading was blocked in the isolated preview; production retains the existing Bootstrap Icons stylesheet.
+
+Team history navigation: shared team links open cached GotSport history by verified ID. Names without an ID open a prefilled search for explicit selection. Back restores the preceding sheet and scroll; browsing remains user initiated.
