@@ -1,3 +1,11 @@
+# myTS v6.12.8 — Immediate post-swipe retaps
+
+- Removed `preventDefault()` from sheet drag completion so mobile browsers do not start a coordinate-based ghost-click suppression window.
+- The shared gesture handler now identifies the completed pointer and suppresses only that pointer's synthetic click inside the sheet.
+- A new touch receives a new pointer identity and can reopen the same underlying item immediately, with no timeout or debounce.
+
+---
+
 # myTS v6.12.7 — Gesture-aware sheet dismissal
 
 - Swipe dismissal now carries an explicit gesture context through the shared sheet lifecycle.
