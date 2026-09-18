@@ -1,4 +1,4 @@
-# myTS v6.13.7 — Match result and team indicators
+# myTS v6.14.0 — Match result and team indicators
 
 - Shared W/L/D badges now accompany match scores in Schedule, Overview, Competitions, browsed team histories, head-to-head meetings and match details. Player match logs and report result cells use the same badge renderer. Existing exports retain their textual Result column.
 - Badges retain the app’s theme-aware green/red/neutral colors and include full accessible Win/Loss/Draw labels. The result belongs to the team being viewed; division fixtures label both participants independently to avoid an ambiguous single result.
@@ -1067,3 +1067,7 @@ Validation: eight concurrent lanes, request caps, checkpoint/fallback recovery, 
 Team history navigation: shared team links open cached GotSport history by verified ID. Names without an ID open a prefilled search for explicit selection. Back restores the preceding sheet and scroll; browsing remains user initiated.
 
 Head-to-head in team history uses verified GotSport participant IDs, our team perspective, shared source reconciliation, and all recorded seasons by default. Upcoming meetings are separate; custom dates and an own-team opponent picker are available.
+
+Shared public GotSport caching (6.14.0): backend history is keyed by GotSport team ID, with a five-minute freshness window on user opens; manual Refresh bypasses freshness but respects active leases and upstream backoff. Private recent-team lists retain their family scope. Existing snapshots migrate automatically, retaining the newest successful copy.
+
+While team history is visible, the existing foreground heartbeat checks today's division results about once per minute for unscored matches. Scored matches are rechecked no more often than five minutes because the API does not reliably distinguish posted scores from final scores. Division responses and leases are shared across viewers. Polling never fetches full history, runs no cron job, and stops on navigation or a hidden tab. Diagnostic exports include shared history and division checks. Saved history is retained on failures. Visual browser verification was unavailable; the release includes database, race, lifecycle and cross-team identity regression coverage.
