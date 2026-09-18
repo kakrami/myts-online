@@ -1,3 +1,15 @@
+# myTS v6.18.5 — Reduce D1 write usage
+
+- Directory division refreshes delete only identities absent from a verified nonempty response. They insert new teams and update changed evidence, preserving unchanged rows. Evidence and the job checkpoint still commit atomically with lease fencing. Empty or invalid responses retain saved teams. Ranking pagination retains its generation bookkeeping for stale-row removal.
+- Removed D1 sync heartbeat writes and their legacy diagnostic reader. Background status already lives in Durable Object storage. Fresh profile cache hits now read without issuing an insert.
+- Directory discovery pauses until the first midnight UTC after installing this release, because no reliable prior-day usage baseline exists. Existing indexed teams remain searchable. Subsequent days use a 15,000 D1 rows-written target, checked between atomic jobs; a final job may exceed the target. The existing alarm resumes discovery after UTC reset. Cron wakes cannot bypass the pause. TeamSnap, Trace and game refreshes are independent.
+- D1 result metadata is collected at the shared runtime boundary, including batches and queries returning one row. Daily totals and per-table workloads are stored in Durable Objects, not D1, and included under each `background_runtime.*.d1_usage` in Settings Diagnostics. API activity is included. Counters reset by UTC day and accumulate concurrent requests. They measure successful queries completed by this deployment; other apps, earlier deployments and abrupt process termination are not covered. This is not an account-wide hard quota guarantee.
+- No new D1 schema migration. Existing data, internal paths and UI remain intact. The ZIP filename is preserved; the app and package version are 6.18.5.
+
+Validation: native workerd/D1 fixture (8 teams): initial write 42 rows, unchanged refresh 2 checkpoint rows with zero team-evidence writes, one renamed team 6 rows. Runtime tests verify Worker startup, schema initialization, API forwarding and Diagnostics. Tests also cover budget pause/resume, cron re-entry, UTC reset, concurrent counter persistence, empty-response retention, removals, lease fencing and transaction rollback. Local runtime tests use compatibility date 2026-08-06 supported by the installed Miniflare; deployment configuration remains unchanged. Live account-wide savings require post-deployment metrics.
+
+---
+
 # myTS v6.18.4 — Correct Cloudflare logo transport
 
 The shared club-logo proxy used `redirect: "error"`, which workerd rejects before making an upstream request. This produced HTTP 502 / upstream_transport for every uncached logo. It now uses `manual`; the existing success-status check rejects redirects without following them. Shared profile identity, image validation and seven-day successful-image caching remain in place.

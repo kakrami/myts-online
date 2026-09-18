@@ -1,6 +1,6 @@
 {
   "name": "myts",
-  "version": "6.18.4",
+  "version": "6.18.5",
   "private": true,
   "type": "module",
   "devDependencies": {
@@ -27,6 +27,8 @@
     "test:club-logos": "node tests/club-logos.mjs",
     "test:team-profiles": "node tests/team-profiles.mjs",
     "test:logo-diagnostics": "node tests/logo-diagnostics.mjs",
-    "test:club-logo-runtime": "node tests/club-logo-runtime.mjs"
+    "test:club-logo-runtime": "node tests/club-logo-runtime.mjs",
+    "test:d1-usage": "node tests/d1-usage.mjs",
+    "test:d1-directory-runtime": "node tests/d1-directory-runtime.mjs"
   }
 }
