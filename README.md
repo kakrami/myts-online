@@ -1,4 +1,4 @@
-# myTS v6.17.0 — Team favorites and compact match cards
+# myTS v6.17.2 — Team-only favorites
 
 - Shared W/L/D badges now accompany match scores in Schedule, Overview, Competitions, browsed team histories, head-to-head meetings and match details. Player match logs and report result cells use the same badge renderer. Existing exports retain their textual Result column.
 - Badges retain the app’s theme-aware green/red/neutral colors and include full accessible Win/Loss/Draw labels. The result belongs to the team being viewed; division fixtures label both participants independently to avoid an ambiguous single result.
@@ -1135,3 +1135,19 @@ Favorites shows the combined games of followed teams with the existing Upcoming/
 Validation: production SQLite tests cover persistence, scope isolation, exact IDs, 30-second shared-cache reuse, duplicate division requests, new games, source failure retention, unfollow during a refresh, client deduplication, duplicate taps, undo, failed saves and family switching. Existing Favorites, team history, directory, navigation, H2H and match indicator tests pass. Real Chromium checks cover 320/390/768/1280px layouts, two-line names, card overflow, star click isolation, retained rows/undo, full-name headers, header star restoration and all three themes. Browser tests use controlled data/API responses; no live deployment was performed.
 
 Run `npm run test:team-favorites` and `npm run test:team-favorites-browser` after installing development dependencies/Playwright Chromium. An optional `BROWSER_EXECUTABLE` selects an installed Chromium executable.
+
+## 6.17.1 — Favorites UI consistency
+
+- Team dropdown precedes shared Upcoming/Past controls; removed permanent toolbar star and refresh. Failed updates provide Retry update.
+- Shared match cards show tiny read-only favorite markers, with no empty star buttons or score columns for unscored games. Team search and team details retain favorite actions.
+- Legacy saved-game remove/restore actions are labelled in match details; saved data is preserved.
+- Consolidated shared period sizing and shortened unconfirmed times to Time TBD.
+- Browser checks cover 320–1280px layouts, shared period styles, favorite retention and undo, and all themes.
+
+## 6.17.2 — Team-only favorites
+
+- Favorite/unfavorite actions are available only in team details; search and game cards have no favorite controls.
+- Removed the Favorites-specific retry button. Existing notifications and foreground refresh handle update failures.
+- Removed saved-match handlers, refresh logic, client state, and storage. Upgrade drops the obsolete match_favorites table; followed teams and shared histories remain intact.
+- Shared match time formatting uses TBD for missing, pending, and all-day kickoff times. Missing dates display TBD; posted dates and genuine midnight times are preserved.
+- Verified team persistence, shared-cache reuse, removal migration, API rejection of old match-saving requests, missing date/time cases, and mobile favorite/undo flows.
