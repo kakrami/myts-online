@@ -1,4 +1,4 @@
-# myTS v6.15.2 — Favorites and global team search
+# myTS v6.16.0 — Shared U7–U9 team directory
 
 - Shared W/L/D badges now accompany match scores in Schedule, Overview, Competitions, browsed team histories, head-to-head meetings and match details. Player match logs and report result cells use the same badge renderer. Existing exports retain their textual Result column.
 - Badges retain the app’s theme-aware green/red/neutral colors and include full accessible Win/Loss/Draw labels. The result belongs to the team being viewed; division fixtures label both participants independently to avoid an ambiguous single result.
@@ -1096,3 +1096,22 @@ While team history is visible, the existing foreground heartbeat checks today's 
 6.15.1 restores the shared centered icon-button layout for favorite stars. Unstarred rows remain available to re-star during the current Favorites visit; automatic result updates retain them. Changing the main tab or Upcoming/Past tab, or explicitly refreshing, clears those temporary rows. Backend removal is immediate; late responses cannot retain rows after a view boundary.
 
 6.15.2 replaces duplicated Upcoming/Past markup with one shared renderer and uses the common filter-toolbar style for Schedule, Competitions, Favorites, Team, team search and history filters. Competition controls now receive the same container, spacing and responsive sizing. Prior-season hiding, local-date filtering, and Favorites retention are preserved.
+
+6.15.3 shares exact match-to-division resolution between Favorites and team result updates. Matches without a bracket can use their exact published division ID; current bracket membership supersedes a saved division. Invalid or absent identity remains an error. Favorites division metadata now expires after five minutes and is refreshed on manual refresh. Regression coverage includes playoff score updates without bracket assignments.
+
+
+## 6.16.0 — Shared nationwide U7–U9 discovery
+
+The existing global team search now reads a shared D1 directory for U7–U9. A separate `directory` job on the existing MyTSRuntime Durable Object is awakened by the existing GotSport cron; no new binding, cron or client timer is required. Deployment starts collection automatically at the next GotSport cron (within five minutes). The initial nationwide pass fills progressively; no pre-populated national database is bundled. U10–U19 retain existing ranking search.
+
+Discovery enumerates every page of the public `/events/search` results for ages 7, 8 and 9, then reads event details and published divisions for those ages. It includes tournaments and leagues. Six national ranking queries (ages 7–9, boys/girls) also populate the index. Event IDs and team IDs are authoritative. Names do not establish identity. Collection never requests individual team histories, profiles or player rosters. Opening a selected team uses the existing on-demand shared history cache.
+
+The event endpoint was verified on September 18, 2026: it lists ongoing/upcoming events; passing a past month does not enumerate completed events. This implementation therefore cannot claim every U7–U9 team nationwide, historical-only teams, unpublished schedules, or younger teams appearing exclusively in older divisions. Previously discovered identities remain searchable when their events end. Current/past division labels describe observed participation, not verified registered team age. State searches include the event state for competition-derived entries and label it explicitly; they do not infer the team's home state. Coed divisions are clearly labelled and included in either gender search.
+
+D1 stores exact-ID evidence, name variants and resumable task checkpoints. Writes and page continuations commit atomically in batches, with set-based inserts to avoid per-team database requests. Leases fence stale writes; source rate limits pause the collector. Each alarm performs at most three provider requests. Event/ranking enumeration repeats daily; non-empty divisions normally repeat weekly. Completed published divisions stop after the end-date grace period; empty schedules retry daily until 90 days after the event end. Failed requests retain evidence and back off. No team history refresh is added to the scheduler.
+
+Diagnostics include directory counts, catalog page progress, checked/error task counts, and up to 20 classified task failures. The existing results card displays partial-coverage/building status. Search returns a single deterministic paginated list deduplicated by exact team ID, with optional name and State filters.
+
+Validation: `npm run test:team-directory` executes the production collector/search functions against SQLite, with real public responses from three Nevada U8 divisions (21 distinct teams). It tests ranking union, pagination, playing-up labels, interruptions, safe replay, empty/error retention, rate-limit recovery, leases/fencing, bounded bulk writes, terminal events and shared playoff validation. Existing history, Favorites, navigation, H2H, tabs and transport tests pass. Browser visual verification and a deployed nationwide collection were not performed.
+
+Platform references: https://developers.cloudflare.com/d1/platform/limits/ and https://developers.cloudflare.com/d1/worker-api/d1-database/ .
