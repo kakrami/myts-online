@@ -1,4 +1,4 @@
-# myTS v6.14.5 — Match result and team indicators
+# myTS v6.15.0 — Favorites and global team search
 
 - Shared W/L/D badges now accompany match scores in Schedule, Overview, Competitions, browsed team histories, head-to-head meetings and match details. Player match logs and report result cells use the same badge renderer. Existing exports retain their textual Result column.
 - Badges retain the app’s theme-aware green/red/neutral colors and include full accessible Win/Loss/Draw labels. The result belongs to the team being viewed; division fixtures label both participants independently to avoid an ambiguous single result.
@@ -1081,3 +1081,14 @@ While team history is visible, the existing foreground heartbeat checks today's 
 6.14.4 uses the shared load-state renderer for team history and H2H. Empty results require a successful snapshot; refresh keeps saved content visible and uses the existing icon-button style at the end of the filter toolbar. The separate status button was removed. Failed first loads show Retry in the content area; failed refreshes retain saved data and use the existing notification pattern.
 
 6.14.5 removes inferred and remembered name-to-team navigation mappings. Missing or conflicting GotSport identities use the existing history/H2H view with exact-name local games and no remote requests. Local history defaults to all past games. Fixture-derived links require matching full opponent names and unambiguous reconciliation. Standalone team search remains available. The shared tab-ID correction is retained.
+
+
+## v6.15.0
+
+- The global header opens the existing team search. Theme and Reports are in Settings; Favorites replaces Reports in primary navigation.
+- Shared match rows and details expose star actions. Favorites use the existing Upcoming/Past dates and neutral home/away match presentation across all seasons of the selected dashboard.
+- Favorites are stored in D1 per dashboard and authenticated identity: owner or shared viewer dataset. Devices using the same viewer link share that watchlist; the app does not have individual viewer accounts. Owner and viewer lists are separate.
+- GotSport matches must exist in the server's saved team or competition data with matching event, match, and participant IDs. Local TeamSnap/Trace games retain a minimal snapshot without guessed external IDs.
+- While Favorites is visible, the existing foreground heartbeat checks for results. Today's unscored games use the shared 60-second division cache; other active saved games use five minutes. Scored games older than seven days and cancelled games require manual refresh for further corrections. No team-history downloads or background scheduler are added.
+- Unavailable, removed, or reassigned games retain saved information and produce an actionable update message. Refresh cannot recreate deleted favorites. At most 100 saved games per watchlist.
+- Tests: `npm run test:favorites`, plus existing team navigation, H2H, shared results, tabs, match indicators, and team browsing suites. Visual browser verification was unavailable.
