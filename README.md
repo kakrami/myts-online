@@ -1,4 +1,4 @@
-# myTS v6.15.0 — Favorites and global team search
+# myTS v6.15.1 — Favorites and global team search
 
 - Shared W/L/D badges now accompany match scores in Schedule, Overview, Competitions, browsed team histories, head-to-head meetings and match details. Player match logs and report result cells use the same badge renderer. Existing exports retain their textual Result column.
 - Badges retain the app’s theme-aware green/red/neutral colors and include full accessible Win/Loss/Draw labels. The result belongs to the team being viewed; division fixtures label both participants independently to avoid an ambiguous single result.
@@ -1092,3 +1092,5 @@ While team history is visible, the existing foreground heartbeat checks today's 
 - While Favorites is visible, the existing foreground heartbeat checks for results. Today's unscored games use the shared 60-second division cache; other active saved games use five minutes. Scored games older than seven days and cancelled games require manual refresh for further corrections. No team-history downloads or background scheduler are added.
 - Unavailable, removed, or reassigned games retain saved information and produce an actionable update message. Refresh cannot recreate deleted favorites. At most 100 saved games per watchlist.
 - Tests: `npm run test:favorites`, plus existing team navigation, H2H, shared results, tabs, match indicators, and team browsing suites. Visual browser verification was unavailable.
+
+6.15.1 restores the shared centered icon-button layout for favorite stars. Unstarred rows remain available to re-star during the current Favorites visit; automatic result updates retain them. Changing the main tab or Upcoming/Past tab, or explicitly refreshing, clears those temporary rows. Backend removal is immediate; late responses cannot retain rows after a view boundary.
