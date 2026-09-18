@@ -1,3 +1,13 @@
+# myTS v6.18.6 — Shared own-team badge and grouped Favorites
+
+- The shared club badge uses a theme-aware outline for the connected team's verified GotSport ID, including its missing-logo fallback. Removed the separate own-team people icons and pills. The badge exposes Your team to assistive technology without adding visible text. Hydration updates the outline when team context changes.
+- Favorites groups existing cached game records by followed team, using the existing competition card, native animated disclosure and shared match row. Groups start open and retain their state across updates and full rerenders, scoped to the current family/viewer. A match between two followed teams appears in both groups using one shared record.
+- Existing team filter, period controls, sorting, team-details favorite actions and unfavorite retention remain. Loading and empty states render per group. No backend, fetching, caching, D1 or schema changes.
+
+Validation: browser checks at 320/390/768/1280 px; light, dark and soccer themes; two-team grouping, shared matches, collapse/expand persistence, filter, loading/empty states, own-team switching, broken-logo fallback, favorite/unfavorite/undo and search/detail navigation. Fixtures use controlled API and image responses. Existing favorite and result-indicator tests pass. Archive filename and internal paths retained; visible/package version is 6.18.6.
+
+---
+
 # myTS v6.18.5 — Reduce D1 write usage
 
 - Directory division refreshes delete only identities absent from a verified nonempty response. They insert new teams and update changed evidence, preserving unchanged rows. Evidence and the job checkpoint still commit atomically with lease fencing. Empty or invalid responses retain saved teams. Ranking pagination retains its generation bookkeeping for stale-row removal.
