@@ -1,4 +1,4 @@
-# myTS v6.18.0 — Club logos
+# myTS v6.18.1 — Shared team display
 
 - Shared W/L/D badges now accompany match scores in Schedule, Overview, Competitions, browsed team histories, head-to-head meetings and match details. Player match logs and report result cells use the same badge renderer. Existing exports retain their textual Result column.
 - Badges retain the app’s theme-aware green/red/neutral colors and include full accessible Win/Loss/Draw labels. The result belongs to the team being viewed; division fixtures label both participants independently to avoid an ambiguous single result.
@@ -1158,3 +1158,11 @@ Run `npm run test:team-favorites` and `npm run test:team-favorites-browser` afte
 - One badge renderer serves match cards, search results and team details; missing logos retain the existing fallback. Original colors and proportions remain consistent across themes.
 - Same-origin public image route accepts only GotSport team/organization logo paths and raster images, with seven-day shared edge/browser caching. Team-history profiles reuse seven-day metadata rather than fetching on every history refresh.
 - Verified real-source logo mapping, cache reuse, invalid sources and content types, mobile layouts, failure stability, navigation, and favorite/undo behavior.
+
+## 6.18.1 — Shared team display
+
+- Shared team-profile storage keyed by verified GotSport ID supplies canonical names and logos independently of game histories. Seven-day caching includes missing logos; leases deduplicate concurrent users, with failure backoff and prior-data retention.
+- One display resolver uses the connected team’s existing TeamSnap name for its verified ID and GotSport profile names for other teams. No hardcoded team names or guessed abbreviations.
+- Cards, search and team headers resolve profiles on demand, including older saved games without logo fields. Fixed-size badges use the same fallback for unavailable or failed images.
+- Profile lookup responds to view/collapsible visibility and preserves navigation, highlighting and favorite controls.
+- Tests cover stale game snapshots, shared cache reuse, missing logos, wrong-ID responses, concurrent requests, failed refreshes, mobile layouts and generic connected-team name changes.

@@ -1,6 +1,6 @@
 {
   "name": "myts",
-  "version": "6.18.0",
+  "version": "6.18.1",
   "private": true,
   "type": "module",
   "devDependencies": {
@@ -23,6 +23,7 @@
     "test:team-directory": "node tests/team-directory.mjs",
     "test:team-favorites": "node tests/team-favorites.mjs",
     "test:team-favorites-browser": "node tests/team-favorites-browser.cjs",
-    "test:club-logos": "node tests/club-logos.mjs"
+    "test:club-logos": "node tests/club-logos.mjs",
+    "test:team-profiles": "node tests/team-profiles.mjs"
   }
 }
