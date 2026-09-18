@@ -1,6 +1,6 @@
 {
   "name": "myts",
-  "version": "6.14.0",
+  "version": "6.14.1",
   "private": true,
   "type": "module",
   "devDependencies": {
@@ -17,6 +17,7 @@
     "test:indicators": "node tests/match-indicators.mjs",
     "test:team-navigation": "node tests/team-navigation.mjs",
     "test:h2h": "node tests/team-h2h.mjs",
-    "test:shared-results": "node tests/shared-results.mjs"
+    "test:shared-results": "node tests/shared-results.mjs",
+    "test:detail-tabs": "node tests/detail-tabs.mjs"
   }
 }
