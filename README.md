@@ -1,4 +1,4 @@
-# myTS v6.15.1 — Favorites and global team search
+# myTS v6.15.2 — Favorites and global team search
 
 - Shared W/L/D badges now accompany match scores in Schedule, Overview, Competitions, browsed team histories, head-to-head meetings and match details. Player match logs and report result cells use the same badge renderer. Existing exports retain their textual Result column.
 - Badges retain the app’s theme-aware green/red/neutral colors and include full accessible Win/Loss/Draw labels. The result belongs to the team being viewed; division fixtures label both participants independently to avoid an ambiguous single result.
@@ -1094,3 +1094,5 @@ While team history is visible, the existing foreground heartbeat checks today's 
 - Tests: `npm run test:favorites`, plus existing team navigation, H2H, shared results, tabs, match indicators, and team browsing suites. Visual browser verification was unavailable.
 
 6.15.1 restores the shared centered icon-button layout for favorite stars. Unstarred rows remain available to re-star during the current Favorites visit; automatic result updates retain them. Changing the main tab or Upcoming/Past tab, or explicitly refreshing, clears those temporary rows. Backend removal is immediate; late responses cannot retain rows after a view boundary.
+
+6.15.2 replaces duplicated Upcoming/Past markup with one shared renderer and uses the common filter-toolbar style for Schedule, Competitions, Favorites, Team, team search and history filters. Competition controls now receive the same container, spacing and responsive sizing. Prior-season hiding, local-date filtering, and Favorites retention are preserved.
