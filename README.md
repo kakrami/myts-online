@@ -1,4 +1,4 @@
-# myTS v6.16.0 — Shared U7–U9 team directory
+# myTS v6.17.0 — Team favorites and compact match cards
 
 - Shared W/L/D badges now accompany match scores in Schedule, Overview, Competitions, browsed team histories, head-to-head meetings and match details. Player match logs and report result cells use the same badge renderer. Existing exports retain their textual Result column.
 - Badges retain the app’s theme-aware green/red/neutral colors and include full accessible Win/Loss/Draw labels. The result belongs to the team being viewed; division fixtures label both participants independently to avoid an ambiguous single result.
@@ -1115,3 +1115,23 @@ Diagnostics include directory counts, catalog page progress, checked/error task 
 Validation: `npm run test:team-directory` executes the production collector/search functions against SQLite, with real public responses from three Nevada U8 divisions (21 distinct teams). It tests ranking union, pagination, playing-up labels, interruptions, safe replay, empty/error retention, rate-limit recovery, leases/fencing, bounded bulk writes, terminal events and shared playoff validation. Existing history, Favorites, navigation, H2H, tabs and transport tests pass. Browser visual verification and a deployed nationwide collection were not performed.
 
 Platform references: https://developers.cloudflare.com/d1/platform/limits/ and https://developers.cloudflare.com/d1/worker-api/d1-database/ .
+
+
+## 6.16.1 — Neutral fixture identity
+
+Fixed the shared GotSport side resolver comparing empty participant IDs as if they were a verified team identity. Favorites refresh could produce “GotSport assigned the same team to both sides of a match” for unresolved playoff fixtures. Missing viewing identity now produces a neutral fixture, while valid IDs are normalized before comparison. Genuine duplicate-team and registration conflicts remain rejected.
+
+The new regression reproduced the exact error against 6.16.0 before the fix. Repeated saved-Favorites refreshes now pass, alongside missing/numeric identity, one-known-participant and genuine-conflict tests. Shared results, history, team browsing and directory suites also pass. No UI layout or schema changes.
+
+
+## 6.17.0 — Follow teams and compact match cards
+
+Stars now follow teams, using exact GotSport IDs. They appear in search/recent results, the team-history header, and beside each identified team in shared game rows. Teams without verified IDs have no star. A full team name remains available in its history header; cards clamp names to two lines with ellipsis and preserve the actual spelling. No name guessing or abbreviation is introduced. Game cards use a left-hand month/day/time block and two team rows with aligned scores, W/D/L indicators and stars. Older years appear beside the month. Secondary details occupy one clipped line and remain in game details. Shared toolbar sizing now prevents segmented controls overlapping adjacent selectors on narrow screens.
+
+Favorites shows the combined games of followed teams with the existing Upcoming/Past controls and an All teams/team selector. Today's games remain Upcoming until the local date changes, regardless of kickoff time. Games shared by two followed teams are deduplicated by event/match ID; fresher cached data wins. Existing individual game favorites remain accessible with remove/restore controls, rather than ambiguous game stars. Unfavoriting retains the current visit's rows for undo; changing tabs/period or manually refreshing clears that retention. Teams without games can be selected in the filter and unfavorited there.
+
+`team_favorites` stores the authenticated owner/viewer identity, team-family scope, verified team ID/name, revision and last check. Schema upgrade preserves existing saved games. Up to 20 teams can be followed per scope. All users reuse the existing shared GotSport history/results caches. Opening Favorites displays cached games and uses the existing foreground heartbeat to refresh up to three due teams per request. Missing histories continue on subsequent heartbeat checks. Ordinary full-history freshness stays five minutes; today's results reuse division checks. A fresh shared history also suppresses redundant result checks for the first minute. Manual Favorites refresh requests current result checks without forcing every team's full history download. No followed-team background jobs, private recent-history pollution, or new client timer is introduced. Unfollowing during a refresh cannot recreate the favorite.
+
+Validation: production SQLite tests cover persistence, scope isolation, exact IDs, 30-second shared-cache reuse, duplicate division requests, new games, source failure retention, unfollow during a refresh, client deduplication, duplicate taps, undo, failed saves and family switching. Existing Favorites, team history, directory, navigation, H2H and match indicator tests pass. Real Chromium checks cover 320/390/768/1280px layouts, two-line names, card overflow, star click isolation, retained rows/undo, full-name headers, header star restoration and all three themes. Browser tests use controlled data/API responses; no live deployment was performed.
+
+Run `npm run test:team-favorites` and `npm run test:team-favorites-browser` after installing development dependencies/Playwright Chromium. An optional `BROWSER_EXECUTABLE` selects an installed Chromium executable.
