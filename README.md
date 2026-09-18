@@ -1,4 +1,4 @@
-# myTS v6.14.3 — Match result and team indicators
+# myTS v6.14.4 — Match result and team indicators
 
 - Shared W/L/D badges now accompany match scores in Schedule, Overview, Competitions, browsed team histories, head-to-head meetings and match details. Player match logs and report result cells use the same badge renderer. Existing exports retain their textual Result column.
 - Badges retain the app’s theme-aware green/red/neutral colors and include full accessible Win/Loss/Draw labels. The result belongs to the team being viewed; division fixtures label both participants independently to avoid an ambiguous single result.
@@ -1077,3 +1077,5 @@ While team history is visible, the existing foreground heartbeat checks today's 
 6.14.2 reuses the existing detail facts, tab panel, match lists and text/icon actions for team history and H2H. Summary content is outside bordered match lists. Cross-season H2H dates include years. No new CSS components were added.
 
 6.14.3 resolves missing team links from unambiguous reconciled matches or explicitly saved choices. Fallback searches clear unrelated filters, infer editable age/gender from the tapped name, and automatically search when both are available. Explicit choices are saved per dashboard in browser storage; public game history remains shared in the backend.
+
+6.14.4 uses the shared load-state renderer for team history and H2H. Empty results require a successful snapshot; refresh keeps saved content visible and uses the existing icon-button style at the end of the filter toolbar. The separate status button was removed. Failed first loads show Retry in the content area; failed refreshes retain saved data and use the existing notification pattern.
