@@ -1,4 +1,4 @@
-# myTS v6.18.1 — Shared team display
+# myTS v6.18.2 — Search layout and logo diagnostics
 
 - Shared W/L/D badges now accompany match scores in Schedule, Overview, Competitions, browsed team histories, head-to-head meetings and match details. Player match logs and report result cells use the same badge renderer. Existing exports retain their textual Result column.
 - Badges retain the app’s theme-aware green/red/neutral colors and include full accessible Win/Loss/Draw labels. The result belongs to the team being viewed; division fixtures label both participants independently to avoid an ambiguous single result.
@@ -1166,3 +1166,11 @@ Run `npm run test:team-favorites` and `npm run test:team-favorites-browser` afte
 - Cards, search and team headers resolve profiles on demand, including older saved games without logo fields. Fixed-size badges use the same fallback for unavailable or failed images.
 - Profile lookup responds to view/collapsible visibility and preserves navigation, highlighting and favorite controls.
 - Tests cover stale game snapshots, shared cache reuse, missing logos, wrong-ID responses, concurrent requests, failed refreshes, mobile layouts and generic connected-team name changes.
+
+## 6.18.2 — Search layout and logo diagnostics
+
+- Search results use a content row instead of the obsolete three-column leaderboard layout. Shared row spacing and interaction styling remain consistent.
+- Team rows reserve the same badge space for verified and unresolved teams. A neutral shield replaces the people fallback.
+- Existing Diagnostics exports distinguish profile requests, missing logos, profile refresh errors, image delivery errors, browser decoding failures and successful image loads. Image failures receive a single bounded diagnostic HTTP check per source per session.
+- Verified the actual search form submission and team opening workflow at mobile/tablet widths across all themes, alongside favorites and history tests.
+- Live verification: GotSport LVSA image returned HTTP 200/image/jpeg. Deployed app health and logo routes were inaccessible from the verification environment (HTTP 403). The deployed logo failure is not claimed fixed; use Settings > Diagnostics after reproducing it with this version.
