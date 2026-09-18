@@ -1,3 +1,13 @@
+# myTS v6.18.4 — Correct Cloudflare logo transport
+
+The shared club-logo proxy used `redirect: "error"`, which workerd rejects before making an upstream request. This produced HTTP 502 / upstream_transport for every uncached logo. It now uses `manual`; the existing success-status check rejects redirects without following them. Shared profile identity, image validation and seven-day successful-image caching remain in place.
+
+Validation: `tests/club-logo-runtime.mjs` runs native workerd through Miniflare 4.20260730.0 (compatibility date 2026-08-06, the installed runtime's supported date). It reproduces the old 502 with zero upstream calls and checks corrected image delivery, repeated-viewer cache reuse, redirects, HTTP failures, invalid content types and invalid origins using a controlled upstream. This is local runtime verification, not deployed Cloudflare-to-GotSport verification. The application's deployment compatibility date is unchanged.
+
+Run `npm install` then `npm run test:club-logo-runtime`. Existing profile and diagnostic tests remain available. No database migration or reconnection is needed.
+
+---
+
 # myTS v6.18.3 — Preserve logo delivery diagnostics
 
 - Shared W/L/D badges now accompany match scores in Schedule, Overview, Competitions, browsed team histories, head-to-head meetings and match details. Player match logs and report result cells use the same badge renderer. Existing exports retain their textual Result column.

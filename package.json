@@ -1,11 +1,12 @@
 {
   "name": "myts",
-  "version": "6.18.3",
+  "version": "6.18.4",
   "private": true,
   "type": "module",
   "devDependencies": {
     "wrangler": "^4.68.0",
-    "playwright": "1.62.1"
+    "playwright": "1.62.1",
+    "miniflare": "4.20260730.0"
   },
   "scripts": {
     "test:workflows": "node tests/workflows.mjs",
@@ -25,6 +26,7 @@
     "test:team-favorites-browser": "node tests/team-favorites-browser.cjs",
     "test:club-logos": "node tests/club-logos.mjs",
     "test:team-profiles": "node tests/team-profiles.mjs",
-    "test:logo-diagnostics": "node tests/logo-diagnostics.mjs"
+    "test:logo-diagnostics": "node tests/logo-diagnostics.mjs",
+    "test:club-logo-runtime": "node tests/club-logo-runtime.mjs"
   }
 }
