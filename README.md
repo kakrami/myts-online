@@ -1,4 +1,4 @@
-# myTS v6.17.2 — Team-only favorites
+# myTS v6.18.0 — Club logos
 
 - Shared W/L/D badges now accompany match scores in Schedule, Overview, Competitions, browsed team histories, head-to-head meetings and match details. Player match logs and report result cells use the same badge renderer. Existing exports retain their textual Result column.
 - Badges retain the app’s theme-aware green/red/neutral colors and include full accessible Win/Loss/Draw labels. The result belongs to the team being viewed; division fixtures label both participants independently to avoid an ambiguous single result.
@@ -1151,3 +1151,10 @@ Run `npm run test:team-favorites` and `npm run test:team-favorites-browser` afte
 - Removed saved-match handlers, refresh logic, client state, and storage. Upgrade drops the obsolete match_favorites table; followed teams and shared histories remain intact.
 - Shared match time formatting uses TBD for missing, pending, and all-day kickoff times. Missing dates display TBD; posted dates and genuine midnight times are preserved.
 - Verified team persistence, shared-cache reuse, removal migration, API rejection of old match-saving requests, missing date/time cases, and mobile favorite/undo flows.
+
+## 6.18.0 — Club logos
+
+- Preserve ID-associated GotSport logos in shared match, directory, ranking-search and team-history data.
+- One badge renderer serves match cards, search results and team details; missing logos retain the existing fallback. Original colors and proportions remain consistent across themes.
+- Same-origin public image route accepts only GotSport team/organization logo paths and raster images, with seven-day shared edge/browser caching. Team-history profiles reuse seven-day metadata rather than fetching on every history refresh.
+- Verified real-source logo mapping, cache reuse, invalid sources and content types, mobile layouts, failure stability, navigation, and favorite/undo behavior.
