@@ -1,4 +1,4 @@
-# myTS v6.18.2 — Search layout and logo diagnostics
+# myTS v6.18.3 — Preserve logo delivery diagnostics
 
 - Shared W/L/D badges now accompany match scores in Schedule, Overview, Competitions, browsed team histories, head-to-head meetings and match details. Player match logs and report result cells use the same badge renderer. Existing exports retain their textual Result column.
 - Badges retain the app’s theme-aware green/red/neutral colors and include full accessible Win/Loss/Draw labels. The result belongs to the team being viewed; division fixtures label both participants independently to avoid an ambiguous single result.
@@ -1174,3 +1174,10 @@ Run `npm run test:team-favorites` and `npm run test:team-favorites-browser` afte
 - Existing Diagnostics exports distinguish profile requests, missing logos, profile refresh errors, image delivery errors, browser decoding failures and successful image loads. Image failures receive a single bounded diagnostic HTTP check per source per session.
 - Verified the actual search form submission and team opening workflow at mobile/tablet widths across all themes, alongside favorites and history tests.
 - Live verification: GotSport LVSA image returned HTTP 200/image/jpeg. Deployed app health and logo routes were inaccessible from the verification environment (HTTP 403). The deployed logo failure is not claimed fixed; use Settings > Diagnostics after reproducing it with this version.
+
+## 6.18.3 — Preserve logo delivery diagnostics
+
+- Separate image-load events from HTTP diagnostic results so repeat failures cannot overwrite response evidence.
+- Reuse the same diagnostic promise for each image source; exports await in-progress checks with a bounded network timeout.
+- Verified repeat errors, response metadata retention, pending exports and timeouts, plus mobile search and favorites workflows.
+- This release corrects diagnostics; deployed logo delivery remains unconfirmed.
