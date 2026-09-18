@@ -1,4 +1,4 @@
-# myTS v6.14.1 — Match result and team indicators
+# myTS v6.14.2 — Match result and team indicators
 
 - Shared W/L/D badges now accompany match scores in Schedule, Overview, Competitions, browsed team histories, head-to-head meetings and match details. Player match logs and report result cells use the same badge renderer. Existing exports retain their textual Result column.
 - Badges retain the app’s theme-aware green/red/neutral colors and include full accessible Win/Loss/Draw labels. The result belongs to the team being viewed; division fixtures label both participants independently to avoid an ambiguous single result.
@@ -1073,3 +1073,5 @@ Shared public GotSport caching (6.14.0): backend history is keyed by GotSport te
 While team history is visible, the existing foreground heartbeat checks today's division results about once per minute for unscored matches. Scored matches are rechecked no more often than five minutes because the API does not reliably distinguish posted scores from final scores. Division responses and leases are shared across viewers. Polling never fetches full history, runs no cron job, and stops on navigation or a hidden tab. Diagnostic exports include shared history and division checks. Saved history is retained on failures. Visual browser verification was unavailable; the release includes database, race, lifecycle and cross-team identity regression coverage.
 
 6.14.1 fixes shared tab enhancement overwriting view-owned IDs, which prevented team history from initializing. Existing IDs are preserved; generated IDs are unique and stable. Regression tests cover the original failure and repeated enhancement.
+
+6.14.2 reuses the existing detail facts, tab panel, match lists and text/icon actions for team history and H2H. Summary content is outside bordered match lists. Cross-season H2H dates include years. No new CSS components were added.
