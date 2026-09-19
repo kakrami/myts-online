@@ -1,3 +1,13 @@
+# myTS v6.18.15 — Stable source status and uniform management
+
+Settings now presents TeamSnap, GotSport and Trace with the same fixed status line and Manage action, including read-only details for viewers. Removed the appearing/disappearing notification strip, per-source inline progress blocks, and separate inline GotSport/Trace tools. Background status updates update existing nodes instead of rebuilding Settings, preserving its layout, focus and scroll.
+
+All three Manage actions use the existing source detail modal. TeamSnap contains sync/reconnect; GotSport contains team identity, logo, save/disconnect; Trace contains connection/reauthentication, sync and import/export. Existing authentication and logo sheets are reused. Dynamic error/progress/last-update text lives in a consistently sized scrollable detail region, keeping action controls stationary. Admin controls remain unavailable on viewer links. Explicit successful GotSport changes refresh management controls; a completed action does not reopen a dialog the user has closed.
+
+Validation: browser checks compare actual Settings positions/heights across loading/error/success/recovery for all three sources, light/dark/soccer themes and 320/390/768px widths; check repeated Manage opening, stable detail geometry, retained GotSport draft/focus, and viewer-only details. Existing season/filter/navigation and logo-upload workflows pass. Backend unchanged except release version. Not deployed; archive filename/internal paths retained.
+
+---
+
 # myTS v6.18.14 — Owner-uploaded team logos
 
 Settings → GotSport → Manage → Change logo opens the existing detail sheet with preview, Save, Cancel and Use GotSport logo. Only the installation owner can edit a logo, and the backend verifies that the submitted ID is still the connected team for that family. Viewing links have no upload controls or mutation permission.

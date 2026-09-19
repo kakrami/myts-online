@@ -1,6 +1,6 @@
 {
   "name": "myts",
-  "version": "6.18.14",
+  "version": "6.18.15",
   "private": true,
   "type": "module",
   "devDependencies": {
@@ -33,6 +33,7 @@
     "test:season-filters": "node tests/season-filters-browser.cjs",
     "test:season-classification": "node tests/season-classification.mjs",
     "test:team-logo-upload": "node tests/team-logo-upload.mjs",
-    "test:team-logo-upload-browser": "node tests/team-logo-upload-browser.cjs"
+    "test:team-logo-upload-browser": "node tests/team-logo-upload-browser.cjs",
+    "test:source-settings": "node tests/source-settings-browser.cjs"
   }
 }
