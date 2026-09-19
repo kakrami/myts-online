@@ -1,3 +1,17 @@
+## v6.18.26 — Other-team kit sources
+
+- Other teams use validated GotSport primary/secondary colors from the latest available color-bearing match, matched by exact participant ID. Ambiguous sides and missing/invalid colors are omitted.
+- Your team continues to use TeamSnap season kits and saved owner overrides. Both sources use the same jersey renderer. GotSport team colors are not treated as per-game uniform instructions.
+- Browser checks cover other-team colors in all themes and existing own-team seasonal editing/detail workflows. No schema changes. Not deployed.
+
+## v6.18.25 — Consistent jersey display and themed kit picker
+
+- Restore compact team overview kit presentation: jersey icons only, removing season text, kit-name columns and edit action. Kit editing stays in Settings alongside logo controls.
+- One shared jersey renderer serves team overview, game Uniform details and Settings previews/preset choices. Exact basic color names resolve to preset colors; saved colors take priority. Ambiguous names stay neutral with accessible labels/tooltips. Match kit lookup uses its own season.
+- Replace hex-entry editor with themed preset jersey buttons and expandable custom RGB sliders. No native color popup. Save, Cancel, remove and TeamSnap reset retain existing backend behavior.
+- Remove obsolete circular swatch CSS. Existing per-team/season storage and per-game source instructions remain intact.
+- Verified save/remove/reset/cancel, viewer restrictions, shared jersey output and long-name/three-kit overview at 320/390/768px in all themes. Inspected mobile overview, game details and picker screenshots. Not deployed.
+
 ## v6.18.24 — Season kits with owner overrides
 
 - Replace unreliable GotSport team-color display with season kits for the connected team, derived from unique TeamSnap game uniforms in the selected season. Deduplicate case and whitespace; never guess colors or home/away roles. Stats inclusion filters do not change the kit list.
