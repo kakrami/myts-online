@@ -1,3 +1,17 @@
+# myTS v6.18.9 — Shared season selections and canonical team names
+
+The funnel beside the season selector opens Included games using the existing sheet and native disclosure controls. Select game types, competitions, or individual events; mixed selections use indeterminate checkboxes. Apply commits selections and Reset restores all events. Preferences are local to the device and scoped by viewer path, team family, and season. New games inherit type/competition selections. Individual choices use source IDs so linked Trace, TeamSnap, and GotSport records share one decision.
+
+One inclusion predicate runs after source reconciliation and feeds season records, Trace totals, player statistics/heat maps, attendance, and reports. Raw source collections remain separate for schedule/history, matching, and individual game/player views. Practice and other event attendance can also be selected. Filtered seasonal pages and the funnel indicate active exclusions. Source refreshes retain the open filter's draft and disclosure state.
+
+Matched GotSport event metadata supplies league/tournament classification. Unmatched games are Friendly only within successful discovery coverage; ambiguous games, dates outside verified bounds, empty discovery, and incomplete initial updates remain Unclassified. Successful coverage is retained in the existing sync metadata during later failures, with no additional D1 writes or requests.
+
+Verified GotSport profiles provide the shared display name, followed by the connected GotSport name and then source labels. Removed the own-team TeamSnap override; selector, Overview, H2H and Settings use the shared resolver. Stable family keys and exact-ID matching remain unchanged.
+
+Validation: full frontend browser tests cover selection, persistence, team/season isolation, zero selection, reset, inherited selections, source aliases, player/record/attendance/report agreement, excluded match details, canonical-name hydration, and responsive layouts across all themes. Coverage tests verify date bounds, empty/partial discovery, saved snapshot retention and identity checks. Existing Favorites, H2H, result indicators, profile cache, historical discovery and season controls pass. Controlled API/image fixtures used. ZIP filename/internal paths preserved; app version 6.18.9.
+
+---
+
 # myTS v6.18.8 — Compact title stars and one match outcome
 
 Scoped sheet-header button sizing to header controls so it cannot enlarge the inline team favorite star. The shared star stays with the final name word, uses an 18px visible box and a 32px hit area without inflating title line spacing. The close control remains separate.
