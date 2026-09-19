@@ -1,3 +1,15 @@
+# myTS v6.18.10 — Shared layout and unobstructed update status
+
+- Read-only favorite stars now flow with the final word of the shared team name, like the team-details action. Removed the game-name line clamp so long names cannot clip the star. Marks remain read-only outside team details.
+- Included games lives inside the existing season menu, restoring header width. A filtered season uses the funnel indicator on that selector. Selection behavior and saved preferences are unchanged. The shared selector distinguishes its listbox options from supplementary actions.
+- Disclosure chevrons align with the first title line instead of centering across title and metadata.
+- Source status uses the existing Settings button. Full clickable source notices live in Settings, with no floating update notices covering match content. The shared modal opener places the newly opened dialog last, keeping update details above Settings with correct focus ordering.
+- Missing-logo identity diagnostics now record absent verified IDs and rejected opponent identities with source name, GotSport name, candidate ID and ambiguity. Existing profile/image-delivery diagnostics remain. The screenshot's missing Next Level logos are not claimed fixed: exact identity matching was not relaxed without evidence.
+
+Validation: native browser checks for season-menu/filter repeat use, saved stats filters, source failure -> Settings -> details -> close, top-dialog ordering, diagnostic capture, inline stars, team links, themes and 320/390/768/1280 px layouts. Existing Favorites, H2H and result tests pass. Controlled API/image fixtures used; production logo delivery remains unverified. No backend behavior changes. App version 6.18.10; ZIP filename/internal paths preserved.
+
+---
+
 # myTS v6.18.9 — Shared season selections and canonical team names
 
 The funnel beside the season selector opens Included games using the existing sheet and native disclosure controls. Select game types, competitions, or individual events; mixed selections use indeterminate checkboxes. Apply commits selections and Reset restores all events. Preferences are local to the device and scoped by viewer path, team family, and season. New games inherit type/competition selections. Individual choices use source IDs so linked Trace, TeamSnap, and GotSport records share one decision.
