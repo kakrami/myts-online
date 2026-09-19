@@ -1,3 +1,15 @@
+# myTS v6.18.11 — June selection and compact competition headers
+
+Include June pre-season is now a checkbox above the Included games checklist. Its draft controls which June events are available in that sheet; Apply commits it with the existing per-viewer/team/season selections, and closing discards the draft. Reset restores regular-season defaults (June off, other selections included). The former server preference is read only as a migration default until an explicit local choice is saved. Removed the Settings switch and its separate frontend save path.
+
+Raw seasonal events, Trace matches, and GotSport matches retain June data. The shared stats inclusion predicate now handles June, so records, attendance and player statistics agree while schedules and individual match details remain available. External team-history date ranges remain independent of this own-team stats preference.
+
+Competition headers use a shared grid for title, Schedule action, and metadata. Removed the 40px mobile action height from the title's layout, retaining its expanded touch target, and reduced the old tournament header padding. The chevron aligns with the title rather than the combined header height. This shared structure also serves Favorites group headers.
+
+Validation: browser checks include June draft/cancel/apply/reset, legacy-default override, records/Trace/attendance agreement, raw June match details, removed Settings control, season-menu reuse, and actual competition headers at 320/390/768px with repeated disclosure interactions. Existing season, H2H, result and Favorites checks pass. Browser uses controlled data. App version 6.18.11; archive filename/internal paths retained. No backend behavior changes.
+
+---
+
 # myTS v6.18.10 — Shared layout and unobstructed update status
 
 - Read-only favorite stars now flow with the final word of the shared team name, like the team-details action. Removed the game-name line clamp so long names cannot clip the star. Marks remain read-only outside team details.
