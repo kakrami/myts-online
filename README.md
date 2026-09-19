@@ -1,3 +1,13 @@
+# myTS v6.18.17 — GotSport team colors
+
+The shared GotSport match mapper now retains validated six-digit primary/secondary colors for both team IDs. Existing schedule, competition and shared team-history caches carry these fields without new endpoints, tables, polling or separate writes.
+
+Verified team details show a compact Team colors line with primary/secondary swatches and accessible hex labels. Colors are selected from the most recent dated matching team record in available history; ambiguous side identities, invalid CSS values and unknown teams are rejected. Missing colors say Not provided. The line keeps the same height during initial loading. Team colors are not presented as a match-specific kit assignment, and theme changes do not recolor them. Existing cached matches acquire fields on their normal GotSport refresh; no names, logos, or home/away defaults are used to invent colors. TeamSnap uniform extraction is not changed.
+
+Validation: shared mapping/publication and renderer checks cover home/away identity, missing/invalid colors, ambiguous sides and newer records. Browser checks pass for team-detail swatches across all themes and the existing responsive Favorites/navigation workflow. Not deployed.
+
+---
+
 # myTS v6.18.16 — Stable Settings icon and first-render custom logos
 
 Removed source-status icon substitution from the Settings button. Its sliders icon remains unchanged through loading, failures and recovery; accessible status text and source details still update.

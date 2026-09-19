@@ -1,6 +1,6 @@
 {
   "name": "myts",
-  "version": "6.18.16",
+  "version": "6.18.17",
   "private": true,
   "type": "module",
   "devDependencies": {
@@ -34,6 +34,7 @@
     "test:season-classification": "node tests/season-classification.mjs",
     "test:team-logo-upload": "node tests/team-logo-upload.mjs",
     "test:team-logo-upload-browser": "node tests/team-logo-upload-browser.cjs",
-    "test:source-settings": "node tests/source-settings-browser.cjs"
+    "test:source-settings": "node tests/source-settings-browser.cjs",
+    "test:team-colors": "node tests/team-colors.mjs"
   }
 }
