@@ -1,3 +1,17 @@
+# myTS v6.18.14 — Owner-uploaded team logos
+
+Settings → GotSport → Manage → Change logo opens the existing detail sheet with preview, Save, Cancel and Use GotSport logo. Only the installation owner can edit a logo, and the backend verifies that the submitted ID is still the connected team for that family. Viewing links have no upload controls or mutation permission.
+
+PNG/JPEG/WebP files up to 5 MB are decoded and resized proportionally to at most 256 px, preserving transparency, then encoded as PNG. The backend validates PNG structure, CRCs, dimensions and size. Each verified GotSport team ID has one override in D1, independent of season; no R2 binding is required. Schema migration creates the table automatically. This does not remove backgrounds embedded in source images.
+
+The shared team identity renderer prefers uploaded logos across cards, search, favorites, team details and H2H. Existing GotSport status responses include override metadata for all viewing links; existing refresh behavior distributes changes without a separate timer. Successful edits update the current page immediately. Versioned image URLs prevent stale browser-image reuse, and restoring removes the override so the normal GotSport resolver applies. Older status requests cannot overwrite a just-saved change. Logo URLs contain a random revision and are served as public image assets, as are GotSport badges.
+
+Only explicit saves/deletes write logo records. Status refreshes read small identity/revision metadata, never image contents. Image delivery reads the selected image and supplies browser cache headers. No directory crawling or source-sync logic changed.
+
+Validation: backend tests use SQLite to exercise actual handlers, admin authorization, changed-team rejection, malformed images, versioned delivery, replacement, removal and read-only retrieval. Browser checks cover Settings entry, preview/cancel, failed-save retention/retry, save/restore, fresh-viewer metadata, proportional resize/transparency and 320/390/768px layouts. Existing profile cache and Favorites/navigation/theme checks pass. Not deployed. ZIP filename and existing internal paths retained.
+
+---
+
 # myTS v6.18.13 — Transparent club badges and own-team glow
 
 Removed the white background and clipping from the shared club badge. Transparent source images retain their silhouette. The own-team indicator now uses a theme-accent drop shadow instead of an outline; the same indicator and accessible label survive missing-logo fallback and team switching. Source image pixels are unchanged, so embedded white backgrounds remain white. Badge dimensions and layout are unchanged.

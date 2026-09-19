@@ -1,6 +1,6 @@
 {
   "name": "myts",
-  "version": "6.18.13",
+  "version": "6.18.14",
   "private": true,
   "type": "module",
   "devDependencies": {
@@ -31,6 +31,8 @@
     "test:d1-usage": "node tests/d1-usage.mjs",
     "test:d1-directory-runtime": "node tests/d1-directory-runtime.mjs",
     "test:season-filters": "node tests/season-filters-browser.cjs",
-    "test:season-classification": "node tests/season-classification.mjs"
+    "test:season-classification": "node tests/season-classification.mjs",
+    "test:team-logo-upload": "node tests/team-logo-upload.mjs",
+    "test:team-logo-upload-browser": "node tests/team-logo-upload-browser.cjs"
   }
 }
