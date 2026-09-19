@@ -1,3 +1,9 @@
+## v6.18.22 — TeamSnap field inventory diagnostics
+
+- Added owner-only raw-field inventory at the existing sync boundary, before allowlisting, with safe logistics examples and retained/discarded classification. Captured in resumable checkpoints and completed metadata; no extra API requests or schema changes.
+- Included TEAMSNAP-INVENTORY.md: exact retention lists, UI gaps, historical evidence and explicit live-data limitations.
+- Tests cover repeated/resumed observations, nulls, privacy, and production sync completion while public records remain unchanged. No UI feature changes. Not deployed.
+
 ## v6.18.21 — Shared watch identity and compact notifications
 
 - Watch requests preserve both participant IDs and the bracket reference. The shared resolver checks either participant cache and verifies the exact event/match against the published division; cold-cache bracket lookup uses the same verification. Older requests can retrieve exact team history without name matching.
