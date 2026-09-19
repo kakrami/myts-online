@@ -1,3 +1,13 @@
+# myTS v6.18.8 — Compact title stars and one match outcome
+
+Scoped sheet-header button sizing to header controls so it cannot enlarge the inline team favorite star. The shared star stays with the final name word, uses an 18px visible box and a 32px hit area without inflating title line spacing. The close control remains separate.
+
+Shared match rows now render one W/L/D badge from an explicit team perspective: viewed team in history, connected team in head-to-head, and the followed team in each Favorites group. Both scores remain visible. Neutral division matches have no guessed perspective or duplicate outcome badges.
+
+Validation: browser checks cover header sizing at 320/390/768 px and opposite outcomes for a shared match in two Favorites groups, alongside existing themes, navigation, group expansion, favorite/undo and hydration workflows. Result tests cover exact IDs, missing identities, home/away, draws, missing scores and cancellations; H2H and favorites regressions pass. Browser checks use controlled API/image fixtures. Backend behavior is unchanged; archive filename and internal paths are preserved.
+
+---
+
 # myTS v6.18.7 — Consistent team stars and group taps
 
 Favorites group headings use the shared logo/name display without a team-history link; native summary behavior expands/collapses the group. Game-card team links remain interactive.
