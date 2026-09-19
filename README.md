@@ -1,3 +1,22 @@
+## v6.18.20 — Consistent match ordering and simpler cards
+
+- Shared game cards omit Attendance; it remains available in match details. Removed unused Attendance calculations from the shared card presentation model.
+- Upcoming uses ascending local date/time, including today. Past uses descending date/time. Unknown times follow known times on their date; unknown dates sort last. Removed the special reverse ordering for today's fixtures.
+- Schedule, Competitions, Favorites and browsed team histories use the shared period comparator. Overview upcoming and recent games use the same ordering rules. Today's completed games remain under Upcoming as requested.
+- Validation: schedule-order and season-context tests pass, including completed games today, TBD dates/times, repeated switching and previous seasons. Browser workflow checks confirm Attendance remains in match details and is absent from shared cards.
+- No backend/schema changes. Not deployed.
+
+## v6.18.19 — Shared match details and fixture-based watching
+
+- Assigned, neutral and unassigned tournament matches now use the same match-detail renderer. The former tournament renderer is replaced by a navigation adapter. Team typography, score/vs, metadata and action placement are shared; attendance and player sections depend on actual data. Round, field, status, address and schedule source use the same detail patterns.
+- Bracket placeholders are plain participant labels, not team-history links. Neutral fixtures show the home/away score without attributing a win or loss to your team. Cancelled games retain their cancellation state even when schedule details are incomplete.
+- Watching uses the event/match identity and a server-verified division. No participant identity is required, so a final can be watched before qualification. Assignments, times, scores and cancellation update the same watched fixture.
+- Watched games read the existing shared division-result cache. Refresh jobs are deduplicated by division and share the bounded Favorites refresh budget with followed teams. Pending games today use the existing one-minute result interval; other fixtures use five minutes. Fresh results require no database writes. No new timers or background jobs.
+- Source payloads are normalized before replacing the shared cache; transport and malformed-data failures retain the prior valid response. A removed fixture remains labelled as no longer listed, with its saved snapshot available.
+- Schema adds division_json to watched_games. Existing watches remain readable and acquire verified division metadata during their next Favorites refresh; identities and initial snapshots are preserved.
+- Validation: watched-fixtures.mjs exercises an unassigned final through assignment, rescheduling, scoring, cancellation, removal, failed/malformed responses, shared-cache reuse, viewer isolation, removal during refresh, and existing-watch migration. Shared-results and team-favorites suites pass. Browser checks verify the common renderer, conditional Attendance, neutral scores, placeholder links, watch identity and responsive layouts across light/dark/soccer themes.
+- Not deployed.
+
 ## v6.18.18 — Watched games in Favorites
 
 - Favorites contains a Watched games disclosure alongside existing followed-team groups. Every new group starts collapsed; background rendering preserves the current disclosure state.
