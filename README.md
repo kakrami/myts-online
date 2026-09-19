@@ -1,3 +1,14 @@
+## v6.18.18 — Watched games in Favorites
+
+- Favorites contains a Watched games disclosure alongside existing followed-team groups. Every new group starts collapsed; background rendering preserves the current disclosure state.
+- Watch game / Watching game in GotSport match details uses a bookmark, separate from team stars. Cards use a small read-only bookmark. Matches need confirmed GotSport event, match and participating-team IDs; unsupported local-only games and unresolved placeholders do not offer an action that cannot be saved.
+- Watch references are persisted by authenticated owner/viewer identity and family. Match IDs are verified against server-held source data; submitted scores/names are never trusted. Duplicate saves are idempotent. There is a 100-game limit per scope.
+- Watched games read the same shared history cache as team browsing and following. The existing bounded, visible-Favorites refresh checks watched and followed teams together, including today's results. Watching does not follow either team, schedule a new background job, or write match snapshots repeatedly.
+- Updated times, teams, cancellations and scores come from the same match identity. If a later successful history no longer contains it, the retained record is labelled “No longer listed by GotSport”.
+- Unwatching retains the visible card for undo until changing view/period or explicitly refreshing. Existing team retention remains unchanged.
+- Validation: backend SQLite tests cover persistence, scope separation, identity rejection, duplicate watches, current scores/reschedules, watch-only cache reuse and existing following behavior. Browser tests cover collapsed defaults, shared disclosure state, details-to-watch-to-card navigation, removal/undo and responsive layouts. Worker syntax check passes.
+- Schema migration creates watched_games without changing existing team favorites or cache data. Not deployed.
+
 # myTS v6.18.17 — GotSport team colors
 
 The shared GotSport match mapper now retains validated six-digit primary/secondary colors for both team IDs. Existing schedule, competition and shared team-history caches carry these fields without new endpoints, tables, polling or separate writes.
