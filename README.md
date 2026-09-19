@@ -1,3 +1,13 @@
+# myTS v6.18.16 — Stable Settings icon and first-render custom logos
+
+Removed source-status icon substitution from the Settings button. Its sliders icon remains unchanged through loading, failures and recovery; accessible status text and source details still update.
+
+The authenticated bootstrap response now includes the authoritative logo-override metadata. The existing API response handler applies it before bootstrap resolves and before team rendering starts, so uploaded logos take priority on the first render, including a fresh viewing session. Images still download normally, but the GotSport logo is no longer used while waiting for a later status request. Existing versioned image caching, save/reset behavior and background metadata refresh remain. No new polling or database writes.
+
+Validation: actual bootstrap handler returns the saved override; browser tests apply bootstrap before first team render and verify upload/reset flows. Settings geometry tests also assert that the sliders icon remains unchanged for all source transitions, themes and tested widths. Not deployed; archive filename/internal paths retained.
+
+---
+
 # myTS v6.18.15 — Stable source status and uniform management
 
 Settings now presents TeamSnap, GotSport and Trace with the same fixed status line and Manage action, including read-only details for viewers. Removed the appearing/disappearing notification strip, per-source inline progress blocks, and separate inline GotSport/Trace tools. Background status updates update existing nodes instead of rebuilding Settings, preserving its layout, focus and scroll.
