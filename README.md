@@ -1,3 +1,11 @@
+# myTS v6.18.13 — Transparent club badges and own-team glow
+
+Removed the white background and clipping from the shared club badge. Transparent source images retain their silhouette. The own-team indicator now uses a theme-accent drop shadow instead of an outline; the same indicator and accessible label survive missing-logo fallback and team switching. Source image pixels are unchanged, so embedded white backgrounds remain white. Badge dimensions and layout are unchanged.
+
+Validation: existing browser checks cover themes, mobile widths, team switching, fallback and navigation, with shared-style assertions updated for transparent badges and unclipped glows. No backend behavior changes.
+
+---
+
 # myTS v6.18.12 — Verified fixture identity for club badges
 
 A uniquely reconciled fixture now retains verified opponent identity when its source names agree under the existing fixture normalization, including parenthesized US state labels. Previously reconciliation accepted these fixtures but presentation independently rejected the opponent ID because the source strings differed. The shared opponent identity resolver now carries the verified GotSport ID/name/logo into game rows, favorites, team history and H2H navigation. No team-specific aliases or fuzzy identity lookup were added.
