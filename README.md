@@ -1,3 +1,11 @@
+## v6.18.21 — Shared watch identity and compact notifications
+
+- Watch requests preserve both participant IDs and the bracket reference. The shared resolver checks either participant cache and verifies the exact event/match against the published division; cold-cache bracket lookup uses the same verification. Older requests can retrieve exact team history without name matching.
+- Repeated division prefixes are normalized by one presentation helper.
+- Shared notifications remain fixed overlays. Details expand on demand; errors stay dismissible and do not shift page content.
+- Validation: watched-fixtures and team-favorites suites pass. Browser checks cover shared details, watch/unwatch, retained state, responsive layouts/themes, request identity, compact error expansion/dismissal and stable content geometry.
+- No schema changes. Not deployed.
+
 ## v6.18.20 — Consistent match ordering and simpler cards
 
 - Shared game cards omit Attendance; it remains available in match details. Removed unused Attendance calculations from the shared card presentation model.
