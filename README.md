@@ -1,3 +1,13 @@
+# myTS v6.18.12 — Verified fixture identity for club badges
+
+A uniquely reconciled fixture now retains verified opponent identity when its source names agree under the existing fixture normalization, including parenthesized US state labels. Previously reconciliation accepted these fixtures but presentation independently rejected the opponent ID because the source strings differed. The shared opponent identity resolver now carries the verified GotSport ID/name/logo into game rows, favorites, team history and H2H navigation. No team-specific aliases or fuzzy identity lookup were added.
+
+Identity proof requires consistent fixture evidence, normalized names, no score conflicts and no same-source identity conflict. Ambiguous groups, distinct squads and invalid/same-side team IDs remain unresolved. Existing diagnostics record whether fixture identity was verified. No backend behavior, database writes or polling changes.
+
+Validation: both diagnosed Next Level name variants, reversed home/away, ambiguous candidates, conflicting scores and different Downtown squads pass shared reconciliation/H2H tests. Result indicators pass. Controlled browser tests verify the card-to-details team ID and badge, plus existing season/filter/theme/layout workflows. Production image delivery has not been rechecked. The older isolated team-navigation VM harness lacks a shared renderer dependency; browser navigation is covered instead. Archive filename/internal paths retained; app version 6.18.12.
+
+---
+
 # myTS v6.18.11 — June selection and compact competition headers
 
 Include June pre-season is now a checkbox above the Included games checklist. Its draft controls which June events are available in that sheet; Apply commits it with the existing per-viewer/team/season selections, and closing discards the draft. Reset restores regular-season defaults (June off, other selections included). The former server preference is read only as a migration default until an explicit local choice is saved. Removed the Settings switch and its separate frontend save path.
