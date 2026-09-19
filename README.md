@@ -1,3 +1,13 @@
+# myTS v6.18.7 — Consistent team stars and group taps
+
+Favorites group headings use the shared logo/name display without a team-history link; native summary behavior expands/collapses the group. Game-card team links remain interactive.
+
+Favorite marks now belong to the shared team-name renderer, including hydration. Removed duplicate surface-level stars. Team details use one smaller actionable star immediately after the name, kept with its final word when wrapping, with a 32px target. Other team-name stars are read-only and shown only when favorited. The close control remains separate.
+
+Validation: browser tests cover tapping the group name, header star placement, no duplicate marks, favorite/unfavorite/undo, grouped state retention, shared matches, team switching, search/detail navigation, themes and responsive layouts. Existing favorite and match-result regressions pass. Controlled API/image fixtures were used. No backend behavior changes; filename/internal paths retained, app version 6.18.7.
+
+---
+
 # myTS v6.18.6 — Shared own-team badge and grouped Favorites
 
 - The shared club badge uses a theme-aware outline for the connected team's verified GotSport ID, including its missing-logo fallback. Removed the separate own-team people icons and pills. The badge exposes Your team to assistive technology without adding visible text. Hydration updates the outline when team context changes.
