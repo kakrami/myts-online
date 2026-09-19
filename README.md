@@ -1,3 +1,18 @@
+## v6.18.24 — Season kits with owner overrides
+
+- Replace unreliable GotSport team-color display with season kits for the connected team, derived from unique TeamSnap game uniforms in the selected season. Deduplicate case and whitespace; never guess colors or home/away roles. Stats inclusion filters do not change the kit list.
+- Edit kits alongside Change logo in GotSport Manage, or from the connected team's overview. Owners can add/rename/remove kits and assign optional hex swatches; Save and Cancel follow existing sheet controls. Use TeamSnap kits removes the override.
+- Save overrides by team family and season in the backend. Explicit empty lists are preserved; sync cannot overwrite owner choices. Viewer team data includes saved kits; editing requires owner authorization. Protect against older in-flight team responses overwriting a successful save.
+- Add team_kit_overrides through the existing schema lifecycle. No changes to per-game Uniform or Arrival time.
+- Backend and browser workflow checks pass for validation, seasonal isolation, source deduplication, save/remove/reset, empty lists and viewer restrictions. Mobile editor inspected. Not deployed.
+
+## v6.18.23 — TeamSnap arrival time and uniform
+
+- Retain verified arrival_date, minutes_to_arrive_early and uniform fields through the shared event sync and cache. Explicit null/empty source updates clear saved values.
+- Show Arrival time and Uniform in the existing shared game overview facts. Uses the same local-time formatter as kickoff and the source uniform text. Missing/invalid arrival values and blank uniforms are omitted; no inferred kit colors or arrival times.
+- Existing schedule cards and other details remain unchanged. Values populate with the next normal TeamSnap sync. No schema change.
+- Sync and browser regression checks passed, including repeated opening, missing/invalid/cleared values, and existing responsive/theme workflows. Not deployed.
+
 ## v6.18.22 — TeamSnap field inventory diagnostics
 
 - Added owner-only raw-field inventory at the existing sync boundary, before allowlisting, with safe logistics examples and retained/discarded classification. Captured in resumable checkpoints and completed metadata; no extra API requests or schema changes.
