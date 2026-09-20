@@ -1,43 +1,9 @@
 {
   "name": "myts",
-  "version": "6.18.27",
+  "version": "6.18.28",
   "private": true,
   "type": "module",
   "devDependencies": {
-    "wrangler": "^4.68.0",
-    "playwright": "1.62.1",
-    "miniflare": "4.20260730.0"
-  },
-  "scripts": {
-    "test:workflows": "node tests/workflows.mjs",
-    "test:trace": "node tests/trace-sync.mjs",
-    "test:gotsport": "node tests/gotsport-history.mjs",
-    "test:seasons": "node tests/season-context.mjs",
-    "test:team-browse": "node tests/team-browse.mjs",
-    "test:gotsport-transport": "node tests/gotsport-transport.mjs",
-    "test:indicators": "node tests/match-indicators.mjs",
-    "test:team-navigation": "node tests/team-navigation.mjs",
-    "test:h2h": "node tests/team-h2h.mjs",
-    "test:shared-results": "node tests/shared-results.mjs",
-    "test:detail-tabs": "node tests/detail-tabs.mjs",
-    "test:favorites": "node tests/favorites.mjs",
-    "test:team-directory": "node tests/team-directory.mjs",
-    "test:team-favorites": "node tests/team-favorites.mjs",
-    "test:team-favorites-browser": "node tests/team-favorites-browser.cjs",
-    "test:club-logos": "node tests/club-logos.mjs",
-    "test:team-profiles": "node tests/team-profiles.mjs",
-    "test:logo-diagnostics": "node tests/logo-diagnostics.mjs",
-    "test:club-logo-runtime": "node tests/club-logo-runtime.mjs",
-    "test:d1-usage": "node tests/d1-usage.mjs",
-    "test:d1-directory-runtime": "node tests/d1-directory-runtime.mjs",
-    "test:season-filters": "node tests/season-filters-browser.cjs",
-    "test:season-classification": "node tests/season-classification.mjs",
-    "test:team-logo-upload": "node tests/team-logo-upload.mjs",
-    "test:team-logo-upload-browser": "node tests/team-logo-upload-browser.cjs",
-    "test:source-settings": "node tests/source-settings-browser.cjs",
-    "test:team-colors": "node tests/team-colors.mjs",
-    "test:watched-fixtures": "node tests/watched-fixtures.mjs",
-    "test:schedule-order": "node tests/schedule-order.mjs",
-    "test:match-views": "node tests/match-views-browser.cjs"
+    "wrangler": "^4.68.0"
   }
 }
