@@ -1,4 +1,4 @@
-# myTS 6.19.4
+# myTS 6.19.5
 
 ## Viewing followed teams
 
@@ -9,6 +9,17 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.19.5 — Bookmarks and shared match details
+
+- Renamed the saved-game tab and page to Bookmarks, with a bookmark navigation icon. Existing storage keys and saved records remain unchanged. Team stars still manage followed teams.
+- The existing game bookmark action is now an icon at the summary card's top-left, beside the date, with a 44px touch target, outline/filled state, and accessible action labels. Removed the large Watch game button.
+- Both team labels align consistently beside their logos. A result indicator is associated with the relevant score instead of appearing beside the date.
+- Venue, field, and linked address are grouped in the shared summary. GotSport remains a source link; the redundant GotSport source fact is removed. TeamSnap attendance source remains identified when applicable.
+- Live recheck of Next Level Soccer's team profile found a club name and state, but no separate club ID. Abbreviation coverage was not expanded with unverified associations; existing verified abbreviations and corrections remain intact.
+- Browser checks cover bookmark toggling/labels, result placement, grouped location, TBD participants, navigation naming, three themes at 320/390/768px, and persistent reload/access behavior. No database migration is required for this release.
+
+
 
 ### 6.19.4 — Restore the dashboard on refresh
 
