@@ -1,4 +1,4 @@
-# myTS 6.20.1
+# myTS 6.20.3
 
 ## Viewing followed teams
 
@@ -9,6 +9,18 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.20.3 — Schedule gestures and calendar
+
+- Schedule Day supports left/right swipes on the match list and date navigation, advancing one day. Vertical pan/pinch and screen-edge gestures remain native. Recognized horizontal gestures suppress their associated click; subsequent taps remain enabled.
+- Date taps, arrows, Today, swipes and calendar selection share one date-change function. Content uses a cancellable 150ms slide/fade and temporarily retains its prior height; reduced motion skips animation. Refreshes preserve Schedule containers and defer during active gestures.
+- Replaced the browser date input with the existing app sheet: month navigation, selected/today states, event dots and season bounds. Existing close/back behavior is retained.
+- Verified Chromium touch emulation, direction changes, vertical movement, cancellation, reduced motion, calendar selection, mobile layouts and packaged page startup. Physical-phone behavior has not been verified. No backend/schema changes.
+
+### 6.20.2 — Playoffs in Matches
+
+- Removed Bracket tab. Potential playoff slots appear chronologically in Matches, including under Our team, with original placeholder names and round labels. They remain unconfirmed until the source resolves them; no qualification is inferred. Other unconfirmed fixtures retain their existing disclosure.
+- Saved Bracket selection falls back to Matches. Browser checks cover both team filters, visibility without expanding Unconfirmed, tab keyboard/navigation and mobile layouts.
 
 ### 6.20.1 — Compact shared navigation
 
