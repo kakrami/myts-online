@@ -1,4 +1,4 @@
-# myTS 6.19.7
+# myTS 6.19.11
 
 ## Viewing followed teams
 
@@ -9,6 +9,42 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.19.11 — Logo-backed compact team identities
+
+- Shared team rendering only removes the club prefix when a supported logo is available. Missing or failed images fall back to the full club/team name; changed logo URLs can recover normally. Uploaded club logos retain precedence.
+- Team selector selected value and options, plus bookmark team filtering, now use the same logo/name renderer as matches and standings. The selector no longer overwrites that markup during identity refreshes. Non-team selectors keep their existing behavior.
+- Text-only page subtitles and H2H explanatory text use full names, avoiding ambiguous bare identifiers. Search and team overview retain their full-name display.
+- Browser checks cover selector rendering/hydration, image failure and recovery, full-name fallback, mobile widths, saved reloads and rapid team switching. Existing match and H2H checks pass. No database or deployment configuration changes.
+
+
+### 6.19.10 — Copy team name
+
+- Team overview header adds a compact copy icon beside the full name/favorite star. Other team labels and game cards stay unchanged.
+- Copies the complete club/team name, including after profile updates; locally known teams copy their original name.
+- Uses existing icon-button styling, a 44px transparent tap target, accessible labels and a brief fixed-size checkmark after success. Clipboard denial uses the existing error notification.
+- Browser checks cover full/local names, hydration, repeated copying, denied clipboard access, stable confirmation geometry and mobile header widths. No schema or configuration changes.
+
+
+### 6.19.9 — Match head-to-head and compact bookmark
+
+- Moved Head-to-head out of team overview into match details. Compares the match's exact two team identities using the existing shared history cache and request deduplication, including matches between other teams. Unknown bracket participants keep H2H disabled.
+- H2H reuses the range selector, refresh button, record facts and match list; loading and failures appear within its content. Known meetings remain available after refresh failures. Results identify the perspective team and include completed games today.
+- Player stats remains visible on every match, disabled when unavailable and marked loading while the connected team's stats are pending. The existing detail-tab keyboard handling skips disabled tabs. Attendance remains available for tracked TeamSnap events.
+- The bookmark stays top-left beside the date, with an 18px icon, compact 22px layout slot, transparent 44px touch target and reduced spacing before the score.
+- Removed the former team-level H2H controls and their state. Repaired the match refresh callback so incoming stats can enable the tab through the existing entity refresh lifecycle.
+- Browser checks cover two external teams, reversed fixtures, duplicate suppression, today's results, loading/failure retention, stats loading/availability, unresolved participants, keyboard navigation and bookmark geometry. Existing team-switch/cache and three-theme mobile match tests pass. No database or deployment configuration changes.
+
+
+### 6.19.8 — Team-switch loading lifecycle
+
+- Followed-team switches now restore saved browser snapshots as well as in-memory data. Without a usable dashboard, the existing content loading placeholder appears before cache/network work begins.
+- Pending synthetic team state is explicitly not loaded. Empty results appear only after dashboard data is available; first-load failures show the existing delayed state, and refresh failures retain saved content.
+- Connected-team switches also display loading during asynchronous cache reads. Team selectors remain current and usable while loading.
+- Unavailable private data sources do not masquerade as pending sources in public-team empty states.
+- Browser tests cover held requests, genuine empty results, persistent cache restoration, failures with/without cache, retries, rapid switches with out-of-order responses, and authenticated page reloads. Existing match/bookmark checks also pass.
+- No new timers, API endpoints, database migration, or deployment configuration changes.
+
 
 ### 6.19.7 — Club logos and seasonal club kits
 
