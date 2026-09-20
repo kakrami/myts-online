@@ -1,4 +1,4 @@
-# myTS 6.19.11
+# myTS 6.19.12
 
 ## Viewing followed teams
 
@@ -9,6 +9,12 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.19.12 — Compact standings
+
+- Standings use the competition card width, with rank, club logo/team, P, W, D, L, combined GF–GA, GD and bold points visible together. Long team identifiers wrap in their own column. Selected team receives the existing subtle surface highlight.
+- Header sorting remains available without repeated inactive arrows. GF–GA sorts by goals scored; official positions and points remain supplied by GotSport. Missing numbers display a dash.
+- Checked widths 320, 360, 390, 430 and 768px across three themes, long names, logos, large/missing values and sorting. Match layout/bookmark regression checks pass. No database changes.
 
 ### 6.19.11 — Logo-backed compact team identities
 
