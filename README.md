@@ -1,6 +1,9 @@
-# myTS 6.18.30
+# myTS 6.18.31
 
 ## Release changes
+
+- One-time standings source migration is eligible on the next background pass even when the old feed has a future retry date. Existing request pauses and leases remain respected.
+- Obsolete HTML errors no longer appear as current JSON standings failures. Schedule errors cannot override a successful standings status in API or UI.
 
 - Standings now use GotSport's division-registration JSON feed, including published group placement, points, W/L/D, and goals.
 - Event, division, bracket, registration, and team IDs are validated before replacing saved standings. No similar-name matching or locally calculated rankings.
@@ -14,7 +17,7 @@
 2. Use your existing deployment pipeline. Preserve the existing Worker name, D1 database binding/ID, ADMIN_KEY secret, and MYTS_RUNTIME Durable Object binding. The supplied config contains a DB binding placeholder; retain your deployment's actual D1 database configuration.
 3. For a Wrangler deployment, install dependencies with `npm install`, then deploy with `npx wrangler deploy` using your existing account and project configuration.
 4. Do not delete or recreate the database or Durable Objects. No new secrets, bindings, or schema migrations are required for this release. Retain the existing Durable Object migration declaration.
-5. Reload the app and confirm version 6.18.30 in Settings. Existing background updates will populate standings; no reconnect or manual tournament IDs are needed.
+5. Reload the app and confirm version 6.18.31 in Settings. Existing background updates will populate standings; no reconnect or manual tournament IDs are needed.
 
 ## Verify after deployment
 
@@ -24,6 +27,6 @@ If an update fails, saved standings remain visible. Export Diagnostics from Sett
 
 ## Validation and limits
 
-Tested the real Cactus response; exact membership checks; malformed/duplicate records; multiple brackets; missing placements; HTTP/rate-limit failures; cached-table retention; independent schedule status; archived backfill; and repeated active/archived collector passes. Official API availability remains controlled by GotSport. No production deployment is performed by supplying this ZIP.
+Tested upgrade from the exported production 302 error with a future retry deadline; the scheduler SQL against SQLite (legacy/current/locked feeds); migration idempotence and current-source backoff preservation; API error isolation; the real Cactus response; exact membership checks; malformed/duplicate records; multiple brackets; missing placements; HTTP/rate-limit failures; cached-table retention; independent schedule status; archived backfill; and repeated active/archived collector passes. Official API availability remains controlled by GotSport. No production deployment is performed by supplying this ZIP.
 
 Contents: worker.js (includes the UI), wrangler.jsonc, package.json, README.md. Tests and development artifacts are excluded.
