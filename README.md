@@ -1,3 +1,12 @@
+## v6.18.27 — Clearer match views
+
+- Overview highlights one next event and the latest result alongside season totals.
+- Schedule uses dated, opponent-focused rows; followed-team groups use the same compact renderer. Watched games and division schedules retain both teams in home/away order.
+- Competitions filters whole events by their end date (Current/Past), retaining earlier games in ongoing competitions. One dated division list replaces duplicate team/playoff/full lists; All teams/Our team uses existing segmented controls. Unconfirmed fixtures remain separate.
+- Shared score perspective preserves W/D/L and paired scores for contextual rows. Venue details remain in match details.
+- No backend fetch or database-write changes. Standings are not included in this release.
+- Verified browser navigation, repeated filters/disclosures, all themes, 320/390/768px layouts, dates, source reconciliation and favorite retention.
+
 ## v6.18.26 — Other-team kit sources
 
 - Other teams use validated GotSport primary/secondary colors from the latest available color-bearing match, matched by exact participant ID. Ambiguous sides and missing/invalid colors are omitted.

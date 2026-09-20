@@ -1,6 +1,6 @@
 {
   "name": "myts",
-  "version": "6.18.26",
+  "version": "6.18.27",
   "private": true,
   "type": "module",
   "devDependencies": {
@@ -37,6 +37,7 @@
     "test:source-settings": "node tests/source-settings-browser.cjs",
     "test:team-colors": "node tests/team-colors.mjs",
     "test:watched-fixtures": "node tests/watched-fixtures.mjs",
-    "test:schedule-order": "node tests/schedule-order.mjs"
+    "test:schedule-order": "node tests/schedule-order.mjs",
+    "test:match-views": "node tests/match-views-browser.cjs"
   }
 }
