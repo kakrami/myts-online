@@ -1,4 +1,4 @@
-# myTS 6.19.1
+# myTS 6.19.2
 
 ## Viewing followed teams
 
@@ -9,6 +9,20 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.19.2 — Shared club abbreviations and initial loading
+
+- Compact team labels use a shared club abbreviation while preserving the entire squad suffix. Team overview titles keep the official full name.
+- Verified organization references from GotSport organization-logo paths identify clubs. Team-logo references and missing organization references are not treated as club IDs; these teams keep their full names. There is no fuzzy club matching or hard-coded team alias.
+- Abbreviations are stored in D1 once per organization. Repeated reads do not rewrite them. Owner Settings > Club abbreviations allows corrections for loaded, verified clubs; corrections apply across users and teams in this installation. Viewer links cannot edit them.
+- The initial connected-team dashboard reads saved TeamSnap, GotSport, Trace, mappings, favorites, profiles, and logo overrides together. It does not wait for new upstream collection. Shared source failures are reported independently; existing data is retained on refresh failure.
+- Loaded empty sections no longer switch to loading placeholders during background refresh. Unloaded Trace counts display a dash instead of zero. Sequence and edit guards protect team changes and newer logo, kit, correction, and bookmark edits.
+- Followed-team history/context responses include cached profile metadata before rendering.
+- Validation: real SQLite abbreviation persistence/write-count checks; delayed and partially failing saved-source coordinator; mobile browser first-load, refresh-failure, late-response, editor, theme and width checks; existing followed-team, bookmark and collector checks. Live deployment was not performed.
+
+The new club_display_names table is created automatically by the existing schema initialization. No new bindings or scheduled jobs are required.
+
+### Earlier changes
 
 - Favorites now lists only bookmarked games, directly, without followed-team groups. Its team filter uses the participants in bookmarked games.
 - Followed teams remain saved and accessible in the top selector. Refreshing Favorites updates watched divisions only, not every followed team’s history.
