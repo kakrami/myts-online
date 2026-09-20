@@ -1,4 +1,4 @@
-# myTS 6.19.2
+# myTS 6.19.3
 
 ## Viewing followed teams
 
@@ -9,6 +9,16 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.19.3 — Repair upgrade initialization
+
+Version 6.19.2 added club_display_names without advancing APP_SCHEMA_VERSION. Existing installations skipped table creation, and the new dashboard snapshot failed during profile enrichment. This release advances the schema revision through the existing migration lifecycle. No database reset or reconnection is needed.
+
+Browser diagnostics now include source request errors, source errors, and dashboard loading state so startup failures are visible in exports.
+
+Validation reproduced the failure by initializing the actual v6.19.1 schema in SQLite, loading v6.19.2, and running profile enrichment. The corrected release upgrades the same database, successfully reads the club abbreviation, and performs no repeated schema writes in the same runtime. Browser loading, late-response, editor, theme, and width checks pass. Unrelated older GotSport directory/identity validation errors are not represented as fixed by this release.
+
+
 
 ### 6.19.2 — Shared club abbreviations and initial loading
 
