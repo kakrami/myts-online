@@ -1,4 +1,4 @@
-# myTS 6.19.12
+# myTS 6.20.0
 
 ## Viewing followed teams
 
@@ -9,6 +9,21 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.20.0 — Match and competition navigation
+
+- Schedule defaults to Day view with five dates, previous/next controls, Today and a calendar. Results and pending games share the selected day in kickoff order. Season view retains Upcoming/Past and all event-type/search filters. Dates are scoped to the selected team and season; choose another season using the existing season selector.
+- Shared grouped match rows show kickoff time, both teams and aligned scores. Date and competition headings avoid repeated metadata. Overview keeps its contextual next-event/latest-result rows.
+- Each competition retains its disclosure header and has Matches, Standings and, when source fixtures support it, Bracket tabs. The bracket tab lists published knockout fixtures/placeholders; it does not infer tournament advancement. Team filtering and unconfirmed fixtures remain available in Matches. Keyboard arrow navigation is supported.
+- Overview links to the selected team's exact published position and points in a current competition when available. Existing match-detail tabs, attendance, kits, H2H and disabled unavailable stats are retained.
+- Shared status distinguishes Scheduled, Result pending, Completed, Postponed, Rescheduled and Cancelled. Kickoff alone never produces Live or Completed. Scored division fixtures are recognized as completed.
+- Date selections and competition tabs persist through the existing browser UI preferences. Competition disclosures and per-view scroll positions survive navigation in the current session. Existing authenticated dashboard caching and loading behavior remain intact.
+- Verified phone/tablet widths, themes, dates, empty days, filters, chronological order, tab keyboard/restoration, standings, bookmarks, H2H, cached reload/security and rapid team switching. No database migration or added upstream polling.
+
+
+### 6.19.13 — Team name action order
+
+- Team overview places the copy button immediately before the favorite star. Existing styles and actions are unchanged.
 
 ### 6.19.12 — Compact standings
 
