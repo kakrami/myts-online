@@ -1,4 +1,4 @@
-# myTS 6.20.0
+# myTS 6.20.1
 
 ## Viewing followed teams
 
@@ -9,6 +9,15 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.20.1 — Compact shared navigation
+
+- Shared segmented controls and detail tabs use flat text with an active underline. Filter toolbars no longer have raised card containers. Page headings omit repeated selected-season text.
+- Mobile header gives more room to the team selector, hides the separate TS tile, and uses borderless search/settings actions. Bottom navigation is shorter while retaining 44px button height.
+- Schedule Day view removes the permanent search/type toolbar. A compact weekday/day strip shows the month once; the heading calendar opens the date picker. Today appears only when another date is selected. No duplicate selected-date heading above matches.
+- Season view uses a heading filter icon with an active dot. The existing sheet pattern provides search, available event types, Clear and Apply. Day mode always shows all events on the chosen date regardless of saved Season filters. Followed-team views ignore private practice filters and omit those controls.
+- Browser checks cover dates, search/type filters, clear/apply, switching Day/Season, followed-team filtering, 320–768px widths, themes, competition navigation, standings and match/H2H regressions. Packaged page startup verified. No backend schema or polling changes.
+
 
 ### 6.20.0 — Match and competition navigation
 
