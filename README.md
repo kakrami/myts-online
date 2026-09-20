@@ -1,4 +1,4 @@
-# myTS 6.19.3
+# myTS 6.19.4
 
 ## Viewing followed teams
 
@@ -9,6 +9,17 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.19.4 — Restore the dashboard on refresh
+
+- IndexedDB retains complete dashboard snapshots across browser reloads, scoped to a hash of validated owner/viewer access, connected team, and season. The first successful load populates the cache; later loads restore it after the existing access/bootstrap checks, while current backend data loads in the background.
+- The selected connected/followed team and season are restored. Followed-team data remains public; connected-team snapshots and favorite/bookmark state stay in their existing access scope. Follow/bookmark edits are saved separately so editing them while viewing another team does not restore an older list.
+- An unchanged dashboard response does not rebuild the page. Trace's saved data cursor is retained to avoid unnecessarily reloading its dataset.
+- Access changes or rejected credentials clear the cache. Storage errors fall back to normal backend loading and appear in Diagnostics. Credentials are not stored in snapshot records.
+- No new backend tables, bindings, or polling timers. The existing schema upgrade correction remains intact.
+- Validation used actual browser reloads and IndexedDB with the dashboard HTTP response held open: saved content appeared before the response; an unchanged response preserved the DOM; followed-team selection survived reload; changed/revoked access could not restore old private data; unavailable storage fell back to normal loading. The existing-database upgrade regression check also passes.
+
+
 
 ### 6.19.3 — Repair upgrade initialization
 
