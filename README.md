@@ -1,4 +1,4 @@
-# myTS 6.19.5
+# myTS 6.19.7
 
 ## Viewing followed teams
 
@@ -9,6 +9,25 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.19.7 — Club logos and seasonal club kits
+
+- Existing Settings controls now save logos per verified GotSport club and kits per club/season. Teams sharing that identity inherit them through the shared renderer, including followed teams. TeamSnap game-specific uniform instructions remain unchanged.
+- Uses organization IDs in source profile metadata; team-logo IDs and similar club names do not establish membership. If a verified club identity is unavailable, club edits explain why they cannot be saved. Existing unmatched team settings remain intact.
+- Schema migration promotes compatible existing logo and kit settings for known clubs. Conflicting legacy settings are retained until explicitly replaced. Save/reset clears superseded settings for that club atomically, preventing old overrides from reappearing.
+- Club settings are included in authenticated bootstrap, profiles, dashboard/context responses and browser snapshots. No new polling timers or scheduled team fetches.
+- Deployment automatically creates the two club override tables on first request. No new bindings or manual migration commands.
+- Verified the prior-schema upgrade with SQLite, migration and reset behavior, season separation, shared browser rendering and persistent reloads. Existing match/bookmark mobile checks remain passing.
+
+
+### 6.19.6 — Consistent team identifiers
+
+- Shared team labels show the team identifier without the club prefix when verified source club metadata is available. Unknown names retain their original text.
+- Team overview and search results show full club/team names, including after profile hydration and cached reloads.
+- Removed abbreviation generation, settings, and API writes. Existing unused abbreviation records are left untouched; no destructive migration or new database operations.
+- Browser verification covers source-prefix boundaries, squad-only source names, unknown names, repeated profile hydration, cached reloads, bookmarks and match layouts across three themes/mobile widths.
+- Deployment files only; existing configuration and saved data are preserved.
+
 
 ### 6.19.5 — Bookmarks and shared match details
 
