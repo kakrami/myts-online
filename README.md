@@ -1,4 +1,4 @@
-# myTS 6.20.5
+# myTS 6.20.7
 
 ## Viewing followed teams
 
@@ -9,6 +9,22 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.20.7 — Schedule viewport and direct-touch navigation
+
+- Added a compact Today shortcut beside the calendar in the current season; disabled when today is selected.
+- Corrected the shared workspace height calculation so the header is included in the viewport. Removed retained match-list heights. Empty days fill the available area without artificial page scrolling.
+- Day swipes work across the schedule content and blank space. Adjacent dates track horizontal dragging before release; sufficient drags complete the transition and short drags snap back. Native vertical pan, pinch and screen-edge gestures remain available.
+- Gesture cleanup covers pointer cancellation, capture loss, multitouch, resize, blur and view changes. Background rendering waits during a gesture. Adjacent previews are inert and inaccessible to interaction; reduced motion skips movement.
+- Competition cards reuse shared card-header typography/padding and match-row spacing. Removed conflicting overrides and gaps between match rows. Existing segmented filters remain in one row.
+- Detached disclosure elements no longer overwrite replacement-view state.
+- Verified Chromium touch emulation, pre-release movement, Today, commit/snap/cancel, vertical pan, populated-to-empty height, refresh during dragging, reduced motion, competition filtering and layouts at 320–768px. Browser screenshots inspected. Packaged Worker startup and script syntax verified. Physical-phone and live-provider testing remain unverified.
+
+### 6.20.6 — Direct competition team filter
+
+- Replaced the two-choice team dropdown with the existing segmented control: All teams / Our team (Selected team when viewing a followed team).
+- Kept filtering beside Matches/Standings and hidden on Standings. Removed the dropdown binding and dropdown-specific styling.
+- JavaScript syntax and packaged startup verified. Fresh browser/mobile visual verification was unavailable because the browser download timed out.
 
 ### 6.20.5 — Shared match layout and competition context
 
