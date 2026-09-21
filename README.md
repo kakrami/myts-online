@@ -1,6 +1,32 @@
-# myTS 6.20.13
+# myTS 6.20.14
 
-## Upgrade recovery fix
+## Trace PlayerFocus analytics
+
+Match > Stats adds possession and its timeline, both-team comparisons, completed passes and completion percentage, shots, box touches, event maps, and additional pass/turnover totals. Player selection shows native heat maps and player touches. Full/first/second-half filters use Trace's actual FullGameVideo timestamps; unavailable half boundaries are not invented. Match player profiles use the same analytics component, retaining an older imported heat map while native data is pending. Season position inference remains separate: native map intensity is not mislabeled as tracking samples, distance, or minutes.
+
+The queries were taken from Trace's public frontend contract on September 21, 2026. An authenticated Trace match page for game 14030311 showed possession 50–50, completed passes 64–79, shots 25–16, 91 box touches, and 50% pass completion for the selected team. This verifies availability in Trace's UI, not the deployed myTS collector's responses.
+
+Collection uses the existing Trace account session and background runtime. It preserves Trace's ORIGINAL home/away sides and GIDs instead of the engine's normalized home-team representation. New tables are added automatically; no database reset, reconnect, new binding, or paid service is required. Missing analytics are discovered for already-published games as well as new ones. Existing minutes/goals/assists are not recalculated by this feature.
+
+The queue prioritizes team comparisons before player scopes, collects at most two scopes per background pass, and persists each result independently. Pending, restricted, unpublished, and request-error states remain distinct. A failed heat-map request retains successful stats and any previous map. Failed requests retain saved payloads and retry with backoff. Recent ready data is revisited daily; older ready data every 30 days; restricted/unpublished selections daily. Backfill waits until the existing tracking collection is terminal, then continues automatically even when the browser is closed. A large history can take multiple days.
+
+Full query data is retained per selection, including possession, total_possession, box_touches, passes_all, passes_complete, passes_incomplete, shots, turnovers_all/won/lost, player_touches, event timestamps/coordinates/identities, third counts, and the native heat-map matrix. No raw videos or radar streams are saved by this feature. Event maps display Trace coordinates; no unverified attack-direction conversion is applied. The available player list comes from the match roster, so opponent player detail depends on what Trace exposes.
+
+Browser snapshots are scoped to the current access context, family, match, player, and period. The existing entity polling cycle refreshes pending analytics without adding a timer. Superseded requests cannot paint a different selection or team. A valid cached response remains visible during refresh failures.
+
+## Free-plan safeguards and verification
+
+Analytics use the existing D1 and SQLite Durable Object runtime, with no R2 or paid dependencies. A shared 2,000 daily request-reservation budget throttles this workload; profile discovery reserves additional capacity. Cached selection responses above 750 KB are rejected with a diagnostic instead of overwriting saved data. This is an analytics workload guard, not a claim about total Cloudflare account usage. Actual account quotas and storage must be checked in Cloudflare; the existing D1 usage meter remains available.
+
+Diagnostics now include analytics manifest/scope status counts, saved payload bytes, retry deadlines, recent errors, and the daily reservation budget. After deployment, check that ready scope counts rise and compare game 14030311 against Trace before relying on the new analytics. Trace permissions, source availability, and per-player coverage can differ by match.
+
+Automated checks passed for the actual 6.20.13 SQLite schema upgrade, repeat migration, retained saved games, original away-team identity, player/half query scopes, idempotent backfill, failure retention, heat-map failure independence, tenant isolation, daily-budget stopping, null-versus-zero rendering, rapid filter changes, and access/team changes during pending requests. Backend request responses in these tests are controlled contract fixtures, not live authenticated API responses. All embedded scripts and the packaged Worker response were checked.
+
+This release has NOT been deployed to the user's Cloudflare account. The authenticated browser confirmed Trace's displayed values, but a production collector round trip and mobile visual/touch verification remain unverified. The cloud browser rejected the local preview URL. No claim of live end-to-end or mobile visual validation is made.
+
+Cloudflare references: https://developers.cloudflare.com/workers/platform/limits/ ; https://developers.cloudflare.com/d1/platform/pricing/ ; https://developers.cloudflare.com/durable-objects/platform/pricing/
+
+## Previous release: upgrade recovery fix
 
 The production diagnostics showed stale championship flags and missing verification timestamps after upgrade. Cache migration reset the general retry time but retained api_next_at, so the collector retried HTML publication checks instead of refreshing the JSON schedule. HTTP 302 responses consumed the request budget without recalculating those awards.
 
@@ -56,7 +82,7 @@ Some older records still lack sufficient evidence. The app does not treat these 
 2. Preserve your existing Worker name, real D1 database ID/binding, ADMIN_KEY secret, and MYTS_RUNTIME Durable Object binding. The supplied configuration contains a database placeholder; use your existing deployment configuration.
 3. Run `npm install`, then `npx wrangler deploy` with your existing Cloudflare account/project.
 4. Keep the existing Durable Object migration declaration. No new bindings, secrets, or database reset are needed.
-5. Confirm version 6.20.13 in Settings. Open Team > Trophies. Historical verification populates through the existing background collector and may require multiple passes under upstream request limits.
+5. Confirm version 6.20.14 in Settings. Open Team > Trophies. Historical verification populates through the existing background collector and may require multiple passes under upstream request limits.
 
 ## Validation and limits
 
