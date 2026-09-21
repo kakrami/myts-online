@@ -1,4 +1,14 @@
-# myTS 6.20.15
+# myTS 6.20.16
+
+## Analytics queue and compact cards
+
+The supplied 6.20.15 diagnostics recorded 8,490 pending analytics selections, 228 ready, and 2,871,437 rows read by the analytics scope workload. Queue picks previously sorted the due backlog and prioritized team summaries across all history before player detail. The new ordered queue index reads the next due selection directly, with recent game dates first among initial pending work. New match player scopes therefore complete before old-match backfill. Analytics-only sync passes bypass the already-completed tracking/engine pipeline.
+
+Deployment automatically adds game dates to pending queue entries and builds the replacement index. This one-time migration uses database reads/writes; it retains saved stats, accounts, and pending work. No reset or reconnect is needed. Existing retries and the 2,000-request daily collection budget remain. An additional safeguard pauses analytics when this runtime's measured analytics-scope workload reaches 500,000 reads or 20,000 writes that day. This is not an account-wide quota guarantee. Today’s supplied usage already exceeds this workload allowance, so collection will defer until 00:00 UTC; cached data continues to display. Deployments do not reset Cloudflare usage. See https://developers.cloudflare.com/d1/platform/pricing/.
+
+Competition logos now retain a trophy fallback during loading or a failed image request; failures enter diagnostics. The supplied screenshot does not establish why the upstream logo failed. Additional pass counts appear quietly below completed passes, and turnover counts below possession or player touches. The separate More stats dropdown is removed. Trophy cards use one compact container without stacked header/body padding, retaining 44px edition buttons.
+
+Checks: old-schema upgrade, retained data, original side/player identities, cache/error retention, rapid filter changes, missing-versus-zero rendering, inline secondary-stat retention, and packaged Worker response. An 8,736-scope SQLite fixture reduced queue-pick VM steps from 150,125 to 59 and verified no temporary sort and recent player work before older team work. This is a local query-plan test, not measured Cloudflare billing. Production collector execution, actual post-deployment usage, and mobile visual/touch behavior remain unverified.
 
 ## UI consistency update
 
