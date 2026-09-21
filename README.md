@@ -1,4 +1,4 @@
-# myTS 6.20.10
+# myTS 6.20.11
 
 ## Viewing followed teams
 
@@ -9,6 +9,14 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.20.11 — Team sections and trophy cache migration
+
+- Team uses the existing compact Roster / Trophies control. Roster is the default; each team/season keeps its section during this session. The trophy card no longer pushes the roster down. Removed redundant title/subtitle space and fixed dangling season separators in the shared page heading.
+- Fixed the missing data-revision migration from the trophy release. Existing GotSport migration/scheduling now rechecks archived schedules without deleting saved data or adding another sync mechanism.
+- Schedule collection records when trophy verification has run. The UI distinguishes checking results, unavailable results with automatic retries, unsupported placements and confirmed-empty results.
+- Verified the live Cactus Kick Off event 55368, division 544000, final 27575447: 5–2, and its full published bracket qualifies for championship verification. This proves the source/classifier path, not the contents of a deployed user's cache. Existing records become eligible as normal background refresh completes.
+- Checked mutually exclusive section rendering, roster default, team-specific selection, pending/error/empty states, JS syntax and packaged startup. Physical-phone visual testing remains unverified.
 
 ### 6.20.10 — Trophies
 
