@@ -1,4 +1,14 @@
-# myTS 6.20.16
+# myTS 6.20.17
+
+## Match editing and full-match analytics
+
+Admins can open Edit from Match > Lineup or Edit match players from Player stats. Set starters, enter a formation excluding the goalkeeper (for example 3-3-2 for 9v9), and apply it. Slot choices move players within that formation. Positions, minutes, goals, and assists are editable in the same table. Save is one atomic database statement across players with optimistic version checks; a conflict applies no edits. Cancel discards drafts. Restore source values clears match overrides together. Season jersey and preferred position remain in the existing player-profile editor; individual match profiles also support minutes and starting status. Source sync never writes the correction records. Derived rows, lineups, totals, profiles, and reports read corrected values; the original event timeline remains explicitly labeled as source data. Goal-total mismatches are flagged without changing the match score.
+
+Table and pitch position labels now share inferred/match-assigned evidence. Season labels aggregate weighted match evidence when no preferred position is assigned. Unplaced starters are named below the pitch rather than silently disappearing; manual substitute overrides are excluded from the starting lineup. Existing goal/assist marker placement is unchanged. Match profile metrics use four columns in one row.
+
+Analytics always requests full match. The period selector is removed, new half-specific work is no longer scheduled, and the due-work query uses a full-match-only partial index. Previously saved half data is preserved. Deferred notices give the local resume-after date/time; refresh is disabled during a pause or active collection. Existing polling resumes checks after the returned deadline. The database budget protection remains in force; deploying does not reset Cloudflare usage.
+
+Verification: real SQLite atomic save/conflict/reset tests; correction field bounds; inferred goalkeeper consistency; manual position/minutes/start application; restoration; old-schema migration; full-only queue creation; cached-error retention; simulated expired-budget collection through persisted ready response; stale UI-response rejection during team/player changes; script syntax and packaged Worker HTTP response. These use controlled upstream fixtures. Live Cloudflare collection has NOT been verified. Remote browser navigation to the local preview returned ERR_BLOCKED_BY_CLIENT, so mobile/desktop visual verification remains outstanding. No production deployment was performed.
 
 ## Analytics queue and compact cards
 
