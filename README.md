@@ -1,4 +1,4 @@
-# myTS 6.20.3
+# myTS 6.20.4
 
 ## Viewing followed teams
 
@@ -9,6 +9,13 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.20.4 — Consolidated controls
+
+- Schedule title, Day/Season and month/calendar share one header above the date strip. Competition title and Current/Past share one header.
+- Matches/Standings and the existing team dropdown share one competition control row; team filtering is hidden on Standings. Removed the old separate filter row and reduced competition gaps.
+- Match round and status share a wrapping secondary line; bookmark remains aligned at the end.
+- Browser checks cover widths 320–768, themes, dropdown filtering, calendar/swipes, reduced motion, match details and packaged startup. Physical-phone testing remains unverified.
 
 ### 6.20.3 — Schedule gestures and calendar
 
