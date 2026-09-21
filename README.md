@@ -1,4 +1,4 @@
-# myTS 6.20.8
+# myTS 6.20.9
 
 ## Viewing followed teams
 
@@ -9,6 +9,14 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.20.9 — Compact match outcomes
+
+- Removed W/D/L flags from shared match rows, match headers and player match history. Standings, season records and form summaries remain unchanged.
+- Preserved FT, centered scores and available-stat actions. Explicit penalty statuses use Pen; only a verified penalty loser receives a muted strikethrough on its name, never its badge.
+- Checked the live GotSport team match feed: winner_team_id is supplied, including a 3–3 final. No penalty flag or shootout score was present in the sampled records. The collector now preserves a participant-validated winner ID and recognizes explicit penalty status text if supplied. It never infers penalties from a tied result or bracket advancement.
+- Match details can show the published winner of a tied match. Existing cached records without winner metadata retain their score; routine source refresh supplies the new metadata.
+- Shootout score display is not enabled: no verified source field was available. Physical-device testing and live penalty-status records remain unverified.
 
 ### 6.20.8 — Team identity, match outcomes and synchronized dates
 
