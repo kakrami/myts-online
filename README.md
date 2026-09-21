@@ -1,4 +1,12 @@
-# myTS 6.20.14
+# myTS 6.20.15
+
+## UI consistency update
+
+Analytics filters reuse the app selectors in one compact row. Unavailable player metrics and developer coverage diagnostics are removed from normal screens and reports; underlying diagnostic data remains intact. Match and season context remain together. Collection states distinguish waiting, active loading, and delayed updates without adding a polling timer.
+
+Competition logos share one component across trophies, competition cards, schedule groups, and match details, with a light badge for dark artwork. Trophy cards have compact spacing and a clear all-season scope. Competitions retain the selected-season scope. Confirmed match stages sit under the score; the stats icon indicates saved player stats, not a promise that every advanced metric is available.
+
+This UI update has not been deployed or visually verified on a mobile device. Automated checks use controlled fixtures.
 
 ## Trace PlayerFocus analytics
 
