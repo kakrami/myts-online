@@ -1,4 +1,19 @@
-# myTS 6.20.17
+# myTS 6.20.18
+
+## Database reliability (6.20.18)
+
+Deploy the four files in this ZIP using the existing Wrangler configuration. Keep the same D1 database, runtime binding, ADMIN_KEY, and other secrets. Do not reset data or reconnect TeamSnap. No paid service or new binding is required.
+
+If D1 is already exhausted, deploying does not reset Cloudflare's quota. Open /admin after deployment: the temporary-unavailability screen accepts the owner key and downloads emergency diagnostics without reading D1. Try again reloads the normal startup flow. Full dashboard data still requires available D1 access.
+
+A shared Durable Object coordinates measured usage from TeamSnap, Trace, GotSport, directory, and API runtimes. Background work pauses at 3,000,000 measured reads or 70,000 writes per UTC day; foreground database requests retain headroom until 4,500,000 reads or 95,000 writes. The directory's 15,000-write allowance remains. The older analytics-only 500,000-read/20,000-write guard is removed. Each invocation also checks its accumulating usage before subsequent queries. In-flight queries/batches and concurrent invocations can exceed a threshold; these are conservative application budgets, not a guarantee of account-wide usage. Other applications and earlier unmeasured operations are outside this ledger.
+
+On the coordinator's first deployment, background collection waits until the next 00:00 UTC reset to establish a complete daily baseline. An actual D1 quota error suspends all database access until that reset; cron wake-ups cannot shorten a paused background alarm. Existing queued work is retained and resumes automatically. Owner authentication for emergency diagnostics, health checks, and runtime telemetry remain available without D1. Normal owner-console data still uses D1.
+
+Schema revisions are now independent of UI release versions. Upgrading from 6.20.17 adds two directory indexes without replaying historical migrations or rebuilding the obsolete analytics index. Existing indexed full-match analytics collection, recent-game priority, and completed-pipeline bypass remain in place. Emergency diagnostics include normalized SQL cost samples (up to 30 per runtime) without bound parameter values.
+
+Validation: quota-failure and repeated-request fixtures; owner authorization and emergency export with D1 unavailable; shared budgeting and foreground reserve; cron pause and UTC rollover; 6.20.13 and 6.20.17 SQLite upgrades with retained data; indexed directory query plan; analytics discovery, full-match player collection, retries, saved-result retention, and tenant isolation; UI script parsing and repeated outage rendering. These are local tests. Live Cloudflare usage, production collector completion, and mobile visual behavior have not been verified. After deployment, use emergency diagnostics to measure actual usage before claiming the free-tier target is met.
+
 
 ## Match editing and full-match analytics
 
@@ -14,7 +29,7 @@ Verification: real SQLite atomic save/conflict/reset tests; correction field bou
 
 The supplied 6.20.15 diagnostics recorded 8,490 pending analytics selections, 228 ready, and 2,871,437 rows read by the analytics scope workload. Queue picks previously sorted the due backlog and prioritized team summaries across all history before player detail. The new ordered queue index reads the next due selection directly, with recent game dates first among initial pending work. New match player scopes therefore complete before old-match backfill. Analytics-only sync passes bypass the already-completed tracking/engine pipeline.
 
-Deployment automatically adds game dates to pending queue entries and builds the replacement index. This one-time migration uses database reads/writes; it retains saved stats, accounts, and pending work. No reset or reconnect is needed. Existing retries and the 2,000-request daily collection budget remain. An additional safeguard pauses analytics when this runtime's measured analytics-scope workload reaches 500,000 reads or 20,000 writes that day. This is not an account-wide quota guarantee. Today’s supplied usage already exceeds this workload allowance, so collection will defer until 00:00 UTC; cached data continues to display. Deployments do not reset Cloudflare usage. See https://developers.cloudflare.com/d1/platform/pricing/.
+Deployment automatically adds game dates to pending queue entries and builds the replacement index. This one-time migration uses database reads/writes; it retains saved stats, accounts, and pending work. No reset or reconnect is needed. Existing retries and the 2,000-request daily collection budget remain. The shared budget described above supersedes the previous analytics-only safeguard. Deployments do not reset Cloudflare usage. See https://developers.cloudflare.com/d1/platform/pricing/.
 
 Competition logos now retain a trophy fallback during loading or a failed image request; failures enter diagnostics. The supplied screenshot does not establish why the upstream logo failed. Additional pass counts appear quietly below completed passes, and turnover counts below possession or player touches. The separate More stats dropdown is removed. Trophy cards use one compact container without stacked header/body padding, retaining 44px edition buttons.
 
@@ -30,7 +45,7 @@ This UI update has not been deployed or visually verified on a mobile device. Au
 
 ## Trace PlayerFocus analytics
 
-Match > Stats adds possession and its timeline, both-team comparisons, completed passes and completion percentage, shots, box touches, event maps, and additional pass/turnover totals. Player selection shows native heat maps and player touches. Full/first/second-half filters use Trace's actual FullGameVideo timestamps; unavailable half boundaries are not invented. Match player profiles use the same analytics component, retaining an older imported heat map while native data is pending. Season position inference remains separate: native map intensity is not mislabeled as tracking samples, distance, or minutes.
+Match > Stats adds possession and its timeline, both-team comparisons, completed passes and completion percentage, shots, box touches, event maps, and additional pass/turnover totals. Player selection shows native heat maps and player touches. Only full-match analytics are exposed; Trace's FullGameVideo timestamps define the interval. Match player profiles use the same analytics component, retaining an older imported heat map while native data is pending. Season position inference remains separate: native map intensity is not mislabeled as tracking samples, distance, or minutes.
 
 The queries were taken from Trace's public frontend contract on September 21, 2026. An authenticated Trace match page for game 14030311 showed possession 50–50, completed passes 64–79, shots 25–16, 91 box touches, and 50% pass completion for the selected team. This verifies availability in Trace's UI, not the deployed myTS collector's responses.
 
