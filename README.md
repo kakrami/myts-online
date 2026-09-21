@@ -1,4 +1,4 @@
-# myTS 6.20.7
+# myTS 6.20.8
 
 ## Viewing followed teams
 
@@ -9,6 +9,16 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.20.8 — Team identity, match outcomes and synchronized dates
+
+- Shared match rows show W/D/L beside each participating team; FT/status sits on the left, score/time in the center, and available player stats on the right. Match details use the same team-specific outcomes.
+- Competition participants use GotSport names, IDs and badge references. TeamSnap/Trace enrichment is retained only for verified, unambiguous links. Opening a competition match preserves its verified data.
+- Competition-scoped team history includes only fixtures containing that exact team ID. Unrelated division playoff fixtures no longer appear as that team's history. Resolved playoffs no longer claim participants are TBD; both new collector data and cached UI data are handled.
+- Published standings with no matching team produce a distinct identity message instead of claiming no standings were published.
+- The date strip moves proportionally with match content while dragging and shares the completion/snapback animation. Reduced motion and cancellation behavior are preserved.
+- Verified local Chromium touch navigation, date movement before release, snapback/cancel, empty-day height, reduced motion, competition filters, identity/enrichment fixtures, zero scores, draws, team badges, resolved playoff classification and responsive widths. Script syntax and packaged Worker startup checked.
+- Live Albion provider records, external badge downloads and physical-phone gestures have not been verified. No guessed identity or replacement badge was introduced.
 
 ### 6.20.7 — Schedule viewport and direct-touch navigation
 
