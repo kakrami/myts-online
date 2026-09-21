@@ -1,4 +1,4 @@
-# myTS 6.20.4
+# myTS 6.20.5
 
 ## Viewing followed teams
 
@@ -9,6 +9,15 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.20.5 — Shared match layout and competition context
+
+- Shared match lists place club badges and team identifiers on either side of a centered score or kickoff time. Team names use quieter typography; result/status/bookmark behavior remains available.
+- A chart icon appears only when a game has usable player stats and opens Player stats directly. Linked Trace games without stats and cancelled games do not advertise stats.
+- Opening a team from competition matches or standings retains the exact event/division context. Its relevant standings and all published team matches appear together, without a past/upcoming cutoff. Potential division playoff fixtures remain chronological and explicitly labeled; qualification is not inferred.
+- The competition dropdown offers All competitions to return to the existing team history controls. Nested match views preserve the team sheet and the underlying competition selection/scroll. Competition data already loaded is reused; no extra history request is required for the scoped view.
+- Uses existing refresh lifecycle, identity/profile rules and theme components. No backend collector, database/schema or binding changes.
+- Chromium checks cover competition scoping, mixed past/future fixtures, potential playoffs, standings, all-history switching, nested return, stats navigation, cancelled/no-data states, touch/date navigation and widths 320–768 across themes. Packaged Worker startup is checked. Physical-device and live-provider verification are not included.
 
 ### 6.20.4 — Consolidated controls
 
