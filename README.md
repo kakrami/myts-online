@@ -1,4 +1,12 @@
-# myTS 6.20.12
+# myTS 6.20.13
+
+## Upgrade recovery fix
+
+The production diagnostics showed stale championship flags and missing verification timestamps after upgrade. Cache migration reset the general retry time but retained api_next_at, so the collector retried HTML publication checks instead of refreshing the JSON schedule. HTTP 302 responses consumed the request budget without recalculating those awards.
+
+This release resets both schedule deadlines during the existing data-revision migration. It preserves saved games and honors the upstream rate-limit pause. No manual reset or reconnect is required. HTML publication errors remain in schedule diagnostics but do not override the independent trophy assessment. Diagnostics now also include the data revision, trophy check timestamp, match count, and verified final IDs.
+
+Regression testing reconstructed the reported saved-cache deadlines and stale flags using downloaded source fixtures. Before the fix, three historical awards remained missing after 25 simulated update passes. After the fix, all nine reached the public API and trophy renderer, independent of selected season, despite continued HTTP 302 publication failures. The ten-request budget and rate-limit pause were checked. This is a reproduction of the upgrade state, not a test against the private production database.
 
 ## Trophies
 
@@ -48,7 +56,7 @@ Some older records still lack sufficient evidence. The app does not treat these 
 2. Preserve your existing Worker name, real D1 database ID/binding, ADMIN_KEY secret, and MYTS_RUNTIME Durable Object binding. The supplied configuration contains a database placeholder; use your existing deployment configuration.
 3. Run `npm install`, then `npx wrangler deploy` with your existing Cloudflare account/project.
 4. Keep the existing Durable Object migration declaration. No new bindings, secrets, or database reset are needed.
-5. Confirm version 6.20.12 in Settings. Open Team > Trophies. Historical verification populates through the existing background collector and may require multiple passes under upstream request limits.
+5. Confirm version 6.20.13 in Settings. Open Team > Trophies. Historical verification populates through the existing background collector and may require multiple passes under upstream request limits.
 
 ## Validation and limits
 
