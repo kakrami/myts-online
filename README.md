@@ -1,4 +1,4 @@
-# myTS 6.20.9
+# myTS 6.20.10
 
 ## Viewing followed teams
 
@@ -9,6 +9,15 @@ Favorites and watched games remain associated with your connected team's access 
 Public team competition data uses the existing collector and shared team history cache. Opening a team updates it on demand; refreshes while viewing reuse the existing page polling lifecycle. Switching away stops context polling. There is no new scheduled subscription or database binding. Another viewer opening the same team reuses its saved context until due. Cached data remains usable during refresh failures.
 
 ## Release changes
+
+### 6.20.10 — Trophies
+
+- Added a compact Trophies card to the Team tab for connected and followed teams, scoped to the selected season. Each entry shows competition, placement, division and date, and opens that exact competition.
+- Champions and Runners-up require a verified tournament championship path. The collector checks a unique terminal final, winner-only bracket links, top-two qualifying seeds, coverage of every published bracket, no cycles/duplicate seeds, and no two-legged format. A title named Final alone does not qualify.
+- Completed scores decide the winner; tied scores require an explicit valid winner ID. Conflicting winners, missing participants, cancelled/postponed fixtures and unresolved draws are excluded.
+- League tables and ambiguous or unsupported bracket formats do not award trophies. No confirmed trophies this season means no verified eligible results, not proof that a team has never won.
+- Verification metadata is populated through the existing GotSport schedule refresh and retained with cached matches. Older cached results become eligible after their normal refresh. No new bindings, manual IDs or separate synchronization jobs.
+- Checked bracket and outcome logic with fixtures covering champion/runner-up, exact-team membership, consolation/ambiguous brackets, two-legged finals, ties and invalid winners. JavaScript syntax and packaged Worker startup verified. Physical-phone and complete live-provider UI testing remain unverified.
 
 ### 6.20.9 — Compact match outcomes
 
