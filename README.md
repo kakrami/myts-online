@@ -1,3 +1,13 @@
+# myTS 6.20.27
+
+## Lineup positions and controls
+
+Match lineup editing uses the supplied position map: GK, SW, LB, LWB, LCB, CB, RCB, RB, RWB, LM, LCM, CDM, CM, CAM, RCM, RM, LW, SS, CF, ST, and RW. The pitch shows 22 placement targets because it has left and right ST spots. Both spots save the standard ST position and their own pitch coordinates. Saved positions work in match player detail and across the lineup. Legacy generic role values remain readable but are not offered as new position choices.
+
+The editor shows Save and Cancel beside the Lineup title, above the pitch. Changes remain drafts until Save; Cancel discards them. Goal and assist edits remain in the match player view.
+
+---
+
 # myTS 6.20.26
 
 ## Current baseline
