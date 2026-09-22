@@ -1,3 +1,11 @@
+# myTS 6.20.28
+
+## Lineup target visibility
+
+All 22 named pitch targets appear above occupied player markers during drag or tap placement, so each choice remains visible and reachable. The positions and compact Lineup Save/Cancel controls introduced in 6.20.27 remain in place.
+
+---
+
 # myTS 6.20.27
 
 ## Lineup positions and controls
