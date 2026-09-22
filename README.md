@@ -1,8 +1,12 @@
-# myTS 6.20.35
+# myTS 6.20.36
 
-## Readable pitch editing
+## Current baseline
 
-When position choices are visible, other player markers fade and the selected player stays identifiable. The dragged preview remains fully visible above the pitch. All 22 targets keep their full label contrast; a drop or Cancel restores normal marker styling.
+The lineup editor keeps Edit, Save, Cancel, and Reset inside the pitch corner. A player's disc and its position target share one pitch coordinate, independent of the name label beneath the disc. Press and hold a player, drag to any of the 22 position targets or another player to swap, then release. Dragging to the substitutes area moves a player there. Keyboard users can select a player and activate a target or use arrow keys.
+
+Changing the team in match analytics keeps the existing stats visible while the new team's stats load. The selector and stats remain mounted, avoiding a collapse of the page during the request.
+
+The Worker and package report 6.20.36. Startup, position validation, and simulated pointer interactions were checked locally; authenticated browser layout and physical touch behavior still require a live check.
 
 ---
 
