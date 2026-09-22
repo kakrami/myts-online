@@ -1,3 +1,13 @@
+# myTS 6.20.26
+
+## Current baseline
+
+The pitch is the match lineup editor. Tap or drag a player to reveal all 15 named position targets; dropping a player saves the position and placement. Dropping onto an occupied spot swaps the players. The displayed formation is derived from player positions. Match statistics remain editable in the match player view.
+
+The Worker and package both report 6.20.26. The GitHub source version and live Cloudflare deployment must be checked separately.
+
+---
+
 # myTS 6.20.25
 
 ## Lineup preview, position targets and substitute consistency
@@ -275,7 +285,3 @@ Some older records still lack sufficient evidence. The app does not treat these 
 Checked JavaScript syntax, the real historical schedules and available standings, winner/runner-up and tied-final handling, cached awards during errors, cancellation/conflicting-winner rejection, consolation branch handling, invalid losing-team paths, edition grouping, deduplication, and the packaged Worker HTML response. This release was not deployed to your account and has not received a fresh on-device visual/touch test. GotSport availability and incomplete historical records remain external limitations.
 
 The ZIP contains only the deployment files and this README. Tests and downloaded source fixtures are excluded.
-
-## 6.20.26 lineup editing
-
-The pitch is the match lineup editor: tap or drag a player to reveal all named position targets, and drop to set that position and placement. No formation preset or separate stats form is required. The displayed formation is derived from placed player roles. Match stats remain editable in the match player view.
