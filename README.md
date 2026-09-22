@@ -1,3 +1,17 @@
+# myTS 6.20.22
+
+## Admin startup regression fixed
+
+Version 6.20.21 embedded the shared spatial model into the browser using a Worker function's runtime `toString()`. Bundling with function-name preservation adds `__name` helper references inside that function. The helper exists in the Worker bundle but not in the browser. The embedded script consequently threw `ReferenceError: __name is not defined` before `boot()` and before the `/api/public/state` request.
+
+The browser source is now embedded as literal HTML during release packaging. The shared spatial function remains identical in the Worker and browser, with source-parity checks; deployment no longer serializes a transformed function into another execution environment. No routing, authentication, database, or configuration changes are needed.
+
+Validation reproduced the failure on the bundled 6.20.21 artifact and confirmed 6.20.19 passed the same startup harness. Version 6.20.22 passes bundled and minified startup checks: embedded script execution reaches `/api/public/state` and initializes the admin login controls without the helper error. These are DOM-based startup checks, not browser visual verification or a live deployment test.
+
+All 6.20.21 spatial fixes are retained. Deploy the four files in this ZIP through your existing workflow, preserving bindings and secrets.
+
+---
+
 # myTS 6.20.21
 
 ## What changed
