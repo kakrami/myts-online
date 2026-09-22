@@ -1,3 +1,11 @@
+# myTS 6.20.29
+
+## Readable pitch editing
+
+When position choices are visible, other player markers fade and the selected player stays identifiable. The dragged preview remains fully visible above the pitch. All 22 targets keep their full label contrast; a drop or Cancel restores normal marker styling.
+
+---
+
 # myTS 6.20.28
 
 ## Lineup target visibility
