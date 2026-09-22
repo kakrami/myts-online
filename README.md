@@ -1,3 +1,15 @@
+# myTS 6.20.24
+
+## Drag-and-drop lineup editing
+
+Edit on the lineup card now enables editing in place. Drag a player onto a visible position target, another player to swap, or the substitutes area. Mouse, touch and pen use Pointer Events with capture. Tap selection plus target buttons and keyboard arrows offer alternatives. Invalid drops, pointer cancellation and Escape cancel the drag without changing the draft. Starting-player capacity is checked before a move.
+
+Placement, swaps and substitutes share one draft mutation path. Visible locations are stabilized before changing the starting lineup, while untouched player roles keep their automatic evidence priority. Saved placement is a manual match override; match heatmap and manual season positions remain the fallbacks. Background entity refresh waits while the editor is open. Save uses the existing correction endpoint and conflict tokens; Cancel discards the draft. No database or provider-sync changes.
+
+Validation: simulated pointer drag/tap/cancel/invalid-drop interactions, inline mounting, swaps, bench insertion/removal, capacity rejection, draft isolation, correction payload and existing UI/spatial regressions passed. Bundled/minified Worker admin startup passed. Physical-device touch and browser visual verification remain outstanding. Intentional goal/assist stacking is unchanged.
+
+---
+
 # myTS 6.20.23
 
 ## Competition and fixture navigation
