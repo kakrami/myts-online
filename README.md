@@ -1,4 +1,4 @@
-# myTS 6.20.30
+# myTS 6.20.31
 
 ## Readable pitch editing
 
