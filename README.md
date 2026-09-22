@@ -1,20 +1,51 @@
-# myTS 6.20.20
+# myTS 6.20.21
 
-## Changes in this release
-- Match position precedence: manual match position, verified match spatial evidence (including goalkeeper minutes), then manual season position. Roster positions no longer override match evidence.
-- Starting players without a resolved position appear separately from substitutes. Explicit non-starters are not promoted by minutes alone.
-- Removed top padding from the shared scroll viewport so sticky tabs can reach the header; content keeps its initial spacing.
-- Match-player views show match details, with an explicit season-profile button.
-- Empty analytics maps use compact messages without blank thirds. Removed the unconditional change-of-ends banner.
-- Goal/assist icon stacking is unchanged.
+## What changed
 
-## Investigation still open
-The native PlayerFocus heatmap and the legacy spatial position model are separate data paths. The native heatmap query returns a grid without verified tactical direction metadata. This release does not guess that orientation or claim Sawyer's missing position or the chart coordinate mismatch is fixed.
+The lineup previously read legacy `player.spatial`, while the match analytics screen read a separate native PlayerFocus heatmap cache. A player could therefore have a published native heatmap and 54 minutes but no inferred lineup position.
 
-After deployment, open the affected match's Stats and Sawyer's match profile, then export the existing sync diagnostics. The report now includes position rejection reasons, cached native-heatmap availability, grid dimensions, and bounded samples of coordinate pairs and third counts. No extra Trace refresh is requested for diagnostics. Opening an analytics manifest adds one indexed, bounded read of up to 32 existing cached scopes.
+The dataset read boundary now attaches native match heatmaps from the existing cache to the matching player. Match lineups, match profiles, season aggregation, and dataset exports consume this shared spatial model. The Worker embeds the same pure conversion function into the browser; there are no separately maintained server/client coordinate transforms.
 
-## Validation
-Worker and embedded browser JavaScript syntax checks passed. Logic checks cover priority, blank overrides, unknown orientation, unplaced starters, explicit substitutes, and empty analytics. Automated visual/mobile browser checks could not run because the browser download failed. Production data has not been verified.
+Match position priority is:
+1. Manually assigned match position.
+2. Match spatial evidence, including recorded goalkeeper minutes and the native match heatmap.
+3. Manually assigned season position.
+
+A blank match position resumes inference. Roster positions do not outrank match evidence. Inferred positions remain estimates, not confirmation of the player's actual tactical assignment.
+
+## Coordinate and identity handling
+
+- Native heatmaps are validated and converted from row-major intensity grids to a common 24 × 16 grid, preserving mass and using the provider's own-goal-left / attack-right orientation. Intensity is not represented as a tracking sample count.
+- Season heatmaps combine valid, consistently oriented maps using match minutes as weights, including older maps with different dimensions. Missing native distance is not displayed as a complete tracked-distance total.
+- Identity resolution is scoped to the match and connected team's side: exact game gid, canonicalized away-team gid, unique game user ID, then unique game name. Ambiguous matches do not receive another player's grid. Multiple native gids for one player are not silently added together.
+- Box touches and shots use a folded half-pitch with both ends aligned, following Trace's native renderer. Full-pitch defensive/middle/attacking percentages are omitted from these cards.
+- Completed-pass endpoints are aligned using half timestamps and directional evidence, including the opposite second-half direction when only one half supplies evidence. Conflicting or missing evidence retains explicitly labeled field coordinates without tactical thirds. Player touches retain the provider's already inverted endpoints.
+- Empty and unplottable maps render compact messages. Third percentages are shown only when the counts reconcile with the event total.
+
+Provider rendering reference inspected during this repair: https://go.traceup.com/traceid/assets/FlexPage-CMYGfp83.js (HeatMap, PlayerTouches, TouchesAroundBox, Shots and CompletedPasses renderers).
+
+## Cache and deployment behavior
+
+Existing cached heatmaps become available to lineup inference on the next dataset load. No provider refresh, sync reset, database migration, or reconnect is required. Each dataset load adds two tenant-filtered cache reads; only native heatmap JSON is projected from the larger scope payloads.
+
+New native analytics and an opaque revision are committed in the same database batch. The existing dashboard polling detects that revision and reloads the shared dataset. Timestamp fields retain their original meaning. The browser analytics cache is versioned to discard older response shapes. Existing match payloads are not rewritten during reads, avoiding races with season publication or manual imports.
+
+This release also includes the 6.20.20 changes: separate unplaced starters and substitutes, shared sticky-scroll padding correction, match-only player panels with an explicit season-profile action, compact empty analytics, and removal of the unconditional change-of-ends banner. Intentional goal/assist icon stacking is unchanged.
+
+Deploy the four files to the existing Worker, preserving the actual D1 mapping, secrets, runtime binding and migration identity. This ZIP has not been deployed by this session.
+
+## Validation and remaining verification
+
+Passed local checks:
+- Worker and embedded browser-script syntax, including exact shared-factory parity.
+- Sawyer's supplied 10 × 16 native grid through cache projection, position inference, and lineup selection. With the supplied Sep 20 roster/position diagnostics, all nine starters are placed and the two explicit substitutes remain substitutes. Sawyer's inferred label in this fixture is RM.
+- Manual match / heatmap / manual season precedence, blank overrides, goalkeeper overrides, and invalid or unknown-orientation evidence.
+- Away-team gid normalization, changed user IDs with unique names, duplicate identity rejection, game boundaries and tenant isolation.
+- Mixed-resolution minute-weighted aggregation, empty maps, malformed grids, mirrored box/shot locations, halftime pass transforms, conflicting direction evidence and unreconciled thirds.
+- Actual SQLite execution of the cache projection and native revision invalidation. Projection performs only reads and does not enqueue Trace requests.
+- Exact preservation of the intentional contribution-icon rendering function.
+
+The browser security policy rejected opening the local fixture, so mobile/desktop visual behavior is not browser-verified. Production data and the deployed Worker have not been exercised. After deployment, confirm Sep 20's lineup and Sawyer's match profile, the box-touch/shot half-pitches, scrolling tabs, and match-player back navigation. The existing diagnostic export includes spatial source, identity-resolution source, gid, model version and rejected-evidence details.
 
 ---
 
