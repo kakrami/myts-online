@@ -1,3 +1,34 @@
+# myTS 6.20.23
+
+## Competition and fixture navigation
+
+Fixture team links previously used `display:block` and `flex:1`, placing broad team-history click targets above the game's full-card button. The links now occupy their visible team identity and are underlined; the remaining card area opens that fixture's Overview. Explicit team-name clicks still open team details.
+
+The shared match renderer also dereferenced `g.game_id` while constructing admin player controls for GotSport-only fixtures. That path is now gated on available player statistics. Fixture lookup includes the event identity and uses the displayed competition's canonical items, including linked and unconfirmed fixtures.
+
+Competition names share one logo/name component and delegated navigation across the overview, schedule, match hero, competitions, trophies, team search, season filters and report preview. Navigation opens the existing Competitions page at the matching competition/division. It selects the applicable season and period, opens the section, and preserves the previous view and season for browser Back. Competition references discovered outside the selected team's list can appear in that same page; missing cached schedules remain explicitly empty rather than presenting invented fixtures. Selector options remain selectors.
+
+## Pitch-based lineup editing
+
+The dropdown table has been replaced with the existing pitch visual, substitutes, formation presets for common formats, and a custom formation option. Select a player and tap the pitch to place them, or use the explicit Swap action and select another player. Keyboard arrows move the focused pitch player. Position buttons, minutes, goals and assists are in the selected-player panel.
+
+The editor and lineup view share band-coordinate calculation. Position priority remains manual match, match heatmap, then manual season. Changes use the existing correction endpoint and optimistic update tokens. Save checks numeric limits, starter capacity, and duplicate positions. Cancel discards the draft; Reset edits clears draft overrides and requires Save. A full lineup requires swapping or removing a starter before adding another.
+
+The old table styles and obsolete tournament-open helper were removed. Intentional goal/assist icon stacking is unchanged. Attendance and schedule source labels were removed from the match overview; actual attendance and meaningful availability/error messages remain.
+
+## Validation
+
+Passed:
+- Reproduced the prior GotSport-only admin overview exception and verified the new renderer opens Overview.
+- DOM interaction checks for repeated fixture binding, competition identity/navigation and browser Back restoring the view/season.
+- Pitch editor checks for selection, swaps, substitutes, formation application, draft isolation, reset/cancel, correction payload, save and reopen.
+- Bundled and minified admin startup, login handler initialization, and spatial-model initialization.
+- Existing native-heatmap, position-priority, SQLite projection, identity isolation, coordinate and aggregation regressions.
+
+DOM checks are not browser layout verification. Browser visual/mobile hit-area verification and live deployment testing remain outstanding; the available browser previously rejected the local fixture URL. No live Worker was changed. Deploy the four files using the existing workflow and preserve database bindings and secrets. No schema or provider-sync changes are included in this release.
+
+---
+
 # myTS 6.20.22
 
 ## Admin startup regression fixed
