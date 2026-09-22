@@ -1,3 +1,23 @@
+# myTS 6.20.20
+
+## Changes in this release
+- Match position precedence: manual match position, verified match spatial evidence (including goalkeeper minutes), then manual season position. Roster positions no longer override match evidence.
+- Starting players without a resolved position appear separately from substitutes. Explicit non-starters are not promoted by minutes alone.
+- Removed top padding from the shared scroll viewport so sticky tabs can reach the header; content keeps its initial spacing.
+- Match-player views show match details, with an explicit season-profile button.
+- Empty analytics maps use compact messages without blank thirds. Removed the unconditional change-of-ends banner.
+- Goal/assist icon stacking is unchanged.
+
+## Investigation still open
+The native PlayerFocus heatmap and the legacy spatial position model are separate data paths. The native heatmap query returns a grid without verified tactical direction metadata. This release does not guess that orientation or claim Sawyer's missing position or the chart coordinate mismatch is fixed.
+
+After deployment, open the affected match's Stats and Sawyer's match profile, then export the existing sync diagnostics. The report now includes position rejection reasons, cached native-heatmap availability, grid dimensions, and bounded samples of coordinate pairs and third counts. No extra Trace refresh is requested for diagnostics. Opening an analytics manifest adds one indexed, bounded read of up to 32 existing cached scopes.
+
+## Validation
+Worker and embedded browser JavaScript syntax checks passed. Logic checks cover priority, blank overrides, unknown orientation, unplaced starters, explicit substitutes, and empty analytics. Automated visual/mobile browser checks could not run because the browser download failed. Production data has not been verified.
+
+---
+
 # myTS 6.20.19
 
 ## Database reliability and runtime evidence
