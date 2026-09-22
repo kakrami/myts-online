@@ -4,7 +4,7 @@
 
 The previous drag preview was appended inside the editing form. The form sits inside an overflow-clipped sheet with backdrop filtering and, on mobile, a will-change transform. A fixed preview there does not share the viewport coordinate system used by pointer clientX/clientY. The preview now mounts directly under document.body. Drop, Escape, pointer cancellation, lost capture, window blur, hidden document and editor removal clean up the preview and capture.
 
-Position targets were deliberately omitted when a starter was within nine percentage points. A complete formation could therefore hide every target. All formation targets now render, including occupied rings, with occupied target labels above their rings. Drops and taps on an occupied ring use the same swap action as drops on a player. Applied formations also drive target generation.
+Position targets were deliberately omitted when a starter was within nine percentage points. A complete formation could therefore hide every target. The formation provides one stable set of targets. All of its targets render, including occupied rings, with occupied target labels above their rings. Current player markers remain valid swap destinations without adding overlapping targets. Drops and taps on an occupied ring use the same swap action as drops on a player. Applied formations also drive target generation.
 
 One marker renderer now supplies pitch starters, substitutes and unplaced players in both normal and edit mode: jersey/position, name and the existing goal/assist stacks. Normal markers all retain the existing match-scoped player links. Edit markers share selection styling and drag behavior. The old substitute chip styles and avatar-specific icon offsets were removed.
 
