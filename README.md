@@ -275,3 +275,7 @@ Some older records still lack sufficient evidence. The app does not treat these 
 Checked JavaScript syntax, the real historical schedules and available standings, winner/runner-up and tied-final handling, cached awards during errors, cancellation/conflicting-winner rejection, consolation branch handling, invalid losing-team paths, edition grouping, deduplication, and the packaged Worker HTML response. This release was not deployed to your account and has not received a fresh on-device visual/touch test. GotSport availability and incomplete historical records remain external limitations.
 
 The ZIP contains only the deployment files and this README. Tests and downloaded source fixtures are excluded.
+
+## 6.20.26 lineup editing
+
+The pitch is the match lineup editor: tap or drag a player to reveal all named position targets, and drop to set that position and placement. No formation preset or separate stats form is required. The displayed formation is derived from placed player roles. Match stats remain editable in the match player view.
