@@ -1,3 +1,9 @@
+# myTS 6.20.54
+
+Trace's stale game recovery now uses a partial index over preparing games. This keeps the same recovery rule while avoiding a scan of every game for the team on each recovery check. The index adds a small write cost when a game's preparation status changes. Existing statistics and the background budget are unchanged. Background savings need measurement after background jobs resume.
+
+---
+
 # myTS 6.20.53
 
 The combined dashboard endpoint now accepts the already loaded Trace data cursor and returns fresh status without reading the saved matches and heatmaps when the cursor matches. First loads and changed data still fetch full rows, and a concurrent cache change triggers a full Trace read. This extends the 6.20.52 cache invalidation to normal dashboard navigation.
