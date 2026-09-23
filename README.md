@@ -1,6 +1,6 @@
-# myTS 6.20.47
+# myTS 6.20.48
 
-The current `main` source reports 6.20.47 in `package.json`, the Worker version, and the embedded page version. The Trace background worker retains its fast cadence while jobs are due, then uses its normal idle interval. Recovery uses the existing stale-job checks, and analytics due checks require a ready game. Player stats and calculations are unchanged. The sections below retain earlier release notes.
+The current `main` source reports 6.20.48 in `package.json`, the Worker version, and the embedded page version. Trace checks the next analytics job against its remaining daily request budget before choosing a fast background interval. A job that cannot run until the budget resets no longer causes two-second polling. Recovery uses the existing stale-job checks. Player stats and calculations are unchanged. The sections below retain earlier release notes.
 
 ---
 
