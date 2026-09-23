@@ -1,3 +1,7 @@
+# myTS 6.20.58
+
+Includes removal of all app-imposed daily usage pauses. Corrects manifest queue triggers to use explicit ON CONFLICT DO NOTHING so repeated catalog upserts preserve existing manifests without duplicate-key errors. Schema v5 replaces both triggers transactionally.
+
 # myTS 6.20.57
 
 Removes app-imposed D1 read/write pauses, the Trace daily request cap, and the directory daily write cap. Existing midnight pause alarms resume on the next scheduled wake. Usage diagnostics, hourly accounting, normal job scheduling, leases, and service-error retries remain. No player-stat calculation changes.
