@@ -1,3 +1,13 @@
+# myTS 6.20.59
+
+- Trace spatial changes have a per-game revision journal. Both dashboard and Trace data paths merge only changed games; generation changes and reconnects still require a full snapshot. Unchanged heatmaps do not invalidate the dataset. Player-stat and spatial calculations are unchanged.
+- Transactional summaries retain analytics coverage and directory counts. Indexed lookups replace broad error scans. Initial schema v6 migration builds these summaries once; subsequent source writes maintain them.
+- Trace status separates game publication from pending/error analytics. Background analytics progress remains visible between individual job runs.
+- Trace catalogs skip unchanged game/player data; TeamSnap resource and team records write only when their content changes. TeamSnap/GotSport GET requests support ETag/Last-Modified validation when supplied by the provider, with an evictable memory cache and normal full-fetch fallback. Trace's existing GraphQL catalog has no verified incremental cursor; historical corrections are still checked.
+- No app-imposed daily pauses or new usage caps. Existing retries, leases and provider-error handling remain.
+
+Validation: randomized SQL lifecycle tests compare summaries to source tables through inserts, updates, deletes, repeated migration and rollback. Client/server tests cover delta merges, stale cursors, generation fallback and conditional-response credential isolation. Production hourly usage comparison follows deployment; migration costs are reported separately.
+
 # myTS 6.20.58
 
 Includes removal of all app-imposed daily usage pauses. Corrects manifest queue triggers to use explicit ON CONFLICT DO NOTHING so repeated catalog upserts preserve existing manifests without duplicate-key errors. Schema v5 replaces both triggers transactionally.
