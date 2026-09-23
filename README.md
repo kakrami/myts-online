@@ -1,62 +1,12 @@
-# myTS 6.20.45
-
-Trace analytics readiness now respects the remaining per-task request budget, so blocked player stats do not cause two-second background retries. Once the budget resets, pending tasks resume. Per-game spatial summaries are cached from existing Trace heatmaps; older games backfill once and changed heatmaps refresh only their game. Raw stats and heatmaps remain stored.
-
----
-
-# myTS 6.20.44
-
-Schedule refreshes wait until a touch activation has completed before replacing cards. Unchanged schedule markup preserves existing elements, including hydrated team links. Stats coverage remains a non-clickable indicator. Match-opening diagnostics distinguish missing context from missing game data.
-
----
-
-# myTS 6.20.43
-
-The calendar shows a compact legend matching the existing dots: blue for games, green for practices, and gray for other events only in months where those dots appear.
-
----
-
-# myTS 6.20.42
-
-A GotSport team identity is used when the existing fixture reconciliation independently verified that the TeamSnap and GotSport rows are one match. This covers official name variations without conflating ambiguous or conflicting fixtures. Schedule, Competitions, and match details resolve that team through the same display path and retain its verified logo.
-
----
-
-# myTS 6.20.41
-
-The same GotSport fixture uses one resolved team identity in Schedule, Competitions, and match details. Compatible club-prefixed names retain verified GotSport IDs and logos; ambiguous matches remain unresolved. Practices appear as single event rows without competition trophy headings.
-
----
-
-# myTS 6.20.40
-
-Schedule date changes share directional motion for Today, date buttons, five-day arrows, calendar picks, and swipe. Day/Season and Upcoming/Past use a brief content transition. The Schedule event filter is an anchored All/Games/Practices dropdown. Calendar dots distinguish games in blue and practices in green.
-
----
-
-# myTS 6.20.39
-
-Schedule filters offer only All, Games, and Practices. Selecting an option applies immediately. Kickoff times in the shared match row receive their natural width, including on narrow screens.
-
----
-
-# myTS 6.20.38
-
-The game card stats icon is a passive coverage indicator. Tapping the icon does not open the match; the rest of the game card still does. Lineup Reset continues to use the red action and the app confirmation dialog. Restoring player corrections now also requires that dialog and uses a red action. Pitch direction displays “← Own goal” and “Attack →”.
-
----
-
-# myTS 6.20.37
+# myTS 6.20.36
 
 ## Current baseline
-
-Reset is red and uses the app confirmation dialog. Field direction reads “← Own goal” and “Attack →”. The match card’s stats mark indicates coverage without acting as a separate button; the card itself opens the match.
 
 The lineup editor keeps Edit, Save, Cancel, and Reset inside the pitch corner. A player's disc and its position target share one pitch coordinate, independent of the name label beneath the disc. Press and hold a player, drag to any of the 22 position targets or another player to swap, then release. Dragging to the substitutes area moves a player there. Keyboard users can select a player and activate a target or use arrow keys.
 
 Changing the team in match analytics keeps the existing stats visible while the new team's stats load. The selector and stats remain mounted, avoiding a collapse of the page during the request.
 
-The Worker and package report 6.20.37. Startup, position validation, and simulated pointer interactions were checked locally; authenticated browser layout and physical touch behavior still require a live check.
+The Worker and package report 6.20.36. Startup, position validation, and simulated pointer interactions were checked locally; authenticated browser layout and physical touch behavior still require a live check.
 
 ---
 
