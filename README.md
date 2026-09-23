@@ -1,3 +1,9 @@
+# myTS 6.20.51
+
+Trace data refreshes reuse the already loaded player and game rows while the existing data revision is unchanged. A changed revision or first load fetches the full saved data. Settings now offers a D1 usage download backed by the existing D1-free owner diagnostics; the full sync diagnostics remains available. No player stats or calculation rules change.
+
+---
+
 # myTS 6.20.50
 
 Owner diagnostics now include the last 24 hourly D1 usage buckets by runtime, table and app version, together with the shared app budget. They reuse query metadata and Durable Object checkpoints, without running additional D1 queries. Hourly buckets survive the UTC daily usage reset. This release changes monitoring only; app behavior, player stats, database SQL and quota thresholds are unchanged.
