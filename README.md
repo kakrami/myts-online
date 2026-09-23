@@ -1,3 +1,7 @@
+# myTS 6.20.60
+
+Retains the incremental reads, summaries and accurate analytics status from 6.20.59 while preserving the existing page polling cadence. The live measurement of 6.20.59 identified unnecessary extra API requests from faster analytics polling; that cadence change is removed.
+
 # myTS 6.20.59
 
 - Trace spatial changes have a per-game revision journal. Both dashboard and Trace data paths merge only changed games; generation changes and reconnects still require a full snapshot. Unchanged heatmaps do not invalidate the dataset. Player-stat and spatial calculations are unchanged.
