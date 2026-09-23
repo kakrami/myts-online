@@ -1,3 +1,9 @@
+# myTS 6.20.53
+
+The combined dashboard endpoint now accepts the already loaded Trace data cursor and returns fresh status without reading the saved matches and heatmaps when the cursor matches. First loads and changed data still fetch full rows, and a concurrent cache change triggers a full Trace read. This extends the 6.20.52 cache invalidation to normal dashboard navigation.
+
+---
+
 # myTS 6.20.52
 
 Trace refreshes now invalidate the data cursor when a game manifest is saved, a Trace connection is reset, or a new import generation is published. This keeps cached player positions current while avoiding unchanged full dataset reads. D1 usage export and all 6.20.51 behavior remain.
