@@ -1,3 +1,9 @@
+# myTS 6.20.46
+
+- Limit spatial-cache backfill reads to games missing cached spatial data.
+- Recover only stale Trace jobs, and use a one-minute idle scheduler interval after a completed tick with no analytics work.
+- Compare D1 usage through per-statement deltas from two diagnostics snapshots in the same UTC day; counters are cumulative and include earlier releases.
+
 # myTS 6.20.45
 
 Trace analytics readiness now respects the remaining per-task request budget, so blocked player stats do not cause two-second background retries. Once the budget resets, pending tasks resume. Per-game spatial summaries are cached from existing Trace heatmaps; older games backfill once and changed heatmaps refresh only their game. Raw stats and heatmaps remain stored.
