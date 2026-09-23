@@ -1,6 +1,6 @@
-# myTS 6.20.43
+# myTS 6.20.45
 
-The current `main` source reports 6.20.43 in `package.json`, the Worker version, and the embedded page version. The sections below retain earlier release notes.
+The current `main` source reports 6.20.45 in `package.json`, the Worker version, and the embedded page version. Calendar game dots and their legend are red in all themes. The sections below retain earlier release notes.
 
 ---
 
