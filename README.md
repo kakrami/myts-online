@@ -1,6 +1,12 @@
+# myTS 6.20.49
+
+The schedule date highlight follows a drag and uses a more visible color in all three themes. Calendar month arrows and swipes share one horizontal transition. The lineup editor keeps position targets faintly dashed until the actual drop target is highlighted. The fixture stats indicator allows the existing full-card click target to open the game. Player statistics and D1 logic are unchanged.
+
+---
+
 # myTS 6.20.48
 
-The current `main` source reports 6.20.48 in `package.json`, the Worker version, and the embedded page version. Trace checks the next analytics job against its remaining daily request budget before choosing a fast background interval. A job that cannot run until the budget resets no longer causes two-second polling. Recovery uses the existing stale-job checks. Player stats and calculations are unchanged. The sections below retain earlier release notes.
+This release reports 6.20.48 in `package.json`, the Worker version, and the embedded page version. Trace checks the next analytics job against its remaining daily request budget before choosing a fast background interval. A job that cannot run until the budget resets no longer causes two-second polling. Recovery uses the existing stale-job checks. Player stats and calculations are unchanged. The sections below retain earlier release notes.
 
 ---
 
