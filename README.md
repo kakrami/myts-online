@@ -1,3 +1,11 @@
+# myTS 6.20.55 (prepared for review)
+
+Trace manifest discovery uses an indexed pending/error queue in the existing analytics table. Catalog inserts and status changes enqueue missing manifests transactionally through SQLite triggers. Migration seeds existing eligible games once and preserves existing manifests and retry timestamps. The scheduler and processor share the same due query, retaining newest-game priority and eligibility rules. Completed manifests leave the partial index.
+
+Tradeoff: one pending manifest row per newly eligible game plus queue index maintenance. Saved player stats and calculation code are unchanged. Budget thresholds and the existing pause are unchanged. This package has not been deployed; production read/write savings require an active workload measurement after approval.
+
+---
+
 # myTS 6.20.54
 
 Trace's stale game recovery now uses a partial index over preparing games. This keeps the same recovery rule while avoiding a scan of every game for the team on each recovery check. The index adds a small write cost when a game's preparation status changes. Existing statistics and the background budget are unchanged. Background savings need measurement after background jobs resume.
