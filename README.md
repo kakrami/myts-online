@@ -1,3 +1,9 @@
+# myTS 6.20.56
+
+Owner Settings includes Compare D1 queries, an on-demand read-only comparison of the previous Trace manifest scan and current indexed queue. It exports each statement's actual D1 metadata and selected game, using one batch and retry timestamp. The baseline treats newly introduced pending rows as absent, matching their earlier representation. Authentication and connection lookup use the existing owner checks; query costs remain in normal D1 metering. Normal D1 usage export still performs no D1 queries. No scheduled comparison or quota override is introduced.
+
+---
+
 # myTS 6.20.55 (prepared for review)
 
 Trace manifest discovery uses an indexed pending/error queue in the existing analytics table. Catalog inserts and status changes enqueue missing manifests transactionally through SQLite triggers. Migration seeds existing eligible games once and preserves existing manifests and retry timestamps. The scheduler and processor share the same due query, retaining newest-game priority and eligibility rules. Completed manifests leave the partial index.
