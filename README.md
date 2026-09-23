@@ -1,3 +1,9 @@
+# myTS 6.20.52
+
+Trace refreshes now invalidate the data cursor when a game manifest is saved, a Trace connection is reset, or a new import generation is published. This keeps cached player positions current while avoiding unchanged full dataset reads. D1 usage export and all 6.20.51 behavior remain.
+
+---
+
 # myTS 6.20.51
 
 Trace data refreshes reuse the already loaded player and game rows while the existing data revision is unchanged. A changed revision or first load fetches the full saved data. Settings now offers a D1 usage download backed by the existing D1-free owner diagnostics; the full sync diagnostics remains available. No player stats or calculation rules change.
