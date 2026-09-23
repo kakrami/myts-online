@@ -1,3 +1,7 @@
+# myTS 6.20.57
+
+Removes app-imposed D1 read/write pauses, the Trace daily request cap, and the directory daily write cap. Existing midnight pause alarms resume on the next scheduled wake. Usage diagnostics, hourly accounting, normal job scheduling, leases, and service-error retries remain. No player-stat calculation changes.
+
 # myTS 6.20.56
 
 Owner Settings includes Compare D1 queries, an on-demand read-only comparison of the previous Trace manifest scan and current indexed queue. It exports each statement's actual D1 metadata and selected game, using one batch and retry timestamp. The baseline treats newly introduced pending rows as absent, matching their earlier representation. Authentication and connection lookup use the existing owner checks; query costs remain in normal D1 metering. Normal D1 usage export still performs no D1 queries. No scheduled comparison or quota override is introduced.
