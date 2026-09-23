@@ -70,7 +70,7 @@ function createTraceSpatialModel(){
 }
 const TraceSpatial=createTraceSpatialModel();
 
-const APP_VERSION = '6.20.46';
+const APP_VERSION = '6.20.45';
 const TRACE_ENGINE_VERSION = '1.8.1-browser';
 const TRACE_SOURCE_VERSION = 'compact-halo-v1';
 const TRACE_PROFILE_ACCESS_VERSION = 'team-access-v1';
@@ -1087,13 +1087,8 @@ async function nativeSpatialForMatches(env,conn,matches){
  const result=await env.DB.prepare('SELECT game_id,manifest_json,spatial_json FROM trace_analytics_games WHERE teamsnap_key=? AND manifest_json IS NOT NULL').bind(key).all(),games=result.results||[];
  const missing=games.filter(game=>game.spatial_json===null),cached=[];
  if(missing.length){
-  const byGame=new Map();
-  // Read only games without a spatial cache during a backfill.
-  for(let i=0;i<missing.length;i+=20){
-   const ids=missing.slice(i,i+20).map(game=>String(game.game_id));
-   const legacy=await env.DB.prepare(`SELECT game_id,side,gid,updated_at,json_extract(data_json,'$.heatmap') AS heatmap_json FROM trace_analytics_scopes WHERE teamsnap_key=? AND game_id IN (${ids.map(()=>'?').join(',')}) AND period='full' AND gid<>'' AND data_json IS NOT NULL AND json_type(data_json,'$.heatmap')='array'`).bind(key,...ids).all();
-   for(const row of legacy.results||[]){const id=String(row.game_id);if(!byGame.has(id))byGame.set(id,[]);byGame.get(id).push(row);}
-  }
+  const legacy=await env.DB.prepare(`SELECT game_id,side,gid,updated_at,json_extract(data_json,'$.heatmap') AS heatmap_json FROM trace_analytics_scopes WHERE teamsnap_key=? AND period='full' AND gid<>'' AND data_json IS NOT NULL AND json_type(data_json,'$.heatmap')='array'`).bind(key).all(),byGame=new Map();
+  for(const row of legacy.results||[]){const id=String(row.game_id);if(!byGame.has(id))byGame.set(id,[]);byGame.get(id).push(row);}
   for(const game of missing)game.spatial_json=JSON.stringify(compactNativeSpatial(byGame.get(String(game.game_id))||[]));
   for(let i=0;i<missing.length;i+=30)await env.DB.batch(missing.slice(i,i+30).map(game=>env.DB.prepare('UPDATE trace_analytics_games SET spatial_json=? WHERE teamsnap_key=? AND game_id=? AND spatial_json IS NULL').bind(game.spatial_json,key,game.game_id)));
   const latest=await env.DB.prepare('SELECT game_id,spatial_json FROM trace_analytics_games WHERE teamsnap_key=? AND manifest_json IS NOT NULL').bind(key).all(),values=new Map((latest.results||[]).map(row=>[String(row.game_id),row.spatial_json]));
@@ -2715,9 +2710,9 @@ async function syncTeam(env,key,options={}){
  if(!lock)return{ok:true,queued:true};
  try{
   if(options.durableOwned)await env.DB.batch([
-   env.DB.prepare("UPDATE trace_halo_tasks SET status='pending' WHERE teamsnap_key=? AND status='processing' AND updated_at<?").bind(key,new Date(Date.now()-5*60*1000).toISOString()),
-   env.DB.prepare("UPDATE trace_source_games SET engine_status='stale' WHERE teamsnap_key=? AND source_status='ready' AND engine_status='processing' AND updated_at<?").bind(key,new Date(Date.now()-10*60*1000).toISOString()),
-   env.DB.prepare("UPDATE trace_games SET playing_status=NULL WHERE teamsnap_key=? AND playing_status='preparing' AND (playing_updated_at IS NULL OR playing_updated_at<?)").bind(key,new Date(Date.now()-10*60*1000).toISOString())
+   env.DB.prepare("UPDATE trace_halo_tasks SET status='pending' WHERE teamsnap_key=? AND status='processing'").bind(key),
+   env.DB.prepare("UPDATE trace_source_games SET engine_status='stale' WHERE teamsnap_key=? AND source_status='ready' AND engine_status='processing'").bind(key),
+   env.DB.prepare("UPDATE trace_games SET playing_status=NULL WHERE teamsnap_key=? AND playing_status='preparing'").bind(key)
   ]);
   await traceActivity(env,key,'Starting');const result=await syncTeamWork(env,key,{...options,deadline:Date.now()+22000});await traceActivity(env,key,result.ok?(result.done?'Complete':'Waiting for next batch'):'Update delayed',result.error||result.last_error||null);return result;}
  catch(e){await traceActivity(env,key,'Update delayed',clean(e.message||e).slice(0,500));throw e;}
@@ -3311,7 +3306,7 @@ export class MyTSRuntime {
      const result=await syncTeam(env,row.teamsnap_key,{owner,durableOwned:true,gameLimit:1,refreshCatalog:due||!!requested?.refreshCatalog,retryErrors:!!requested?.retryErrors});
      work={ok:result.ok,done:result.done,analytics_processed:result.analytics_processed??null,processed_games:result.processed_games??null,total_games:result.total_games??null};
      const latest=await storage.get('job')||job;if(latest.requested&&JSON.stringify(latest.requested[row.teamsnap_key])===JSON.stringify(requested)){delete latest.requested[row.teamsnap_key];await storage.put('job',latest);}
-     if(!result.ok||result.last_error){outcome='error';error=clean(result.error||result.last_error||'Trace update failed.').slice(0,500);}delay=result.ok?(result.done&&Number(result.analytics_processed||0)===0?60000:2000):60000;break;
+     if(!result.ok||result.last_error){outcome='error';error=clean(result.error||result.last_error||'Trace update failed.').slice(0,500);}delay=result.ok?2000:60000;break;
     }
    }
   }catch(e){outcome='error';error=clean(e?.message||e).slice(0,500);delay=e?.retry_at?Math.max(1000,e.retry_at-Date.now()):60000;if(e?.retry_at)outcome='budget_paused';console.error('myTS alarm',source,e?.code||'sync_failed',error);}
