@@ -1,6 +1,6 @@
-# myTS 6.20.45
+# myTS 6.20.47
 
-The current `main` source reports 6.20.45 in `package.json`, the Worker version, and the embedded page version. Calendar game dots and their legend are red in all themes. The sections below retain earlier release notes.
+The current `main` source reports 6.20.47 in `package.json`, the Worker version, and the embedded page version. The Trace background worker retains its fast cadence while jobs are due, then uses its normal idle interval. Recovery uses the existing stale-job checks, and analytics due checks require a ready game. Player stats and calculations are unchanged. The sections below retain earlier release notes.
 
 ---
 
