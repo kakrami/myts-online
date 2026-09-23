@@ -1,3 +1,9 @@
+# myTS 6.20.50
+
+Owner diagnostics now include the last 24 hourly D1 usage buckets by runtime, table and app version, together with the shared app budget. They reuse query metadata and Durable Object checkpoints, without running additional D1 queries. Hourly buckets survive the UTC daily usage reset. This release changes monitoring only; app behavior, player stats, database SQL and quota thresholds are unchanged.
+
+---
+
 # myTS 6.20.49
 
 The schedule date highlight follows a drag and uses a more visible color in all three themes. Calendar month arrows and swipes share one horizontal transition. The lineup editor keeps position targets faintly dashed until the actual drop target is highlighted. The fixture stats indicator allows the existing full-card click target to open the game. Player statistics and D1 logic are unchanged.
