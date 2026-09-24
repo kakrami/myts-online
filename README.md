@@ -1,3 +1,48 @@
+# myTS 6.20.77
+
+Database write efficiency and shared daily budgets. Based on the supplied 6.20.76 package; its player navigation, spacing, team search, and sidebar changes are preserved.
+
+## Changes
+
+- TeamSnap has one sync owner, the existing Durable Object. Connect waits for that owner’s initial pass; cron and refresh requests enqueue work. An old deployment’s lease is respected while it expires.
+- Each bounded TeamSnap tick publishes completed resources and its latest cursor in one atomic D1 batch. Intermediate pages no longer rewrite the staged job. Repeated updates to the same resource merge against the staged result and publish only the final result. Failures retain the prior committed checkpoint. A transaction precondition prevents an in-flight old credential from publishing after reconnect.
+- Successful retry-control records and unchanged progress statuses no longer rewrite identical data.
+- Rankings scans record observed team IDs in their page checkpoint instead of touching every team’s generation. Stale teams are removed only after the complete scan succeeds. An older partially complete scan restarts at page one once to build a complete identity set. Team identity, aliases, changed data, and discovery coverage remain supported.
+- Directory jobs use their persisted due time as an optimistic commit condition, rather than writing a separate claim/lease for every fetch. The single owner serializes execution, batches evidence with the continuation, and rejects stale replay. Existing outstanding leases are respected. Public directory freshness uses catalog check timestamps, so unchanged team rows do not need timestamp writes.
+- Shared daily accounting now enforces reservations across runtimes. Normal completion releases unused reservations; interrupted work conservatively retains its reservation until the UTC day changes. Deployments/restarts do not reset allowances. Cron wakes do not bring quota-paused jobs forward.
+- Diagnostic budget reads do not rewrite the ledger. Empty usage checkpoints do not rewrite Durable Object usage records. No per-page D1 workload was moved to Durable Object storage.
+
+## Budget settings and limitations
+
+| Work | Reads/day | Writes/day |
+|---|---:|---:|
+| All measured app use: background admission ceiling | 3,000,000 | 70,000 |
+| All measured app use: foreground admission ceiling | 4,500,000 | 90,000 |
+| Directory workload’s own write ceiling | Shared above | 20,000 |
+
+The directory allowance is contained within the shared allowance, not added to it. Read-only API operations can continue at the app write ceiling while read capacity remains. Existing data is retained; delayed work resumes automatically after midnight UTC. On installation during a day already over the background allowance, background writes pause for the remainder of that UTC day. Pauses are capacity protection, not counted as efficiency savings.
+
+Reservations use conservative operation estimates and actual D1 metadata reconciliation, including the index/trigger cost reported by D1. Unexpectedly larger operations trip a circuit breaker for subsequent work. This is not a Cloudflare account spending cap or an absolute guarantee: a single unexpectedly expensive query, other applications, earlier unmeasured activity, and Durable Object quotas are outside a strict D1-only guarantee. Keep Workers Free to retain the provider-enforced no-overage boundary.
+
+## Validation
+
+Local SQLite/Node tests compared the same fixtures against 6.20.76:
+
+| Fixture | Before | After | Reduction |
+|---|---:|---:|---:|
+| Unchanged TeamSnap sync: 12 resources, two ticks | 24 logical row changes | 4 | 83.3% |
+| Unchanged rankings evidence: 100 teams | 100 logical row changes | 0 | 100% |
+
+These are fixture logical changes, not Cloudflare billable row counts or production-wide savings. Genuine new directory entries still require writes; the previously discussed 23–35% daily usage target remains unverified.
+
+Passed checks: checkpoint rollback and retry, staged resource merges, reconnect during I/O, changed rankings, multi-page deletion reconciliation, interrupted legacy scan restart, stale job replay, concurrent reservations, preserved reservations across restart, UTC rollover, read-only access at the write ceiling, overrun circuit breaker, quota-paused cron wake-ups, fresh schema initialization, Worker module/embedded-script syntax, and packaged app/health handler startup. No schema migration or destructive rebuild is required. A Cloudflare-runtime deployment and physical-device test were not performed in this environment.
+
+## Production comparison
+
+After deployment, confirm every runtime reports 6.20.77 and save the usage diagnostic. Compare the next complete UTC day with the September 24 baseline of 75,572 writes at 20:36 UTC only with matching time windows and activity. Use hourly/release/workload counters and Cloudflare D1 totals together. Report directory growth, completed scans, data freshness, and paused time alongside write savings. The full-day live comparison remains outstanding.
+
+---
+
 # myTS 6.20.76
 
 - Match player views support left/right swipes and previous/next buttons within the same match, ordered by minutes. Navigation preserves the original Back destination, respects reduced motion, and does not switch players while the editor is open.
