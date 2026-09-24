@@ -1,3 +1,14 @@
+# myTS 6.20.81
+
+## Schedule layout and indicators
+
+- Season list fills its available container width for populated and empty results. No Season legend.
+- Date strip and Calendar share the same day classification, dot markup, colors, and accessible descriptions. Game and Practice can both appear on the same day; Other event retains the existing calendar rule. Indicators refresh when schedule data changes without replacing date buttons.
+- Calendar legend sits opposite Today on one footer row. The Date-view legend stays at the bottom-right of the viewport, above phone navigation and safe areas, with bottom content spacing. It is hidden while an overview or calendar covers the Schedule.
+- Shared legend markup avoids separate definitions in the two views. Existing carousel and navigation behavior remains in use.
+
+Verification: Chromium at 320, 390, 768, 1280, and 1600px widths; populated/empty Season widths, matching mixed/single/other/no-event dots, Calendar footer alignment, Date legend positioning while scrolling, and repeated view switching passed. Live indicator refresh, touch swiping, and resizing were also checked. Embedded scripts and Worker syntax, packaged version, and ZIP integrity checked. Backend unchanged except version; configuration unchanged. Controlled local tests; not deployed.
+
 # myTS 6.20.80
 
 ## Stable match-player analytics
