@@ -1,3 +1,13 @@
+# myTS 6.20.82
+
+## Match player to Season profile
+
+- Player name and avatar form one keyboard-accessible Season profile link, with a subtle underline and focus indicator. Removes the separate Season profile button.
+- Match-player slides have no Edit button or hidden editing forms. Removes their unused editing guards. Season profiles retain existing administrator-only editing. Game overview match editing is unchanged.
+- The player carousel saves its slide scroll positions before cleanup and restores them on resume. Back from Season profile preserves the selected teammate and vertical position.
+
+Verification: Chromium at 390px and 1280px with controlled analytics responses. Avatar/name activation, keyboard activation without URL hash changes, administrator Season editing, viewer restrictions, restored teammate/180px scroll position, and touch swiping across the linked area passed. No browser runtime errors. Worker and embedded-script syntax and ZIP integrity checked. Backend unchanged except version, configuration unchanged. Not deployed.
+
 # myTS 6.20.81
 
 ## Schedule layout and indicators
