@@ -1,3 +1,34 @@
+# myTS 6.20.78
+
+Based on the supplied myts_v6.20.77.zip. All 6.20.77 backend, database write-efficiency, accounting, and configuration changes are preserved. The only backend difference is APP_VERSION.
+
+## Match-player navigation
+
+- Replaces the custom pointer-release/reopen handler with the existing bundled Embla carousel used by Schedule.
+- Stable drawer and slides follow the finger. Previous/next controls use the same carousel. Each player retains an independent vertical scroll position, and Back returns to the original match or season view.
+- Nearby player summaries are prepared from local match data; only the settled player starts detailed analytics. Shared analytics caching and request deduplication remain in use. Offscreen slide rendering uses content visibility.
+- Match views no longer calculate hidden season match logs or attendance histories. Background refresh retains unchanged player DOM and only rebuilds changed player content. Roster additions/removals are handled while idle.
+- Editing is scoped to the selected player, with one form owner. Swipes and arrows cannot switch players during editing. Reduced motion and viewport resizing are supported.
+
+## Head-to-head
+
+- Shows available meetings immediately while histories refresh. Each completed team request can update the display without waiting for the other team.
+- Reuses fresh history according to returned refresh timing; explicit Refresh remains available. Partial history and request errors remain visible.
+- Removes a duplicate range-change animation.
+
+## Overlay responsiveness
+
+- Overview data refresh waits while a pointer, select menu, modal, editor, or player gesture owns interaction.
+- Shared sheet animations use an owned Web Animation completion/cancellation lifecycle. Replacing a view synchronously completes any closing select before its owner is removed, preventing leftover portal layers.
+- Queued focus work checks the current view and top dialog and uses preventScroll.
+- Expensive pointer diagnostics run only with ?diagnostics=1. That mode also records bounded browser long-task and input-delay timing in the existing diagnostics export, for investigating any remaining device-specific lag.
+
+## Verification
+
+Worker and embedded scripts pass syntax checks. Chromium tests used the actual player/analytics renderers with controlled data and API responses: 100 matches, 16 players, populated heatmaps and event charts, and four-times CPU throttling. Checks cover phone/tablet/desktop widths, touch movement before release, retained DOM and scroll positions, editing, Back/resume, repeated settings overlays, interrupted menu teardown, immediate H2H display, cached reopening, rapid navigation, reduced motion, background refresh, and resizing. Packaged backend comparison and ZIP integrity checks passed.
+
+These are local browser tests; physical-device and live-service behavior have not been verified. Not deployed.
+
 # myTS 6.20.77
 
 Database write efficiency and shared daily budgets. Based on the supplied 6.20.76 package; its player navigation, spacing, team search, and sidebar changes are preserved.
