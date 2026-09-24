@@ -1,3 +1,7 @@
+# myTS 6.20.66
+
+- Calendar month swipes ignore bubbled capture-loss events from date buttons when touch capture transfers to the calendar. Actual calendar capture loss still cancels the gesture.
+
 # myTS 6.20.65
 
 - Nested match/player navigation restores the existing view, selected tab, controls, and scroll position instead of rebuilding the parent and remounting its analytics. Covers lineup, player table, match log, and season-profile navigation.
