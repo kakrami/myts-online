@@ -1,3 +1,7 @@
+# myTS 6.20.75
+
+Date navigation animation policy: nearby day selections and five-day arrows slide with Embla; distant calendar/Today selections use a short opacity transition instead of scrolling through empty months. The fixed date highlight never animates. Calendar month labels, season changes, Day/Season switches, schedule period/type filters, competition and bookmark periods, and team custom-date/range results use the same non-blocking replacement transition. Reduced motion skips effects. Rapid actions cancel/restart only the affected visual animation; no input locks, gesture timers, extra data requests, or cloned interactive overlays are introduced. Background refreshes do not start these transitions.
+
 # myTS 6.20.74
 
 Schedule dates and game panels now share a single navigation index including previous/next season actions. A swipe previews its date during motion and loads game content on settle; direct date taps update immediately. Five-day arrows animate using the same carousel. Both the date strip and calendar season actions enter the adjacent season at its boundary day. No timer-based gesture handling or server requests were added.
