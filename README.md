@@ -1,3 +1,10 @@
+# myTS 6.20.70
+
+- Replace custom calendar gesture handling with bundled Embla Carousel 8.6.0 (MIT). No runtime CDN dependency.
+- Stable six-row month slides and season boundary pages remain mounted while gestures and animations run. Remove calendar input lock and timed click suppression.
+- Previous/next, Today, dates, and season buttons retain their existing actions. Destroy the carousel when closing or replacing the sheet.
+- Embla supports interrupting movement with the next gesture; its click suppression belongs to the drag rather than a timed lockout. Other schedule and lineup gestures are unchanged.
+
 # myTS 6.20.69
 
 - Competitions uses the shared verified fixture instead of requiring identical opponent spelling. Stale participant/time mismatches remain unlinked.
