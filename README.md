@@ -1,3 +1,7 @@
+# myTS 6.20.65
+
+- Nested match/player navigation restores the existing view, selected tab, controls, and scroll position instead of rebuilding the parent and remounting its analytics. Covers lineup, player table, match log, and season-profile navigation.
+
 # myTS 6.20.64
 
 - Correct TeamSnap availability codes: 0 = No, 1 = Yes, 2 = Maybe; missing or null = No response. Shared mapping fixes practice/game attendance lists and player summaries, including cached records.
