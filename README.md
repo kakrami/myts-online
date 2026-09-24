@@ -1,3 +1,8 @@
+# myTS 6.20.67
+
+- Keep calendar months at six date rows to prevent sheet jumps.
+- Swiping beyond season boundaries shows a standard centered Previous season or Next season button in the same area. Arrows and reverse swipes use the same navigation. Unavailable seasons are disabled; tapping an available season uses the existing season selection flow.
+
 # myTS 6.20.66
 
 - Calendar month swipes ignore bubbled capture-loss events from date buttons when touch capture transfers to the calendar. Actual calendar capture loss still cancels the gesture.
