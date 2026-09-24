@@ -1,3 +1,7 @@
+# myTS 6.20.68
+
+- Clear the calendar swipe click-suppression flag on a fresh pointerdown anywhere within the calendar, so immediate taps on dates, arrows, Today, and season buttons work. The completed swipe still suppresses its own accidental click. Swipe detection and animations are unchanged.
+
 # myTS 6.20.67
 
 - Keep calendar months at six date rows to prevent sheet jumps.
