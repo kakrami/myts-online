@@ -1,3 +1,7 @@
+# myTS 6.20.62
+
+Uses one green SVG heat-map renderer for live analytics, saved fallback data, and season profiles. Retains average-position and available goal/assist markers; removes the legacy red/yellow canvas renderer. Database and stats calculations are unchanged.
+
 # myTS 6.20.61
 
 Removes unnecessary Trace analytics collection and write amplification from 6.20.60.
