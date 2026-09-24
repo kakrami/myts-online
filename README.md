@@ -1,3 +1,7 @@
+# myTS 6.20.74
+
+Schedule dates and game panels now share a single navigation index including previous/next season actions. A swipe previews its date during motion and loads game content on settle; direct date taps update immediately. Five-day arrows animate using the same carousel. Both the date strip and calendar season actions enter the adjacent season at its boundary day. No timer-based gesture handling or server requests were added.
+
 # myTS 6.20.73
 
 Schedule day swipes now update the game list when the carousel settles, while direct date taps update immediately. Date and day controls update only around the previous and next selections; only nearby game panels remain mounted, and game data is grouped once per data revision. Long date jumps land directly. Calendar month changes update only the departing and entering months. The centered date highlight and date text remain visually aligned during motion.
