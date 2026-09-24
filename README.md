@@ -1,3 +1,18 @@
+# myTS 6.20.61
+
+Removes unnecessary Trace analytics collection and write amplification from 6.20.60.
+
+- The queue collects the connected team's individual player stats/heatmaps and both team summaries. Opponent-player and legacy half-game caches are retained but excluded from processing and progress counts.
+- The existing per-team lease protects the analytics run. Each task saves its result directly; the extra D1 `loading` update is removed. A crash before saving leaves the task available for retry.
+- Unchanged responses update scheduling metadata only. They do not rewrite cached stats or heatmaps, change the content timestamp, or update coverage/spatial revisions.
+- Pending tasks do not announce spatial changes. Only changes to required heatmaps invalidate the page's map data.
+- Settings and diagnostics count required full-game tasks. Diagnostic cached counts/bytes include retained historical data.
+- Source correction intervals, authentication, retry handling, both-team comparisons and player-stat calculations are preserved. No usage pauses or caps are added.
+
+Upgrade from 6.20.60 uses schema v7: adds a constant-default required flag, marks used scopes, replaces the queue index and adjusts triggers/counts. It does not rebuild directory tables or copy/delete cached payloads. This migration still consumes D1 reads/writes once; subsequent starts use the schema-version check.
+
+Validation: actual Worker request/save-path tests, 112-game synthetic migration with both home/away identities, indexed empty-queue checks, 200 database mutations, counter parity, rollback, cached-data preservation and unchanged stat/spatial algorithms. Synthetic migration changed 1,570 table rows and indexed 1,568 required scopes; these are local SQLite measurements, not production D1 usage. Production savings require a deployed workload measurement.
+
 # myTS 6.20.60
 
 Retains the incremental reads, summaries and accurate analytics status from 6.20.59 while preserving the existing page polling cadence. The live measurement of 6.20.59 identified unnecessary extra API requests from faster analytics polling; that cadence change is removed.
