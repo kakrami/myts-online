@@ -1,3 +1,9 @@
+# myTS 6.20.63
+
+- Owner login uses a signed, Secure, HttpOnly, same-site cookie, renewed on opening the app for 30 days. Existing tab keys migrate automatically; keys are no longer kept in browser storage. Signing out clears this browser session. Changing ADMIN_KEY invalidates all sessions. Session validation uses no D1 reads or writes.
+- Temporary startup errors retain saved dashboards and use a retry screen instead of asking for the owner key. Partial dashboard snapshots are preserved; cached bootstrap data supports service outages after access validation.
+- Match-player analytics reuse the verified game-local spatial identity before user ID/name matching. Unmatched detail responses preserve existing heatmaps.
+
 # myTS 6.20.62
 
 Uses one green SVG heat-map renderer for live analytics, saved fallback data, and season profiles. Retains average-position and available goal/assist markers; removes the legacy red/yellow canvas renderer. Database and stats calculations are unchanged.
