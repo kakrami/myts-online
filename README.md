@@ -1,3 +1,7 @@
+# myTS 6.20.64
+
+- Correct TeamSnap availability codes: 0 = No, 1 = Yes, 2 = Maybe; missing or null = No response. Shared mapping fixes practice/game attendance lists and player summaries, including cached records.
+
 # myTS 6.20.63
 
 - Owner login uses a signed, Secure, HttpOnly, same-site cookie, renewed on opening the app for 30 days. Existing tab keys migrate automatically; keys are no longer kept in browser storage. Signing out clears this browser session. Changing ADMIN_KEY invalidates all sessions. Session validation uses no D1 reads or writes.
