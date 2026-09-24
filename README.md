@@ -1,3 +1,12 @@
+# myTS 6.20.76
+
+- Match player views support left/right swipes and previous/next buttons within the same match, ordered by minutes. Navigation preserves the original Back destination, respects reduced motion, and does not switch players while the editor is open.
+- Every overview uses a shared bottom spacer: 40px including the grid gap, plus the device safe area.
+- Team search shows team identity and rankings without competition entries. Competition logos no longer fall back to a generic team logo.
+- Overview drawers keep the sidebar usable. Navigation closes the full overview stack before switching views; confirmation and other modal dialogs still block background interaction.
+
+Validation: Worker and embedded scripts pass syntax checks. Chromium fixture checks passed at 390px, 768px, and 1280px, including touch input, swipe direction, vertical gesture rejection, player boundaries, preserved Back destination, bottom spacing, team results, logo isolation, sidebar navigation, and modal isolation. Live data and physical-device testing were not performed.
+
 # myTS 6.20.75
 
 Date navigation animation policy: nearby day selections and five-day arrows slide with Embla; distant calendar/Today selections use a short opacity transition instead of scrolling through empty months. The fixed date highlight never animates. Calendar month labels, season changes, Day/Season switches, schedule period/type filters, competition and bookmark periods, and team custom-date/range results use the same non-blocking replacement transition. Reduced motion skips effects. Rapid actions cancel/restart only the affected visual animation; no input locks, gesture timers, extra data requests, or cloned interactive overlays are introduced. Background refreshes do not start these transitions.
