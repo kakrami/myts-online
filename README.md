@@ -1,3 +1,11 @@
+# myTS 6.20.72
+
+- Competition headers have one native expand/collapse action, including their name and logo. Competition references elsewhere still navigate to that competition; explicit controls retain their actions.
+- Shared game cards open game overview from team names, logos, scores, dates, and empty card space. Team navigation remains available inside game overview. Native keyboard activation and explicit controls remain separate.
+- Schedule's selected-date background stays centered outside the moving Embla track. Taps and swipes retain the same carousel lifecycle.
+- Scope team-name/logo hydration to affected DOM subtrees. Reuse cached profiles and batch missing/stale profiles without scanning the entire page on every disclosure. No new polling or database writes.
+- Per-frame disclosure measurements are disabled during normal use; opt in with the diagnostics=1 query parameter when collecting interaction diagnostics.
+
 # myTS 6.20.71
 
 - Resolve matches through one canonical source model across Schedule, Overview, Bookmarks, Competitions, team browsing, head-to-head, and detail opening. Keep foreign-team perspectives, ambiguous identities, stale kickoff/participant records, and permissions isolated.
