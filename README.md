@@ -1,3 +1,17 @@
+Warning: truncated output (original token count: 13193)
+Total output lines: 465
+
+# myTS 6.20.71
+
+- Resolve matches through one canonical source model across Schedule, Overview, Bookmarks, Competitions, team browsing, head-to-head, and detail opening. Keep foreign-team perspectives, ambiguous identities, stale kickoff/participant records, and permissions isolated.
+- Share effective score precedence, player identity aggregation, team timezone formatting, selected-season ranges, and season transition loading. Operational Schedule reports include all scheduled events; analytical reports retain included-game filters.
+- Preserve parent navigation, active tab, and scroll for attendance-to-player and event detail routes. Refresh restored parents when their data changed; refresh match details regardless of originating tab.
+- Initialize sortable tables and detail tabs through the shared mounting path. Export report rows in their displayed order. Standings use an explicit component option instead of rewriting rendered HTML.
+- Use bundled Embla 8.6.0 for Schedule day and date-strip navigation as well as the calendar. Stable slides, interruptible navigation, scoped drag-click handling; remove the old document pointer handlers, timed click suppression, and custom gesture animation code. Lineup dragging is unchanged.
+- Avoid deriving and repainting unchanged dashboard payloads. Deduplicate ready analytics for up to a minute, invalidate on source revision/access changes, and retain retry behavior for pending/error results. No additional database schema, polling jobs, or writes.
+- Remove 64 overridden base-style declarations and obsolete gesture styles while retaining responsive rules and component variants.
+- Validation: packaged Worker/client compilation; identity safety, cross-view data, nested navigation, sorting/export, season/timezone, and simulated carousel interaction tests. Physical Android validation and production resource savings remain unmeasured.
+
 # myTS 6.20.70
 
 - Replace custom calendar gesture handling with bundled Embla Carousel 8.6.0 (MIT). No runtime CDN dependency.
@@ -244,53 +258,7 @@ Version 6.20.21 embedded the shared spatial model into the browser using a Worke
 
 The browser source is now embedded as literal HTML during release packaging. The shared spatial function remains identical in the Worker and browser, with source-parity checks; deployment no longer serializes a transformed function into another execution environment. No routing, authentication, database, or configuration changes are needed.
 
-Validation reproduced the failure on the bundled 6.20.21 artifact and confirmed 6.20.19 passed the same startup harness. Version 6.20.22 passes bundled and minified startup checks: embedded script execution reaches `/api/public/state` and initializes the admin login controls without the helper error. These are DOM-based startup checks, not browser visual verification or a live deployment test.
-
-All 6.20.21 spatial fixes are retained. Deploy the four files in this ZIP through your existing workflow, preserving bindings and secrets.
-
----
-
-# myTS 6.20.21
-
-## What changed
-
-The lineup previously read legacy `player.spatial`, while the match analytics screen read a separate native PlayerFocus heatmap cache. A player could therefore have a published native heatmap and 54 minutes but no inferred lineup position.
-
-The dataset read boundary now attaches native match heatmaps from the existing cache to the matching player. Match lineups, match profiles, season aggregation, and dataset exports consume this shared spatial model. The Worker embeds the same pure conversion function into the browser; there are no separately maintained server/client coordinate transforms.
-
-Match position priority is:
-1. Manually assigned match position.
-2. Match spatial evidence, including recorded goalkeeper minutes and the native match heatmap.
-3. Manually assigned season position.
-
-A blank match position resumes inference. Roster positions do not outrank match evidence. Inferred positions remain estimates, not confirmation of the player's actual tactical assignment.
-
-## Coordinate and identity handling
-
-- Native heatmaps are validated and converted from row-major intensity grids to a common 24 × 16 grid, preserving mass and using the provider's own-goal-left / attack-right orientation. Intensity is not represented as a tracking sample count.
-- Season heatmaps combine valid, consistently oriented maps using match minutes as weights, including older maps with different dimensions. Missing native distance is not displayed as a complete tracked-distance total.
-- Identity resolution is scoped to the match and connected team's side: exact game gid, canonicalized away-team gid, unique game user ID, then unique game name. Ambiguous matches do not receive another player's grid. Multiple native gids for one player are not silently added together.
-- Box touches and shots use a folded half-pitch with both ends aligned, following Trace's native renderer. Full-pitch defensive/middle/attacking percentages are omitted from these cards.
-- Completed-pass endpoints are aligned using half timestamps and directional evidence, including the opposite second-half direction when only one half supplies evidence. Conflicting or missing evidence retains explicitly labeled field coordinates without tactical thirds. Player touches retain the provider's already inverted endpoints.
-- Empty and unplottable maps render compact messages. Third percentages are shown only when the counts reconcile with the event total.
-
-Provider rendering reference inspected during this repair: https://go.traceup.com/traceid/assets/FlexPage-CMYGfp83.js (HeatMap, PlayerTouches, TouchesAroundBox, Shots and CompletedPasses renderers).
-
-## Cache and deployment behavior
-
-Existing cached heatmaps become available to lineup inference on the next dataset load. No provider refresh, sync reset, database migration, or reconnect is required. Each dataset load adds two tenant-filtered cache reads; only native heatmap JSON is projected from the larger scope payloads.
-
-New native analytics and an opaque revision are committed in the same database batch. The existing dashboard polling detects that revision and reloads the shared dataset. Timestamp fields retain their original meaning. The browser analytics cache is versioned to discard older response shapes. Existing match payloads are not rewritten during reads, avoiding races with season publication or manual imports.
-
-This release also includes the 6.20.20 changes: separate unplaced starters and substitutes, shared sticky-scroll padding correction, match-only player panels with an explicit season-profile action, compact empty analytics, and removal of the unconditional change-of-ends banner. Intentional goal/assist icon stacking is unchanged.
-
-Deploy the four files to the existing Worker, preserving the actual D1 mapping, secrets, runtime binding and migration identity. This ZIP has not been deployed by this session.
-
-## Validation and remaining verification
-
-Passed local checks:
-- Worker and embedded browser-script syntax, including exact shared-factory parity.
-- Sawyer's supplied 10 × 16 native grid through cache projection, position inference, and lineup selection. With the supplied Sep 20 roster/position diagnostics, all nine starters are placed and the two explicit substitutes remain substitutes. Sawyer's inferred label in this fixture is RM.
+Validation reproduc…1193 tokens truncated…aced and the two explicit substitutes remain substitutes. Sawyer's inferred label in this fixture is RM.
 - Manual match / heatmap / manual season precedence, blank overrides, goalkeeper overrides, and invalid or unknown-orientation evidence.
 - Away-team gid normalization, changed user IDs with unique names, duplicate identity rejection, game boundaries and tenant isolation.
 - Mixed-resolution minute-weighted aggregation, empty maps, malformed grids, mirrored box/shot locations, halftime pass transforms, conflicting direction evidence and unreconciled thirds.
