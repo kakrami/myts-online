@@ -1,3 +1,19 @@
+# myTS 6.20.83
+
+## Trace collection visibility
+
+- Overview replaces the ambiguous Analyzed/player counts with clickable collection counts that open Schedule.
+- Schedule's Season filters include All Trace games, Complete stats, and Incomplete stats. Catalog games without published match data remain visible.
+- Game overviews list missing player/team fields, identity problems, and recorded collection errors. Explicit zero values and empty event arrays are accepted. A player with recorded minutes but an empty heat map is flagged for verification.
+- Checks cover published player records, the native roster, both team full-game scopes, and connected-team player full-game scopes. Complete means these field checks passed, not that source statistics are independently verified.
+- Results are reused for five minutes and can be refreshed. Refresh reads saved data; it does not trigger recollection. Sync diagnostics includes an audit across all detected seasons, including undated catalog games.
+
+This release adds read-only diagnostics and navigation. The historical export establishes missing usable spatial data but cannot establish the underlying source/collection cause. No speculative collector retry changes, database reset, or broad re-download are included. Install this release and export Sync diagnostics for the next investigation step.
+
+Verification: field-level fixtures and real SQLite projection queries; missing versus zero, identity precedence, restricted/missing scopes, refresh counts, tenant/season boundaries, and all-season/undated coverage. Chromium at phone and desktop widths verified counts, filters, unpublished-game access, field details, refresh, and delayed initial loading without runtime errors. Worker and embedded-script syntax and module startup passed. Tests use controlled services; live Trace and physical-device behavior remain unverified.
+
+Earlier UI fixes are retained. Configuration and the four root archive paths are preserved. No new bindings, migrations, secrets, or deployment are included. Use your existing deployment configuration. App version: 6.20.83.
+
 # myTS 6.20.82
 
 ## Match player to Season profile
