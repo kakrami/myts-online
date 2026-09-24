@@ -1,3 +1,9 @@
+# myTS 6.20.69
+
+- Competitions uses the shared verified fixture instead of requiring identical opponent spelling. Stale participant/time mismatches remain unlinked.
+- Unique connected-team/date/kickoff matches can link TeamSnap and GotSport with squad, venue, score, and duplicate checks.
+- Shared season-scoped team aliases are rebuilt from synced verified fixtures and stable GotSport team IDs, reused in fixture matching, team links, and local team history. Ambiguous names stay unresolved. No alias API calls or database writes. Existing snapshots supply evidence after reload.
+
 # myTS 6.20.68
 
 - Clear the calendar swipe click-suppression flag on a fresh pointerdown anywhere within the calendar, so immediate taps on dates, arrows, Today, and season buttons work. The completed swipe still suppresses its own accidental click. Swipe detection and animations are unchanged.
