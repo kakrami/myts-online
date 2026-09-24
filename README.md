@@ -1,3 +1,16 @@
+# myTS 6.20.80
+
+## Stable match-player analytics
+
+- Match-player analytics use consistent heat-map, completed-pass, box-touch, shot, and player-touch sections while loading, unavailable, empty, and ready. Map space and metric rows stay in place; local heat-map data remains available while detailed results load.
+- Adjacent slides prepare available cached analytics. Only the selected player starts network requests, beginning at selection rather than waiting for the swipe to settle. Existing request deduplication and ready-result caches remain shared. No speculative adjacent-player API reads.
+- Asynchronous player content updates wait for horizontal movement, vertical scrolling, pointer interaction, and editing to finish. Completion uses carousel and browser events, without delay timers. Independent slide scroll positions remain intact.
+- Removes slide content-visibility skipping and the old player analytics layout replacement. The team analytics output is unchanged. Earlier Settings invalidation fix is retained.
+
+Verification: Chromium with controlled responses and real chart rendering (350 events per map), 100 games and 16 players. Delayed responses during swiping at 390px, 768px, and 1280px widths with 4x CPU throttling retained section geometry and scroll positions. Repeated navigation, vertical touch scrolling, cached neighboring content, loading/error/deferred/empty results, editing, Back/resume, reduced motion, and replacement cleanup passed. Team analytics HTML matched the previous renderer exactly. Initial cold loading requested only the manifest and selected player's analytics. Worker and embedded scripts passed syntax checks; archive integrity and unchanged backend/configuration checks passed.
+
+Tests use controlled services; physical-device and live-service behavior are not verified. Not deployed. Archive filename and four root-level paths are preserved.
+
 # myTS 6.20.79
 
 ## Settings and overview close responsiveness
