@@ -1,3 +1,15 @@
+# myTS 6.20.79
+
+## Settings and overview close responsiveness
+
+Settings now compares GotSport dashboard content before invalidating the view cache. Identical responses and status-only updates no longer trigger a synchronous dashboard rebuild when an overview closes. Changes to events, competitions, or team identity still invalidate the cache. Status indicators and polling remain active. Uses the existing dashboard content signature; no navigation or animation changes.
+
+Verification: Chromium with controlled API responses, 100 games and 16 players, phone (390px) and desktop (1280px) widths, and 6x CPU throttling. All eight scenarios passed: no Settings, identical response, status-only update, and changed content at both widths. After Settings finished its closing animation, a single click closed the overview. Unchanged/status-only cases performed no dashboard render; changed content performed one and retained updated data. On phone, Settings was opened through the app function because the full-screen overview covers the sidebar. Worker and embedded scripts pass syntax checks. Backend unchanged except version; configuration unchanged.
+
+This removes a verified unnecessary rebuild. The reported multi-second delay has not been reproduced against live services or on a physical device. Not deployed.
+
+The archive retains the supplied filename and four root-level files.
+
 # myTS 6.20.78
 
 Based on the supplied myts_v6.20.77.zip. All 6.20.77 backend, database write-efficiency, accounting, and configuration changes are preserved. The only backend difference is APP_VERSION.
