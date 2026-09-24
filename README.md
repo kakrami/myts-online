@@ -1,3 +1,7 @@
+# myTS 6.20.73
+
+Schedule day swipes now update the game list when the carousel settles, while direct date taps update immediately. Date and day controls update only around the previous and next selections; only nearby game panels remain mounted, and game data is grouped once per data revision. Long date jumps land directly. Calendar month changes update only the departing and entering months. The centered date highlight and date text remain visually aligned during motion.
+
 # myTS 6.20.72
 
 - Competition headers have one native expand/collapse action, including their name and logo. Competition references elsewhere still navigate to that competition; explicit controls retain their actions.
