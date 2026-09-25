@@ -1,4 +1,4 @@
-# myTS v6.20.92
+# myTS v6.20.93
 
 Cloudflare Worker + D1. Deploy the same four files using the existing workflow.
 
@@ -23,3 +23,5 @@ Recovery follow-up: uniquely infer an established same-season goalkeeper only wh
 Admin diagnostics now include cached heat grids and database reservation owners plus active request meters. Database limits and player calculation rules are unchanged.
 
 Budget accounting separates API reservations from the lower background threshold while retaining every reservation against the overall cap. Explicit update requests recheck current capacity; no reservations are erased and no limits increased.
+
+Incremental publication atomically updates only changed match payloads and their dataset cursor. Unchanged games incur no publication writes; concurrent imports and reads remain guarded.
