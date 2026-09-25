@@ -1,3 +1,11 @@
+# v6.20.88
+
+- Correct identity precedence: inferred goalkeeper assignments are a fallback when directly matched populated tracking is absent. They no longer introduce an overlap conflict against an existing populated player identity.
+- Preserve the September 19 fallback repair while retaining direct tracking for the two September 20 games. No player names, game IDs, or dates in production rules.
+- Explicitly conflicting identities, split keeper assignments and multiple directly mapped populated streams remain flagged; no maps or event counts are merged.
+- Verified the four supplied September 19/20 cases, prior identity and roster tests, SQLite audit queries, mobile/desktop navigation, and packaged startup. No additional queries, background collection or database writes compared with v6.20.87.
+- Live export v6.20.87: 69/112 complete, 43 incomplete; seven of nine current-season games complete. Most historical improvement reflects corrected nonparticipant checks, not newly collected data. v6.20.88 still requires live verification; historical source gaps remain.
+
 # v6.20.87
 
 - Use one participation rule for match rosters, lineup/substitutes, player swiping and match history. Exclude confirmed nonparticipants and records without positive participation evidence; keep unresolved source records in diagnostics. Unidentified game-only entries require recorded positions. Confirmed nonparticipants no longer require player analytics in the collection audit.
