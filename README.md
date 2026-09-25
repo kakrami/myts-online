@@ -1,4 +1,4 @@
-# myTS v6.20.89
+# myTS v6.20.90
 
 Cloudflare Worker + D1. Deploy the same four files using the existing workflow.
 
@@ -17,3 +17,5 @@ Cloudflare Worker + D1. Deploy the same four files using the existing workflow.
 Reviewed all 112 published games / 1,384 player rows; checked numeric integrity and minute reconciliation. Replayed four saved live diagnostic fixtures, prior identity regressions, actual SQLite audits/collector/recovery queries, half aggregation, interruption/cache preservation, tenant isolation and idempotence. Packaged startup and frontend script syntax checked.
 
 This release does not claim every historical raw game is verified. 69 published rows lack independent participation evidence. Historical source recovery must complete before those rows can be confirmed or corrected. Trace can return genuinely empty data; missing identity evidence remains visible rather than being guessed or labelled complete.
+
+Recovery follow-up: uniquely infer an established same-season goalkeeper only when all other named players have field evidence; retain ambiguity instead of claiming absence. Unassigned goalkeeper tracking blocks collection completeness. Display processed game counts during recovery.
