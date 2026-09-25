@@ -1,4 +1,8 @@
-# myTS v6.20.96
+# v6.20.97 — Provider-enforced database limits
+
+App-imposed daily database read/write caps are removed at the owner’s request. Usage accounting remains active. Collection continues until completion or an actual Cloudflare quota error; provider exhaustion retains the next-day automatic retry.
+
+# myTS v6.20.97
 
 Cloudflare Worker + D1. Deploy the same four files using the existing workflow.
 
@@ -26,8 +30,8 @@ Budget accounting separates API reservations from the lower background threshold
 
 Incremental publication atomically updates only changed match payloads and their dataset cursor. Unchanged games incur no publication writes; concurrent imports and reads remain guarded.
 
-6.20.96 corrects the database reservation estimate for atomic single-row match publications. Unbounded operations retain their conservative allowance; daily limits are unchanged.
+6.20.97 corrects the database reservation estimate for atomic single-row match publications. Unbounded operations retain their conservative allowance; daily limits are unchanged.
 
-6.20.96 adds bounded, admin-requested raw goalkeeper tracking diagnostics for established same-season keeper candidates. It does not assign identities or update analytics caches. Explicit diagnostics use the existing API allowance; background limits remain unchanged.
+6.20.97 adds bounded, admin-requested raw goalkeeper tracking diagnostics for established same-season keeper candidates. It does not assign identities or update analytics caches. Explicit diagnostics use the existing API allowance; background limits remain unchanged.
 
-6.20.96 checks all game-roster goalkeeper candidates in bounded diagnostic pages, prioritizing established keepers. Each page compares one half and retains the existing six-request maximum.
+6.20.97 checks all game-roster goalkeeper candidates in bounded diagnostic pages, prioritizing established keepers. Each page compares one half and retains the existing six-request maximum.
