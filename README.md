@@ -1,3 +1,25 @@
+# myTS 6.20.85
+
+## Shared analytics identity resolution
+
+Player analytics, native heat maps, collection completeness and diagnostic matching now use one server-side resolver. Published game identities remain the starting evidence. Contradictory stable IDs or named identities remain unresolved. A placeholder may inherit a jersey association only from unambiguous named entries in other games of the same season and the same connected team. Generic goalkeeper tracking remains a separate role unless the published game already assigns that identity to a player.
+
+When one mapped identity contains positions and its aliases are empty, the populated identity supplies the player's analytics and heat map. Multiple populated identities are flagged for overlap rather than summed or silently selected. Unassigned tracking retains a readable jersey label and its source data. Each chosen identity includes its matching method and supporting game IDs.
+
+Elimination requires independently supported participation for every published player, one unresolved tracking entry with positions, one remaining player without positions, and no conflicting candidates for that entry. Estimated participation or multiple unknown identities do not qualify. No inferred assignment is fed back as named season evidence.
+
+Existing saved rosters work without a re-download. The read path resolves aliases without rewriting player records, computed statistics or cached Trace responses. The client consumes the selected server identity instead of running a competing name-matching rule. The data cursor changes for this release; newly collected manifests invalidate identity-derived output through the existing revision mechanism.
+
+## Season feedback
+
+The existing Sync diagnostics export's collection audit includes identity_feedback: named entries checked, supported comparisons, conflicts, entries lacking another game's evidence, and per-game exceptions. Each entry is compared against other games with its own game withheld. The comparison measures consistency with Trace's named rosters, not independent identification accuracy. Player diagnostics includes the selected game's resolved identities and season feedback too.
+
+Replay of the two supplied real-game exports: September 5 issues reduced from five to one, preserving unassigned tracking #15; September 20 issues reduced from one to zero. The two-game consistency check supports 20 of 22 named entries with no contradictions; two jersey entries lack another-game support. Broader season results depend on the full saved roster history at runtime and may conservatively reject aliases where additional conflicting evidence exists.
+
+Verification: both supplied diagnostic fixtures, synthetic populated-map attachment, repeated attachment stability, away-team normalization, conflicting IDs and jersey history, named guests, season isolation, overlapping populated aliases, confirmed-only elimination and multiple unknowns. Actual SQLite collection and diagnostic projections, tenant boundaries, zero/missing distinctions, bounded fresh diagnostics and credential exclusion passed. Chromium at 390px and 1280px verified alias selection, ambiguous selection refusal, admin export/viewer exclusion, and Overview/Schedule/game refresh flows. Packaged Worker startup and embedded scripts passed syntax checks.
+
+Not deployed. Full live-season feedback has not yet been collected. Install this version and export Settings > Diagnostics to review the full saved-season results. No collector retry changes, database reset, schema migration or new binding is required. The original archive filename and four root paths are preserved.
+
 # myTS 6.20.84
 
 ## Targeted player diagnostics
