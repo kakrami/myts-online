@@ -1,3 +1,14 @@
+# v6.20.87
+
+- Use one participation rule for match rosters, lineup/substitutes, player swiping and match history. Exclude confirmed nonparticipants and records without positive participation evidence; keep unresolved source records in diagnostics. Unidentified game-only entries require recorded positions. Confirmed nonparticipants no longer require player analytics in the collection audit.
+
+- Shared analytics identity resolution now reuses the existing playing-time engine's goalkeeper assignment when both halves assign the same player to goal.
+- Fixes the saved-evidence mismatch in the two September 19 games: Hunter was assigned goalkeeper minutes, but analytics selected his empty numbered identity.
+- Does not attribute a full-game goalkeeper stream to one player when different players split the halves, assignments are missing, or the role has a conflicting identity. Multiple populated aliases remain flagged instead of being summed.
+- Reads saved assignments with an indexed join; no upstream recollection, task writes, or changes to calculated minutes. The data cursor refreshes existing client rows once.
+- Validated both supplied September 19 assignments, split keepers, missing halves, overlapping tracking, away-side normalization, previous identity cases, SQL queries, phone/desktop navigation, and packaged startup.
+- Micah's August 11 minutes and heat map remain unresolved: the supplied export has no saved participation result for that game. Historical missing-data issues remain visible.
+
 # v6.20.86
 
 - Fix collection checks rejecting the successful v2 API response.
