@@ -1,3 +1,19 @@
+# myTS 6.20.84
+
+## Targeted player diagnostics
+
+Administrators can open a game, expand Trace collection, and select Player diagnostics. The downloaded JSON includes that game's saved source roster and placeholder flags, published identities, matching method and candidates, field counts, heat-map state, task attempts, last update, and next scheduled check.
+
+The export compares the original Trace roster and up to two affected own-team full-game scopes with fresh Trace responses. Mapped players with missing positions are prioritized; omitted scopes are listed. Each invocation makes at most six application-level Trace requests (token, roster, two stats and two heat-map requests), with a shared 22-second upstream deadline, one live-check allowance per connected team per minute, and the existing database budget gates. No polling or automatic retry is added. Fresh checks stop on request failure. Authentication, access, budget, rate and timeout failures retain the saved diagnostic evidence in the export.
+
+Reports distinguish an absent heat-map field, null, an empty array, an all-zero grid, invalid data, and recorded positions. Newly available positions establish a difference from the saved response, not the cause of that historical difference. Original source identities are exported without emails, access tokens, cookies, profile hashes or event coordinates. Current task counters are included; historical responses were not recorded and cannot be reconstructed.
+
+This is a diagnostic release, not a claim that the reported player identities or heat maps have been repaired. Player mappings, completeness rules, analytics caches, task schedules and statistics remain unchanged. Live checks use the existing Trace session and cached profile access. No broad re-download, migration or data reset is required.
+
+Verification: actual Worker startup and embedded-script syntax; real SQLite query projection and tenant isolation; dummy flags, matching evidence, heat-map states, six-request cap, omitted scopes, budget/rate denial, stopped requests after authentication failure, and credential exclusion. Chromium at 390px and 1280px verified admin diagnostic download, viewer control absence, and existing Overview/Schedule/game navigation and refresh. Controlled services were used; live authenticated Trace results remain unverified. Not deployed.
+
+The latest uploaded package was used as the baseline. Original archive filename, four root files, and deployment configuration are preserved.
+
 # myTS 6.20.83
 
 ## Trace collection visibility
