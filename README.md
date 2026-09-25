@@ -1,4 +1,4 @@
-# myTS v6.20.93
+# myTS v6.20.94
 
 Cloudflare Worker + D1. Deploy the same four files using the existing workflow.
 
@@ -25,3 +25,5 @@ Admin diagnostics now include cached heat grids and database reservation owners 
 Budget accounting separates API reservations from the lower background threshold while retaining every reservation against the overall cap. Explicit update requests recheck current capacity; no reservations are erased and no limits increased.
 
 Incremental publication atomically updates only changed match payloads and their dataset cursor. Unchanged games incur no publication writes; concurrent imports and reads remain guarded.
+
+6.20.94 corrects the database reservation estimate for atomic single-row match publications. Unbounded operations retain their conservative allowance; daily limits are unchanged.
