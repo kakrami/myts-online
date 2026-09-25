@@ -1,4 +1,4 @@
-# myTS v6.20.91
+# myTS v6.20.92
 
 Cloudflare Worker + D1. Deploy the same four files using the existing workflow.
 
@@ -21,3 +21,5 @@ This release does not claim every historical raw game is verified. 69 published 
 Recovery follow-up: uniquely infer an established same-season goalkeeper only when all other named players have field evidence; retain ambiguity instead of claiming absence. Unassigned goalkeeper tracking blocks collection completeness. Display processed game counts during recovery.
 
 Admin diagnostics now include cached heat grids and database reservation owners plus active request meters. Database limits and player calculation rules are unchanged.
+
+Budget accounting separates API reservations from the lower background threshold while retaining every reservation against the overall cap. Explicit update requests recheck current capacity; no reservations are erased and no limits increased.
