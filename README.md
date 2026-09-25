@@ -1,3 +1,13 @@
+# v6.20.86
+
+- Fix collection checks rejecting the successful v2 API response.
+- Show unidentified tracking as game-only entries in the match player list, with clickable analytics; do not add them to the permanent team roster or season totals.
+- Keep unknown names separate from collection completeness. Conflicting identities and missing analytics remain flagged.
+- Expose unassigned goalkeeper tracking separately without guessing ownership or merging overlapping streams.
+- Include saved half-by-half participation and goalkeeper assignments in admin diagnostics for incomplete games. Normal browsing adds no source queries; no new background collection or database writes.
+- Verified real v6.20.85 export acceptance, mobile/desktop navigation, game-only roster isolation, SQLite audit queries, identity ambiguity handling, diagnostics limits, and packaged startup.
+- Remaining investigation: Hunter’s two September 19 heat maps and unresolved minutes require saved participation evidence from the new diagnostics export. This release does not claim to repair those source records.
+
 # myTS 6.20.85
 
 ## Shared analytics identity resolution
