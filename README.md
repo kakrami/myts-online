@@ -1,4 +1,4 @@
-# myTS v6.20.94
+# myTS v6.20.95
 
 Cloudflare Worker + D1. Deploy the same four files using the existing workflow.
 
@@ -26,4 +26,6 @@ Budget accounting separates API reservations from the lower background threshold
 
 Incremental publication atomically updates only changed match payloads and their dataset cursor. Unchanged games incur no publication writes; concurrent imports and reads remain guarded.
 
-6.20.94 corrects the database reservation estimate for atomic single-row match publications. Unbounded operations retain their conservative allowance; daily limits are unchanged.
+6.20.95 corrects the database reservation estimate for atomic single-row match publications. Unbounded operations retain their conservative allowance; daily limits are unchanged.
+
+6.20.95 adds bounded, admin-requested raw goalkeeper tracking diagnostics for established same-season keeper candidates. It does not assign identities or update analytics caches. Explicit diagnostics use the existing API allowance; background limits remain unchanged.
