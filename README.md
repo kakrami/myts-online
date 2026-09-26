@@ -1,9 +1,15 @@
-# myTS v6.20.103
+# myTS v6.20.104
 
-Game roster resolution uses season-scoped, dated TeamSnap evidence and game-specific Trace records. Current roster absence and Trace account creation dates do not exclude historical players. Explicit departure conflicts remain unidentified unless supported by a dated game link. Game-only records do not become season roster members by jersey matching.
+Restores best-effort playing time among eligible, named game players. Direct tracking and confirmed role assignments take priority; remaining lineup slots use same-game and other-half evidence with a balanced allocation. Confirmed absences remain excluded. Anonymous tracking never becomes an extra player or inherits a former player's name through a reused jersey.
 
-Duplicate accounts on one named track have a deterministic identity. Different named identities on one track are quarantined. Multiple jerseys sharing a stable player identity are combined only when their tracking intervals do not overlap. Untracked records remain unresolved rather than being labeled absent.
+Dated TeamSnap game membership supplies players missing from Trace's named roster. An unmatched fixture can use dated membership from another game on the same day and within the same season. These inferred minutes retain their provenance internally without per-player estimation labels in the UI.
 
-Admin source export supports replay of all saved inputs without changing published data. Engine 1.10.1 refreshes roster metadata from saved source inputs. All 112 games were replayed with zero positive-minute changes. Prior pitch-derived format assignments remain unverified: this release does not claim historical minutes or formats have been corrected.
+For the supplied 7v7/9v9 history, combined tracking population corrects small-pitch 5v5 classifications before minute capacity is calculated. Saved field geometry is retained. Player intervals cannot exceed the game duration or the simultaneous lineup limit.
+
+Removes match collection diagnostics, unidentified-track controls, overview collection counters, diagnostic schedule filters, and `(est.)` minute labels from normal views. Settings diagnostics and source export remain available.
+
+Validation: all 112 exported games replayed without errors or interval constraint violations; assigned minutes reconcile to capacity, confirmed absences and goalkeeper swaps persist, and repeated finalization is stable. East Valley September 19: 11 named players, 487.9 assigned player-minutes of 487.9 available. Allocation consistency does not make inferred individual minutes independently measured.
+
+Engine 1.11.0-worker recalculates saved compact sources through the existing incremental background queue. No raw-source redownload is required for that refresh.
 
 Required deployment files: worker.js, package.json, wrangler.jsonc, README.md.
