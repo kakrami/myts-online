@@ -1,4 +1,4 @@
-# myTS v6.20.107
+# myTS v6.20.108
 
 Restores best-effort playing time among eligible, named game players. Direct tracking and confirmed role assignments take priority; remaining lineup slots use same-game and other-half evidence with a balanced allocation. Confirmed absences remain excluded. Anonymous tracking never becomes an extra player or inherits a former player's name through a reused jersey.
 
@@ -31,3 +31,7 @@ The minutes engine resolves an unnamed jersey only when multiple named games in 
 Engine 1.12.0-worker does not invalidate completed 1.11.0-worker games at deployment. Historical corrections can be calculated offline and applied through the existing Trace import using cached_replay metadata: source timestamps guard against stale evidence, unchanged reimports skip writes, only supplied changed games are updated, and no Trace collection or engine queue is started. Normal future-game calculation uses the shared logic with saved heatmaps.
 
 Local validation used the 112-game source export, including actual cached grids. Thirty games changed; every half/bin has one goalkeeper and bounded outfield slots, all capacity checks passed, goals/assists were preserved, and the corrected lineup models contain exactly one goalkeeper. August 11 resolves Hunter to the keeper stream (47.3 minutes) and Sawyer to #16 (36.6 minutes). These are best-effort assignments, not independently confirmed match observations. SQL import tests cover stale input rejection and zero-write repeat import. Live changes require applying the accompanying prepared data file after deployment.
+
+## 6.20.108 — import file input lifecycle
+
+Attach the Trace import input to the document until selection or cancellation, then remove it. Prevents stale detached file input failures when applying the prepared repair. No engine change or recalculation.
