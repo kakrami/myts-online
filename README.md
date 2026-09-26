@@ -1,4 +1,4 @@
-# myTS v6.20.104
+# myTS v6.20.105
 
 Restores best-effort playing time among eligible, named game players. Direct tracking and confirmed role assignments take priority; remaining lineup slots use same-game and other-half evidence with a balanced allocation. Confirmed absences remain excluded. Anonymous tracking never becomes an extra player or inherits a former player's name through a reused jersey.
 
@@ -13,3 +13,13 @@ Validation: all 112 exported games replayed without errors or interval constrain
 Engine 1.11.0-worker recalculates saved compact sources through the existing incremental background queue. No raw-source redownload is required for that refresh.
 
 Required deployment files: worker.js, package.json, wrangler.jsonc, README.md.
+
+## 6.20.105 — saved-game processing efficiency
+
+Background calculations omit unused live-status reports, read published matches only for the relevant season, and avoid recounting totals already maintained by publication. Queue candidates load IDs instead of raw tracking payloads. Refresh checks preserve games completed by the current engine. Engine and source versions remain unchanged; this release does not request a full recalculation or source download.
+
+Validated locally against the downloaded 112-game evidence and mocked database paths; production resource savings are not yet measured.
+
+## 6.20.106 — complete cached heatmap evidence
+
+Source evidence export v2 includes cached analytics manifests and every saved scope for each exported game: both sides, unidentified tracks, goalkeeper streams, empty/error scopes, heatmap grids and identity-plan provenance. Two bounded database reads per nonempty export page use the existing team/game keys. Export does not contact Trace, enqueue work, recalculate, or publish. Engine/source versions remain unchanged. Includes 6.20.105 efficiency changes.
