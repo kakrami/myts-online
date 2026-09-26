@@ -1,7 +1,7 @@
-# myTS 6.20.117
+# myTS 6.20.118
 
-Restores saved historical player rows to season totals when a game-scoped record has a unique matching identity. Explicit mappings and dated TeamSnap member IDs take precedence; game-scoped placeholder rows never acquire a player through jersey alone. Reconnects legacy name-keyed corrections only when same-season identity is unambiguous. Newer resets retain precedence.
+Align event anchors, player Halo lookups and displayed event minutes to the selected half using absolute source timestamps. Legacy incomplete records use a labeled reported-clock fallback; missing clocks remain unknown. Carries source start timestamps into intermediate event records. No team/player/game exceptions.
 
-This is a display/aggregation repair. It does not change stored minutes, goals, event attribution, allocation, engine/source versions, queues or database records. It does not certify the original inferred stats. Existing source export and bounded tracking capture are preserved. No provider calls or recalculation are introduced.
+Retains 6.20.117 historical aggregation and correction fixes. Source/engine queue versions remain unchanged: deployment does not recollect or automatically recalculate saved seasons. New calculations use the corrected clock. A separate offline replay applies corrected clock alignment to saved games through the timestamp-guarded cached importer, preserving stored manual corrections. Event-only changes are now imported even when minute results are unchanged. Scorers and minutes remain best-effort estimates.
 
-Deploy worker.js, package.json, wrangler.jsonc and README.md using existing bindings/secrets.
+Test: node clock-release/test.cjs from the retained audit workspace. Full saved-game replay, clock invariance, half isolation, unknown clocks, Halo alignment and unchanged browser code. Deploy the four included files with existing bindings and secrets.
