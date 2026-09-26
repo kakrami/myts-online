@@ -1,4 +1,4 @@
-# myTS v6.20.108
+# myTS v6.20.109
 
 Restores best-effort playing time among eligible, named game players. Direct tracking and confirmed role assignments take priority; remaining lineup slots use same-game and other-half evidence with a balanced allocation. Confirmed absences remain excluded. Anonymous tracking never becomes an extra player or inherits a former player's name through a reused jersey.
 
@@ -35,3 +35,7 @@ Local validation used the 112-game source export, including actual cached grids.
 ## 6.20.108 — import file input lifecycle
 
 Attach the Trace import input to the document until selection or cancellation, then remove it. Prevents stale detached file input failures when applying the prepared repair. No engine change or recalculation.
+
+## 6.20.109 — analyzed games navigation
+
+Overview shows the selected season’s analyzed-game count and opens those same games in the standard Schedule list. The existing season exclusions and pre-season setting apply. Analyzed games is also available in Schedule filters. Uses already-loaded games only: no collection endpoint, background processing, data migration, or engine refresh.
