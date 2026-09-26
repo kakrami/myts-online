@@ -1,8 +1,14 @@
-# v6.20.97 — Provider-enforced database limits
+## v6.20.98 — conservative identity and minutes reconciliation
+
+Unknown Trace jersey tracks no longer inherit names from other games or occupy lineup slots. Only explicit confirmed aliases may cross games within one season. Named game identities remain eligible; dated TeamSnap event/member links provide supporting evidence, never an attendance gate. Historical roster absence is not inferred from today’s roster. Original Trace query labels survive home/away normalization; saved away-game inputs are recollected once. Observed and inferred minutes remain separate. Per-game interval checks enforce format capacity and reject overlapping roles or time outside play windows. Unverified tracks remain in diagnostics, outside named-player totals; no-participation rows are not published as substitutes. Mixed tracks are withheld rather than split speculatively.
+
+No new player- or game-specific exceptions were added. Existing explicit user corrections are retained. App-imposed D1 daily caps remain disabled at owner request; actual provider exhaustion and source rate limits remain handled.
+
+# v6.20.98 — Provider-enforced database limits
 
 App-imposed daily database read/write caps are removed at the owner’s request. Usage accounting remains active. Collection continues until completion or an actual Cloudflare quota error; provider exhaustion retains the next-day automatic retry.
 
-# myTS v6.20.97
+# myTS v6.20.98
 
 Cloudflare Worker + D1. Deploy the same four files using the existing workflow.
 
@@ -30,8 +36,8 @@ Budget accounting separates API reservations from the lower background threshold
 
 Incremental publication atomically updates only changed match payloads and their dataset cursor. Unchanged games incur no publication writes; concurrent imports and reads remain guarded.
 
-6.20.97 corrects the database reservation estimate for atomic single-row match publications. Unbounded operations retain their conservative allowance; daily limits are unchanged.
+6.20.98 corrects the database reservation estimate for atomic single-row match publications. Unbounded operations retain their conservative allowance; daily limits are unchanged.
 
-6.20.97 adds bounded, admin-requested raw goalkeeper tracking diagnostics for established same-season keeper candidates. It does not assign identities or update analytics caches. Explicit diagnostics use the existing API allowance; background limits remain unchanged.
+6.20.98 adds bounded, admin-requested raw goalkeeper tracking diagnostics for established same-season keeper candidates. It does not assign identities or update analytics caches. Explicit diagnostics use the existing API allowance; background limits remain unchanged.
 
-6.20.97 checks all game-roster goalkeeper candidates in bounded diagnostic pages, prioritizing established keepers. Each page compares one half and retains the existing six-request maximum.
+6.20.98 checks all game-roster goalkeeper candidates in bounded diagnostic pages, prioritizing established keepers. Each page compares one half and retains the existing six-request maximum.
