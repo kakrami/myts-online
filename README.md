@@ -1,7 +1,13 @@
-# myTS 6.20.118
+# myTS 6.20.119
 
-Align event anchors, player Halo lookups and displayed event minutes to the selected half using absolute source timestamps. Legacy incomplete records use a labeled reported-clock fallback; missing clocks remain unknown. Carries source start timestamps into intermediate event records. No team/player/game exceptions.
+Browser performance release. Existing stats calculations, API routes, background collection and database behavior are unchanged.
 
-Retains 6.20.117 historical aggregation and correction fixes. Source/engine queue versions remain unchanged: deployment does not recollect or automatically recalculate saved seasons. New calculations use the corrected clock. A separate offline replay applies corrected clock alignment to saved games through the timestamp-guarded cached importer, preserving stored manual corrections. Event-only changes are now imported even when minute results are unchanged. Scorers and minutes remain best-effort estimates.
+- Unchanged navigation skips dashboard serialization/cloning/storage writes using source references and edit revisions. Actual corrections, mapping changes, profile/logo/kit updates and data replacements still persist; failed writes can retry.
+- No eager season heatmap aggregation in the roster. Player-detail aggregates are reused until source grids or minutes change. Match-player views use their existing native analytics path.
+- Schedule's date and event carousels share a bounded 31-day window. Recenter after settling; calendar jumps, today, arrows, swipes, reduced motion and real season boundaries use the same date state.
+- Equal dashboard refreshes preserve derived/view caches and detail stamps; same-season back navigation retains calculations.
+- Background content comparisons reuse serialized immutable Trace rows/games. Removed duplicate main-view control mounting.
 
-Test: node clock-release/test.cjs from the retained audit workspace. Full saved-game replay, clock invariance, half isolation, unknown clocks, Halo alignment and unchanged browser code. Deploy the four included files with existing bindings and secrets.
+Package: worker.js, package.json, wrangler.jsonc, README.md. Existing bindings and secrets apply. No recollection or database migration.
+
+Local validation is retained in performance-release/test.cjs in the separate audit archive. Server code is byte-identical to 6.20.118 apart from version. Local timing is not a device-specific responsiveness guarantee.
