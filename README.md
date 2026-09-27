@@ -1,13 +1,16 @@
-# myTS 6.20.119
+# myTS 6.20.121
 
-Browser performance release. Existing stats calculations, API routes, background collection and database behavior are unchanged.
+This release adds a private Coach workflow to the existing match and player detail views. Upload the four files in this ZIP together. Existing Cloudflare bindings and secrets remain the same. The first request after deployment creates the coach tables and advances the schema version to `schema-analytics-directory-v8`.
 
-- Unchanged navigation skips dashboard serialization/cloning/storage writes using source references and edit revisions. Actual corrections, mapping changes, profile/logo/kit updates and data replacements still persist; failed writes can retry.
-- No eager season heatmap aggregation in the roster. Player-detail aggregates are reused until source grids or minutes change. Match-player views use their existing native analytics path.
-- Schedule's date and event carousels share a bounded 31-day window. Recenter after settling; calendar jumps, today, arrows, swipes, reduced motion and real season boundaries use the same date state.
-- Equal dashboard refreshes preserve derived/view caches and detail stamps; same-season back navigation retains calculations.
-- Background content comparisons reuse serialized immutable Trace rows/games. Removed duplicate main-view control mounting.
+## Use
 
-Package: worker.js, package.json, wrangler.jsonc, README.md. Existing bindings and secrets apply. No recollection or database migration.
+- Open a player from Team, then edit **Coach attributes**: up to three rated positions, endurance, and an optional target minutes. Ratings carry forward for the same TeamSnap member ID until edited in a new season.
+- Open one of your team's games from Schedule and select **Coach**. Confirm 7v7 or 9v9, half length, and available players. TeamSnap `No` responses start excluded; the coach can change the list before kickoff.
+- Drag or tap players onto the field, or use **Suggest starting lineup**. Start the clock when the field has the right number of players. Use the existing match sheet and phone back behavior.
+- Tap an on-field player and a bench player to substitute. Position moves, halftime, pause, resume, and end are recorded. The clock and player minutes derive from saved timestamps, including after a phone locks or the page reloads.
+- Suggestions consider coach-rated position strength, current playing time and targets, and a light signal from past Trace roles and minutes. They explain their reasons and never apply automatically.
+- Paused and finished games allow clock, player-minute, and late-substitution corrections. The postgame view shows coach-recorded minutes and a match timeline, separate from Trace estimates.
 
-Local validation is retained in performance-release/test.cjs in the separate audit archive. Server code is byte-identical to 6.20.118 apart from version. Local timing is not a device-specific responsiveness guarantee.
+Only the owner can read or write Coach data. Shared viewer links and public dashboard snapshots do not contain coach ratings or match sessions. A revision check rejects stale writes from another device. Active Coach views check for remote changes every 30 seconds while visible. No database write occurs on a clock tick.
+
+Actions require connectivity. The clock continues to calculate elapsed time across a reload, but offline substitution actions are not queued.
