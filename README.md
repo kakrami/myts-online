@@ -1,4 +1,18 @@
-# myTS 6.20.122
+# myTS 6.20.123
+
+GotSport sync recovery:
+- Read the public paginated team-history contract with `past=true`.
+- Apply verified division results while retaining fixtures omitted by Rankings; an empty result list cannot prove cancellation.
+- Accept named standings placeholders with valid registration/bracket IDs and no team ID. Reject malformed IDs, duplicates, and foreign division rows.
+- Detect CAPTCHA redirects without requesting the challenge page; follow only bounded redirects within the exact public division schedule.
+- Reset obsolete retry deadlines on upgrade and prioritize active competitions. Expose coverage and retained fixture counts in diagnostics.
+- Prevent incomplete history coverage from automatically classifying unmatched TeamSnap games as friendlies.
+
+Upload all four files together. Existing bindings and secrets remain unchanged. This update does not bypass GotSport CAPTCHA or supply newly published future fixtures hidden by GotSport. Saved fixtures remain available.
+
+Validation: captured live GotSport contracts; pagination, membership and identity rejection tests; missing/empty fixture retention; placeholder standings; redirect tests; recovery from the previous saved state; Worker and embedded UI syntax checks. Production deployment was not performed.
+
+## Existing Coach workflow
 
 This release adds a private Coach workflow to the existing match and player detail views. Upload the four files in this ZIP together. Existing Cloudflare bindings and secrets remain the same. The first request after deployment creates the coach tables and advances the schema version to `schema-analytics-directory-v8`.
 
