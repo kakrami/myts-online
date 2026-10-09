@@ -1,4 +1,8 @@
-# myTS 6.20.125
+# myTS 6.20.126
+
+## 6.20.126 compact list bookmark candidate
+
+Saved-game markers in the shared Competitions, Schedule, and Bookmarks match rows now occupy the existing rightmost fixture column at its top edge. Saving a game adds no metadata line or row height. Genuine metadata remains below the teams, and the indicator retains its passive click-through behavior. The 6.20.125 detail-sheet improvement is retained. Backend logic and deployment configuration are unchanged. Candidate only, not published.
 
 ## 6.20.125 compact bookmark candidate
 
