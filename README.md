@@ -1,4 +1,12 @@
-# myTS 6.20.124
+# myTS 6.20.125
+
+## 6.20.125 compact bookmark candidate
+
+The match bookmark toggle now sits in the existing sheet header immediately left of Close. It uses a 44×44 px target and a 19 px outline/filled icon; date and time stay in the match overview. No additional row, toolbar, or sheet layer is added. The existing bookmark handler, labels, pressed state, pending-state disabling, and Bookmarks destination are retained.
+
+Candidate only: not published. Worker and embedded JavaScript syntax, bookmark state and placement checks pass; actual mobile browser rendering must be verified separately. The 6.20.124 backend and deployment configuration are unchanged except for the application version label.
+
+## Retained 6.20.124 fixes
 
 Bookmark recovery: verified server-saved upcoming fixtures can be watched before GotSport publishes results. Missing result rows retain the saved watched game instead of marking it unavailable. Client-supplied snapshots are never trusted.
 
