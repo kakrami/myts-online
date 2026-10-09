@@ -1,4 +1,6 @@
-# myTS 6.20.123
+# myTS 6.20.124
+
+Bookmark recovery: verified server-saved upcoming fixtures can be watched before GotSport publishes results. Missing result rows retain the saved watched game instead of marking it unavailable. Client-supplied snapshots are never trusted.
 
 GotSport sync recovery:
 - Read the public paginated team-history contract with `past=true`.
