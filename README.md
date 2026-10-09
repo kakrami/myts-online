@@ -1,4 +1,8 @@
-# myTS 6.20.126
+# myTS 6.20.127
+
+## 6.20.127 whole-row bookmark anchor candidate
+
+The passive saved marker is now anchored to the whole shared match row, including its optional date: 10 px below the top and 12 px inside the right edge. The date reserves the existing action gutter so it cannot run under the marker. The stats indicator occupies the bottom of the existing fixture gutter, leaving at least 4 px below the bookmark in an undated 48 px fixture. Saving a game adds no flow content or height. Successful removals disappear from the Bookmarks list; failures retain the saved game, and the open detail sheet still allows re-saving. Passive indicators use bookmark terminology and empty-state guidance identifies GotSport eligibility. Cached player-stats availability is tied to the verified owning team, source revision, access scope and fixture identity; an explicit action opens the correct source team and season before showing its players. Existing dates, competition metadata and source data are retained. Candidate only, not published; browser geometry and overlap checks remain required before release.
 
 ## 6.20.126 compact list bookmark candidate
 
