@@ -1,4 +1,29 @@
-# myTS 6.20.127
+# myTS 6.20.129
+
+## 6.20.129 public schedule ingestion candidate
+
+Scope: parser and truthful coverage fixes only. Automated schedule acquisition and future-competition discovery remain unresolved.
+
+Unpublished candidate based on main commit `78fe27c00b91cd09c3114cf23979617df65b36be` (6.20.127). The separate, paused 6.20.128 work is not included.
+
+- Parse canonical GotSport match IDs from exact event/division Results links. Display match numbers are never used as canonical identities.
+- Resolve event registration links only against verified division standings or existing structured match identities. No fuzzy team-name/opponent matching or invented schedule IDs.
+- Add previously unseen fixtures and update existing fixtures by canonical ID, using the same collection path for the connected team and followed-team dashboard contexts.
+- Preserve bracket-seed participants as conditional slots. A linked registration whose canonical team ID is unavailable remains a registration-identified fixture; it is not automatically a contingent playoff slot.
+- Deduplicate identical rows. Reject conflicting duplicates, foreign event/division/team identities, unresolved identity regressions and malformed/empty/challenged responses without deleting saved data.
+- Keep omitted fixtures; absence from history, results or a public page never fabricates a cancellation.
+- Keep structured results independent from public kickoff verification. A later schedule check cannot erase newer scores, and lagging public timing/participants cannot move or unresolve a completed result.
+- Distinguish verified full-division schedules, filtered views, retained fixtures and results checks. A full page requires its exact division links and active All-dates evidence.
+- Report history-only discovery as incomplete even when all known division schedules verify. Legacy ready metadata and partial schedules no longer produce an Up to date claim. Results and schedule timestamps are exposed separately.
+- Clear obsolete venue/address metadata when a verified public location changes, rather than pairing new fixture text with old directions.
+
+### Evidence and limits
+
+The parser contract was checked against genuine public DOM subtrees captured from Fall event 50598, division 552093, on October 9, 2026. The full page contains 13 fixtures, its date-filtered page contains 5, and White's registration-filtered page contains 3. Canonical match and registration links are recorded in the separate QA evidence bundle. Captures are browser DOM, not raw Worker HTTP responses. Synthetic API-shaped metadata and adversarial variants used by automated tests are explicitly identified as such.
+
+Cloudflare's actual HTMLRewriter was exercised locally through workerd. No live production database, deployment or write-back was used. Browser rendering of the candidate has not been verified. Production Worker access to GotSport remains unverified; another exact division (56019/542958) still returned a human-verification challenge. This patch does not bypass that challenge, authenticate to clubLive, or discover future competitions absent from GotSport's history-only discovery source. Unknown markup and unsupported playoff descriptions fail closed and retain saved data.
+
+Use the four files together for a separately authorized deployment. Existing Cloudflare bindings, secrets, deployment configuration and database schema are unchanged. QA scripts, captured source evidence and test reports are supplied separately, outside the four-file runtime package.
 
 ## 6.20.127 whole-row bookmark anchor candidate
 
