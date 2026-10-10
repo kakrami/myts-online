@@ -1,4 +1,35 @@
-# myTS 6.20.131 candidate
+# myTS 6.20.132 candidate
+
+## Bounded saved-state recovery
+
+This candidate fixes the production 6.20.131 Live pagination failure on accumulated canonical history. It retains the automatic team discovery and warning deduplication changes.
+
+- Store incomplete Live pagination in an independent, immutable, SHA-256-verified record capped at 512 KiB of UTF-8 JSON. The parent snapshot stores only a small identity-bound reference. A failed or interrupted parent commit cannot replace another collector's cursor.
+- Keep the existing 15-minute continuation lifetime and page/row/request bounds. Resume verified pages across updates; missing or expired optional state restarts safely. Corrupt state fails closed. Incomplete pages never appear as a complete schedule.
+- Encode source metadata losslessly using a versioned object-schema dictionary. Read existing raw snapshots without a manual migration. Preserve every fixture, result, unknown field, identity proof and bookmark key; do not truncate historical schedules to make space.
+- Store the followed dashboard’s event projection once in its existing row, using an explicit storage reference for dashboard reads. Older duplicated snapshots remain readable.
+- Check all persisted text columns against D1's whole-row byte ceiling, including the escaped followed-team dashboard and duplicated event projection. An oversized snapshot retains the prior saved data and reports a storage error.
+- Automatically retry the affected older saved state through the data revision. No new connection configuration, credentials, database tables or deployment bindings are required.
+
+### Evidence and limits
+
+The production diagnostic export from October 10, 2026 at 07:56:50 UTC records 38 competitions, 41 groups and 781 retained group matches for the affected team. The regression uses those observed counts with captured normalized match shapes; it is a realistic synthetic accumulated snapshot, not an export of the exact current production database row. The prior code rejects this snapshot before any Live request, although the captured six-game continuation is only 8,383 bytes.
+
+Focused real-D1 tests cover byte limits, interruption, immutable cursor references, old inline continuation migration, corrupt/missing/expired data, multiple teams and full-scale metadata round trips. Inherited collection, identity, schedule, bookmark and UI-function tests remain separate from these four runtime files. No production database or deployment is changed by preparing the candidate. Production Worker behavior and visible recovery need verification after separately authorized deployment.
+
+### Deployment gate and recovery procedure
+
+**Do not deploy until a recoverable pre-upgrade database point has been verified.** No production backup, mutation or restore has been performed by this candidate.
+
+The first successful save changes `gotsport_feeds.source_meta_json` or the followed dashboard inside `gotsport_history_cache.meta_json` to the lossless compact representation. Followed dashboards reference their same-row `events_json`. Optional pagination records use the `gotsport_live_schedule:` namespace in the existing `app_meta` table. No table/schema migration, credential or binding change is required. Failed compaction, failed writes, oversized rows and lost leases preserve the prior committed metadata and events; expired orphan cursors are cleaned independently.
+
+1. Resolve the actual production database from the existing Worker's `DB` binding. The supplied configuration intentionally contains no database name or ID; do not guess one.
+2. Before deployment, use an authorized Cloudflare session to inspect that database's version and recovery support. `npx wrangler d1 info YOUR_DATABASE` is a read-only inspection. For a production-backend database, retrieve and record the current recovery bookmark with `npx wrangler d1 time-travel info YOUR_DATABASE`. Keep the exact database identity, bookmark, UTC time and currently deployed Worker commit together. Confirm that the bookmark is still within the account's recovery window. [Official Time Travel documentation](https://developers.cloudflare.com/d1/reference/time-travel/).
+3. If a valid recovery bookmark cannot be confirmed, stop deployment. An exported backup must be verified recoverable before substituting it; keep private database exports outside the code package/repository. [Official export documentation](https://developers.cloudflare.com/d1/best-practices/import-export-data/).
+4. After separately authorized deployment, verify White's Live Mayor fixtures, `live_upcoming_complete`, the absence of `gotsport_live_state_limit`, retained canonical fixtures/bookmarks and a second update. Capture new diagnostics and the deployed version.
+5. If rollback is necessary, do not simply deploy .131 or older: those Workers cannot read the new saved representation. Prefer a reviewed recovery Worker that retains these storage readers. Otherwise obtain explicit authorization for a coordinated database restore to the recorded bookmark and compatible old Worker. A restore replaces the **whole database**, including changes made after that point in TeamSnap, Trace, Coach, favorites and other data. Record the current recovery point first and stop application writes during the coordinated operation. The documented restore form is `npx wrangler d1 time-travel restore YOUR_DATABASE --bookmark=RECORDED_BOOKMARK`; this candidate never runs it automatically.
+
+## Retained 6.20.131 scope
 
 ## Automatic GotSport Live schedules
 
