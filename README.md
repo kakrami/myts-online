@@ -1,90 +1,63 @@
-# myTS 6.20.132 candidate
+# myTS 6.20.133 candidate
 
-## Bounded saved-state recovery
+## Complete followed-team competition views and bounded saved snapshots
 
-This candidate fixes the production 6.20.131 Live pagination failure on accumulated canonical history. It retains the automatic team discovery and warning deduplication changes.
+This update addresses the .132 whole-row storage failure and the incomplete GotSport Live competition views. It preserves the automatic followed-team resolver and adds independent membership discovery, event metadata, complete category schedules, published standings, and official source links. Preparing this candidate does not deploy it.
 
-- Store incomplete Live pagination in an independent, immutable, SHA-256-verified record capped at 512 KiB of UTF-8 JSON. The parent snapshot stores only a small identity-bound reference. A failed or interrupted parent commit cannot replace another collector's cursor.
-- Keep the existing 15-minute continuation lifetime and page/row/request bounds. Resume verified pages across updates; missing or expired optional state restarts safely. Corrupt state fails closed. Incomplete pages never appear as a complete schedule.
-- Encode source metadata losslessly using a versioned object-schema dictionary. Read existing raw snapshots without a manual migration. Preserve every fixture, result, unknown field, identity proof and bookmark key; do not truncate historical schedules to make space.
-- Store the followed dashboard’s event projection once in its existing row, using an explicit storage reference for dashboard reads. Older duplicated snapshots remain readable.
-- Check all persisted text columns against D1's whole-row byte ceiling, including the escaped followed-team dashboard and duplicated event projection. An oversized snapshot retains the prior saved data and reports a storage error.
-- Automatically retry the affected older saved state through the data revision. No new connection configuration, credentials, database tables or deployment bindings are required.
+### Automatic discovery and collection
 
-### Evidence and limits
+- Start with each followed canonical GotSport team, its profile and verified public historical Live links. Resolve clubs and current-season teams dynamically using exact provider external keys. The Live resolver has no shipped team, club, season, organizer or event seed IDs, saved source seeds, or new manual connection steps.
+- Combine returned team memberships with verified upcoming-game contexts. A competition can be discovered before games are published; a tournament present only in the upcoming feed remains included when the membership list omits it.
+- Fetch event dates, location, website, category and pool membership, official links, published standings and the whole category's upcoming fixtures. Each component has its own completion, freshness and error state. The existing shared ten-request collection budget and resumable pagination remain enforced.
+- Preserve an exact-own-team conditional slot without treating it as a confirmed game, score, result or bookmark. Explicit participant resolution promotes the same native source identity. Source omission never fabricates cancellation.
+- Native league format describes a pool or playoff format, not necessarily the entire event. An exact verified canonical event-to-Live organizer chain can carry an authoritative event classification; names and pool formats cannot. Unknown event classification remains visible rather than silently disappearing. Standings show only returned rows; terminal pagination is not a claim that every participant has a published standing.
+- Keep kickoff instants and display-local date behavior. Retain source-native namespaced IDs and existing bookmark identities. Category and team feeds cannot silently replace conflicting final scores or change verified participants.
 
-The production diagnostic export from October 10, 2026 at 07:56:50 UTC records 38 competitions, 41 groups and 781 retained group matches for the affected team. The regression uses those observed counts with captured normalized match shapes; it is a realistic synthetic accumulated snapshot, not an export of the exact current production database row. The prior code rejects this snapshot before any Live request, although the captured six-game continuation is only 8,383 bytes.
+### Coherent presentation without destructive merging
 
-Focused real-D1 tests cover byte limits, interruption, immutable cursor references, old inline continuation migration, corrupt/missing/expired data, multiple teams and full-scale metadata round trips. Inherited collection, identity, schedule, bookmark and UI-function tests remain separate from these four runtime files. No production database or deployment is changed by preparing the candidate. Production Worker behavior and visible recovery need verification after separately authorized deployment.
+Existing fixture correspondence requires independently verified event context, exact participants, official match number, season, compatible kickoff and unique one-to-one evidence. It does not equate IDs or pair names and times alone.
 
-### Deployment gate and recovery procedure
+A fresh, fully paginated native category can become the preferred competition view only when existing fixture proofs establish reciprocal one-to-one category correspondence. The original canonical fixtures, completed results, standings, trophies and routes remain accessible in an expandable retained-source section. Ambiguous, stale, partial or contradictory evidence restores separate views. A scored native final remains visible even when the corresponding canonical final has no scores.
 
-**Do not deploy until a recoverable pre-upgrade database point has been verified.** No production backup, mutation or restore has been performed by this candidate.
+Calendar/GotSport Live/Trace source information is visible in schedule details. Weak shared-name/time matches cannot mask a different official opponent. When a genuine correspondence exists, official fixture fields can be shown while preserving calendar arrival, uniform and notes. Conflicting or unproven records remain separate and identifiable.
 
-The first successful save changes `gotsport_feeds.source_meta_json` or the followed dashboard inside `gotsport_history_cache.meta_json` to the lossless compact representation. Followed dashboards reference their same-row `events_json`. Optional pagination records use the `gotsport_live_schedule:` namespace in the existing `app_meta` table. No table/schema migration, credential or binding change is required. Failed compaction, failed writes, oversized rows and lost leases preserve the prior committed metadata and events; expired orphan cursors are cleaned independently.
+### Bounded database work and resumable updates
 
-1. Resolve the actual production database from the existing Worker's `DB` binding. The supplied configuration intentionally contains no database name or ID; do not guess one.
-2. Before deployment, use an authorized Cloudflare session to inspect that database's version and recovery support. `npx wrangler d1 info YOUR_DATABASE` is a read-only inspection. For a production-backend database, retrieve and record the current recovery bookmark with `npx wrangler d1 time-travel info YOUR_DATABASE`. Keep the exact database identity, bookmark, UTC time and currently deployed Worker commit together. Confirm that the bookmark is still within the account's recovery window. [Official Time Travel documentation](https://developers.cloudflare.com/d1/reference/time-travel/).
-3. If a valid recovery bookmark cannot be confirmed, stop deployment. An exported backup must be verified recoverable before substituting it; keep private database exports outside the code package/repository. [Official export documentation](https://developers.cloudflare.com/d1/best-practices/import-export-data/).
-4. After separately authorized deployment, verify White's Live Mayor fixtures, `live_upcoming_complete`, the absence of `gotsport_live_state_limit`, retained canonical fixtures/bookmarks and a second update. Capture new diagnostics and the deployed version.
-5. If rollback is necessary, do not simply deploy .131 or older: those Workers cannot read the new saved representation. Prefer a reviewed recovery Worker that retains these storage readers. Otherwise obtain explicit authorization for a coordinated database restore to the recorded bookmark and compatible old Worker. A restore replaces the **whole database**, including changes made after that point in TeamSnap, Trace, Coach, favorites and other data. Record the current recovery point first and stop application writes during the coordinated operation. The documented restore form is `npx wrangler d1 time-travel restore YOUR_DATABASE --bookmark=RECORDED_BOOKMARK`; this candidate never runs it automatically.
+GotSport collection enforces a 45-statement database budget, counting each batch member and reserving capacity to publish progress, release the lease and report a failure. This leaves headroom below the documented [50-query Free-plan limit](https://developers.cloudflare.com/d1/platform/limits/). It does not require a paid-plan assumption or an account change.
 
-## Retained 6.20.131 scope
+The scheduler processes one collection job per invocation. Upcoming pagination records verified page progress separately from retries. Its 45-minute inactivity window covers two rotations of twenty followed teams, and an eight-hour absolute ceiling bounds the full twenty-page scan. Errors and empty budget deferrals do not renew progress. Content-bound cursor records are cleaned up by progress age; legacy cursor references retain their original expiry behavior. Individual page observation timestamps are preserved throughout long scans. Profile enrichment yields before using publication capacity; verified pages and accumulated metadata continue on later updates. The existing ten-source-request ceiling stays unchanged. Native competition work may use eight of those requests while leaving room for other source work. Cleanup, progress messages and decorative display lookups run only when there is enough remaining budget. Unrelated providers retain their existing behavior. Combined Favorites reads also use the shared query ceiling, stream saved-source proofs and reuse bounded projections. Large team projections can be deferred as whole entries; their identities and saved data remain available through the independent team context. Saved bookmarks take response priority. If an exceptionally large aggregate needs compact bookmark cards, their exact identities, participant proof, status, scores and official links remain visible with a details-deferred warning. No stored snapshot or fixture array is truncated.
 
-## Automatic GotSport Live schedules
+### Lossless bounded storage
 
-This candidate extends deployed 6.20.129 and preserves the reviewed 6.20.130 warning-text fix. It is not deployed by preparing these files.
+The .132 dictionary codec and legacy plain snapshots remain readable. Large authoritative snapshots now use identity- and field-bound, SHA-256-verified immutable records in the existing app_meta table. The existing parent rows contain small manifests; small snapshots stay inline. No canonical history is truncated, and D1's row ceiling is unchanged.
 
-- Start from a followed canonical GotSport team ID and its verified history/profile. Follow explicit GotSport-provided Live event links into the event-scoped club directory. Club names narrow candidates; exact `ExternalDataSourceName: GotSport` and global team keys from the returned current-season membership establish identity. No team, club, season, event or organizer ID is a runtime seed.
-- Following a team wakes collection. Primary connections and explicitly followed teams share the existing bounded scheduled queue. No per-team or per-event source setup is required.
-- Discover upcoming tournaments and fixtures from the verified native team's public feed. Use the served client's cursor contract, including terminal empty pages. Persist bounded, identity-bound pagination progress across request budgets; never publish incomplete pages as a complete schedule.
-- Keep native fixture IDs namespaced. Public game-detail observations can update omitted games and independent saved bookmarks to explicit final/cancelled states. Omission alone does not cancel a fixture or remove saved data.
-- Where both sources have unambiguous evidence, group corresponding fixtures in the presentation only. Require matching event name, dates, official website domain and season, both exact participant identities, official match number, compatible initial kickoff, and a unique one-to-one match. Both original records and bookmark keys remain stored. Ambiguity, expired proof, changed identity or conflicting final scores restores separate presentation.
-- Preserve UTC kickoff instants and use the selected team's or browser's display time zone. Do not invent a venue time zone from an API request header.
-- Retain data on authentication responses, challenges, partial/empty feeds, malformed data and failed requests. Keep results, full-division schedule coverage and verified Live upcoming coverage distinct. The legacy duplicate-warning correction remains in place.
+Metadata and event references are generation-bound. Chunk reads/writes, row sizes and total admitted storage are bounded. A parent snapshot is published only after all content is staged and verified. Lease ownership, expiry and prior-row comparisons guard publication. Failed staging, corrupt data, an interrupted commit or a lost lease retains the previous committed snapshot. Component byte counts are recorded for diagnostics so another size failure is measurable.
 
-### Verified scope and remaining limits
+Bounded cleanup protects both the current snapshot and the recoverable previous snapshot. Unreferenced content must pass a settling grace period and current-reference revalidation before deletion. Storage pressure rejects a new write safely rather than pruning saved fixtures.
 
-Cookie-free ordinary public API reads were verified from the cloud test environment using the public site's request contract. No login, credentials, CAPTCHA interaction or authentication bypass is implemented. Production Worker egress and deployed UI behavior require separately authorized deployment verification.
+### Validation and remaining limits
 
-Captured real sources verify automatic entry for the two requested teams, their upcoming games, exact participant crosswalks, and the three overlapping Fall fixtures. Automated workerd, D1, UI-function and adversarial tests are kept separately from runtime files. Synthetic reschedules, finals, faults and ambiguity cases are labeled in those tests. Candidate browser visual rendering has not been verified.
+The captured public-source inventory covers three followed teams, including the U10 team omitted by earlier acceptance tests. Tests exercise their automatic follow-to-games path, membership-plus-fixture union, Fall and Mayor category schedules, other-team games, conditional slots, partial standings, existing bookmarks, repeat updates and interrupted pagination. Large-state tests use captured field shapes with explicitly synthetic accumulated history, including the final independent full-request case with 3,804,076 metadata bytes and 1,590 retained historical rows. An earlier acceptance snapshot separately exercised 4.44 MB and 1,793 rows; those are not the counts of the final replay. Additional tests exercise near-16 MiB metadata and event fields, failed publication and retry, thirteen large followed snapshots under an enforced query limit, and a 100-bookmark response bound. This is not a capture of the current production database bytes. The bookmark stress case uses 100 snapshots of approximately 250 KB each. The existing bookmark query materializes saved rows before response summarization; 100 bookmarks each near the database row ceiling and universal peak-memory safety are not verified.
 
-A team with no usable public historical Live link or no exact current-season identity remains explicitly unresolved. Discovery is bounded to that team's observed competitions and event-scoped candidate clubs; it does not scan a national catalog or silently fall back to manual mappings. Existing user-saved connections are preserved; the older White-specific auto-connect fallback is removed.
+Automated validation uses actual Worker execution, HTTP handlers, Miniflare D1 and UI-function/render tests with captured upstream responses. Adversarial mutations are explicitly synthetic. Production egress, live visible recovery, mobile layout and current upstream changes require post-deployment verification. The cloud test browser could not launch, so these checks are not a claimed visual-browser pass.
 
-Use these four runtime files together only for a separately authorized deployment. Bindings, secrets and database schema remain unchanged. QA scripts, raw captures and reports are outside the runtime package.
+A followed team with no usable public Live entry link or exact current-season identity remains explicitly unresolved. Public challenge, authentication, malformed and incomplete responses retain saved data with a truthful warning. No credentials, CAPTCHA bypass, broad nationwide scan or paid infrastructure is introduced.
+
+### Deployment and operational recovery
+
+Use all four runtime files together only after deployment approval. Existing bindings, secrets and database tables are unchanged. No database restore is required for the normal upgrade. Existing .132 saved state is read automatically, and the revision wakes affected followed teams for a new bounded collection pass.
+
+After deployment, verify all three followed teams in Schedule and Competitions, White's official Mayor fixtures, U10's confirmed games and conditional slot, whole-category games, standings coverage, existing bookmarks, diagnostic component bytes and a second update. Check the deployed version and absence of saved-row errors.
+
+A separately named **6.20.133 recovery** build is the operational fallback. It keeps compatible storage readers and writers, visibly pauses GotSport retrieval and preserves saved schedules and bookmarks while other features remain available. Do not upload the recovery ZIP when intending to deploy the normal update. Do not roll back directly to .132, its recovery build, or older Workers after .133 manifest snapshots have been saved: those versions do not understand the new references.
+
+Recovery mode is not a backup and cannot reverse every possible data-loss event. Earlier Worker invocations already running may finish; allow existing leases to settle and inspect the resulting state. Resume collection by deploying a reviewed compatible normal build. A database restore, if ever needed, is a separate explicitly authorized operation affecting the whole database. A verified backup/recovery point is useful additional protection, but obtaining Cloudflare login is not a prerequisite for preparing or using the compatible operational fallback.
+
+QA scripts, captured evidence and test reports are separate from the four runtime files.
 
 ## Historical changes retained below
 
-The following entries describe their original release scopes and limits; the 6.20.131 section above describes the current candidate.
-
-## 6.20.130 status explanation candidate
-
-Narrow, unpublished follow-up to deployed 6.20.129 (main `2a62c9c91c2e0c8bc1e31857313650991593e1c7`). Repeated provider messages are deduplicated before the two-message summary limit, while every per-division diagnostic remains available. The shared status dialog also collapses an exact repeated whole explanation from older saved state; distinct messages, source detail timestamps and automatic-retry guidance remain intact. No schedule acquisition, identity, fixture merging, retry scheduling or deployment changes are included. Automatic acquisition and future-competition discovery remain unresolved.
-
-## 6.20.129 public schedule ingestion candidate
-
-Scope: parser and truthful coverage fixes only. Automated schedule acquisition and future-competition discovery remain unresolved.
-
-Unpublished candidate based on main commit `78fe27c00b91cd09c3114cf23979617df65b36be` (6.20.127). The separate, paused 6.20.128 work is not included.
-
-- Parse canonical GotSport match IDs from exact event/division Results links. Display match numbers are never used as canonical identities.
-- Resolve event registration links only against verified division standings or existing structured match identities. No fuzzy team-name/opponent matching or invented schedule IDs.
-- Add previously unseen fixtures and update existing fixtures by canonical ID, using the same collection path for the connected team and followed-team dashboard contexts.
-- Preserve bracket-seed participants as conditional slots. A linked registration whose canonical team ID is unavailable remains a registration-identified fixture; it is not automatically a contingent playoff slot.
-- Deduplicate identical rows. Reject conflicting duplicates, foreign event/division/team identities, unresolved identity regressions and malformed/empty/challenged responses without deleting saved data.
-- Keep omitted fixtures; absence from history, results or a public page never fabricates a cancellation.
-- Keep structured results independent from public kickoff verification. A later schedule check cannot erase newer scores, and lagging public timing/participants cannot move or unresolve a completed result.
-- Distinguish verified full-division schedules, filtered views, retained fixtures and results checks. A full page requires its exact division links and active All-dates evidence.
-- Report history-only discovery as incomplete even when all known division schedules verify. Legacy ready metadata and partial schedules no longer produce an Up to date claim. Results and schedule timestamps are exposed separately.
-- Clear obsolete venue/address metadata when a verified public location changes, rather than pairing new fixture text with old directions.
-
-### Evidence and limits
-
-The parser contract was checked against genuine public DOM subtrees captured from Fall event 50598, division 552093, on October 9, 2026. The full page contains 13 fixtures, its date-filtered page contains 5, and White's registration-filtered page contains 3. Canonical match and registration links are recorded in the separate QA evidence bundle. Captures are browser DOM, not raw Worker HTTP responses. Synthetic API-shaped metadata and adversarial variants used by automated tests are explicitly identified as such.
-
-Cloudflare's actual HTMLRewriter was exercised locally through workerd. No live production database, deployment or write-back was used. Browser rendering of the candidate has not been verified. Production Worker access to GotSport remains unverified; another exact division (56019/542958) still returned a human-verification challenge. This patch does not bypass that challenge, authenticate to clubLive, or discover future competitions absent from GotSport's history-only discovery source. Unknown markup and unsupported playoff descriptions fail closed and retain saved data.
-
-Use the four files together for a separately authorized deployment. Existing Cloudflare bindings, secrets, deployment configuration and database schema are unchanged. QA scripts, captured source evidence and test reports are supplied separately, outside the four-file runtime package.
+The following entries describe earlier release scopes. The .133 behavior and recovery instructions above supersede earlier candidate status and limitations.
 
 ## 6.20.127 whole-row bookmark anchor candidate
 
