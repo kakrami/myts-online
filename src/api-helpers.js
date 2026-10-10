@@ -120,6 +120,14 @@ export async function connectPublic(db, space, id, role) {
     role,
     tid,
   );
+  await enqueueRoot(
+    db,
+    job("gotsport", "catalog", id, { team_id: id }),
+    space,
+    role,
+    tid,
+  );
+  await retry(db, `gotsport/catalog/${id}`);
   await retry(db, `gotsport/profile/${id}`);
   await retry(db, `gotsport/history/${id}`);
 }

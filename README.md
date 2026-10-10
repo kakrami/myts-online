@@ -1,13 +1,23 @@
-# myTS 7.0.0 — clean rebuild for review
+# myTS 7.0.1 — clean rebuild for review
 
 This is a new application and a new database schema. The visible version is
-**7.0.0** in the header, Settings, health response, diagnostics, and exports.
+**7.0.1** in the header, Settings, health response, diagnostics, and exports.
 Nothing has been deployed, and no production database has been changed.
 
 The release contains the complete Worker source, browser assets, pinned build
 dependencies, and this installation and verification guide. It contains no old
 release, imported database, credentials, dependency directories, screenshots,
 temporary files, migration scripts, or compatibility layer.
+
+## Review update in 7.0.1
+
+Live public-source testing found that GotSport publishes its verified Live bridge in
+`event.live_event_url`, separately from the competition's marketing website. The
+shared adapter now consumes that field, validates league and organizer bridge URLs,
+and resolves the external team identity through the official club/season records.
+An independent native competition-catalog job discovers entries even without past
+matches. Relative GotSport logo URLs resolve against the provider origin, and
+historical fixture names cannot overwrite a current authoritative team profile.
 
 ## Architecture
 
@@ -153,31 +163,45 @@ Object storage/alarms and browser application, with a synthetic provider service
 implementing the source contracts. Synthetic responses are not proof that current
 production providers return those contracts for your account.
 
-| Check                                                                                      | Result                                                    |
-| ------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| Fresh startup, nonempty database refusal, owner login, same-origin write checks            | Passed                                                    |
-| GotSport discovery, upcoming union, full category, standings and profile preservation      | Passed                                                    |
-| Twelve-page history, changing totals, durable cursor resume after runtime restart          | Passed                                                    |
-| Verification failure retains saved fixtures and records a source error                     | Passed                                                    |
-| Independent bookmark updates and conditional-slot rejection                                | Passed                                                    |
-| Failed transaction and lost lease publish no records and advance no cursor                 | Passed                                                    |
-| TeamSnap roster, logistics, attendance and omitted-member deactivation                     | Passed                                                    |
-| Trace sign-in, collection, tracking, native analytics and heat maps                        | Passed                                                    |
-| Shared Trace job survives another dashboard's disconnect                                   | Passed                                                    |
-| Explicit source matching, scoped corrections and stale revision rejection                  | Passed                                                    |
-| Conflict review preserves both observations and guards source revisions                    | Passed                                                    |
-| Scoped read-only sharing; private Coach endpoints and records excluded                     | Passed                                                    |
-| Coach attendance, lineup, clock/reload conservation, substitutions and match completion    | Passed                                                    |
-| Long clock interruption can be paused and explicitly corrected                             | Passed                                                    |
-| Large history exceeds 2 MB in total while individual fixture records stay small            | Passed                                                    |
-| Bounded keyset pages, complete status totals and measured query reads                      | Passed                                                    |
-| Native alarms publish repeated updates with no browser or manual run request               | Passed                                                    |
-| Full Trace collection after Chromium was closed, with no manual job triggers               | Passed: 68 jobs completed; 450/450 player-minute capacity |
-| Chromium mobile screens, correction/source-link forms, Coach actions, bookmarks and themes | Passed                                                    |
-| Phone, tablet and desktop width checks; Excel and PDF exports                              | Passed                                                    |
-| Complete project production bundle and clean archive extraction                            | Passed                                                    |
+Additional live public-source checks on October 10, 2026 used the release's unchanged
+job runner, collectors and atomic page commits with real HTTPS responses and a
+fresh local D1 database. All **74 GotSport/GotSport Live jobs** completed with zero
+errors: **231 GotSport fixtures and 51 Live fixtures** were saved. These include
+whole competition schedules and other teams, not 282 matches played by your team.
+The canonical team and current-season Live team were linked by the provider's
+explicit external identity. This checks the source contracts and local storage
+workflow; it does not verify network access or execution in your Cloudflare account.
+The local Workerd process could not resolve provider DNS, so this additional check
+used the Node HTTPS transport with the same collector/job modules and native D1.
+No provider cookies or user credentials were used for these public requests.
 
-The external QA suite contains 27 workflow tests. Test fixtures, browser automation,
+| Check                                                                                                | Result                                                    |
+| ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Fresh startup, nonempty database refusal, owner login, same-origin write checks                      | Passed                                                    |
+| GotSport discovery, upcoming union, full category, standings and profile preservation                | Passed                                                    |
+| Twelve-page history, changing totals, durable cursor resume after runtime restart                    | Passed                                                    |
+| Verification failure retains saved fixtures and records a source error                               | Passed                                                    |
+| Native competition catalog discovers Live schedules without past results; official bridge validation | Passed                                                    |
+| Relative provider logos and current-profile precedence over historical fixture names                 | Passed                                                    |
+| Independent bookmark updates and conditional-slot rejection                                          | Passed                                                    |
+| Failed transaction and lost lease publish no records and advance no cursor                           | Passed                                                    |
+| TeamSnap roster, logistics, attendance and omitted-member deactivation                               | Passed                                                    |
+| Trace sign-in, collection, tracking, native analytics and heat maps                                  | Passed                                                    |
+| Shared Trace job survives another dashboard's disconnect                                             | Passed                                                    |
+| Explicit source matching, scoped corrections and stale revision rejection                            | Passed                                                    |
+| Conflict review preserves both observations and guards source revisions                              | Passed                                                    |
+| Scoped read-only sharing; private Coach endpoints and records excluded                               | Passed                                                    |
+| Coach attendance, lineup, clock/reload conservation, substitutions and match completion              | Passed                                                    |
+| Long clock interruption can be paused and explicitly corrected                                       | Passed                                                    |
+| Large history exceeds 2 MB in total while individual fixture records stay small                      | Passed                                                    |
+| Bounded keyset pages, complete status totals and measured query reads                                | Passed                                                    |
+| Native alarms publish repeated updates with no browser or manual run request                         | Passed                                                    |
+| Full Trace collection after Chromium was closed, with no manual job triggers                         | Passed: 68 jobs completed; 450/450 player-minute capacity |
+| Chromium mobile screens, correction/source-link forms, Coach actions, bookmarks and themes           | Passed                                                    |
+| Phone, tablet and desktop width checks; Excel and PDF exports                                        | Passed                                                    |
+| Complete project production bundle and clean archive extraction                                      | Passed                                                    |
+
+The external QA suite contains 29 workflow tests. Test fixtures, browser automation,
 screenshots and development dependencies are excluded from this deployment ZIP.
 
 ## Not verified; required before production cutover

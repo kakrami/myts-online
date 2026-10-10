@@ -163,7 +163,7 @@ export function bulk(db, table, rows, guard = "1", guardArgs = []) {
           : ["club_id", "season"].includes(c)
             ? `${c}=COALESCE(NULLIF(excluded.${c},''),teams.${c})`
             : c === "name"
-              ? "name=CASE WHEN excluded.name LIKE 'Team %' AND teams.name NOT LIKE 'Team %' THEN teams.name ELSE excluded.name END"
+              ? "name=CASE WHEN (json_extract(teams.details,'$.profile')=1 AND COALESCE(json_extract(excluded.details,'$.profile'),0)<>1) OR (excluded.name LIKE 'Team %' AND teams.name NOT LIKE 'Team %') THEN teams.name ELSE excluded.name END"
               : `${c}=excluded.${c}`,
       )
       .join(",");

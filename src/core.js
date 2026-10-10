@@ -1,4 +1,4 @@
-export const VERSION = "7.0.0";
+export const VERSION = "7.0.1";
 export const stamp = () => new Date().toISOString();
 export const parse = (v, f = {}) => {
   try {

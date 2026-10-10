@@ -1,5 +1,5 @@
 import { download, excel } from "./export.js";
-const VERSION = "7.0.0",
+const VERSION = "7.0.1",
   $ = (s) => document.querySelector(s),
   esc = (s) =>
     String(s ?? "").replace(

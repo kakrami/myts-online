@@ -44,6 +44,35 @@ export async function live(t, path, params, timezone = "America/Los_Angeles") {
     })
   ).value;
 }
+export function liveBridge(value) {
+  const u = safeUrl(value);
+  if (!u) return null;
+  const link = new URL(u),
+    match = link.pathname.match(
+      /^\/(league|league-organizer)\/([1-9]\d{0,14})\/?$/,
+    );
+  if (
+    link.protocol !== "https:" ||
+    link.hostname !== "gotsportlive.com" ||
+    link.port ||
+    link.search ||
+    link.hash ||
+    !match
+  )
+    return null;
+  return { kind: match[1], id: match[2], url: link.href };
+}
+function rankingLogo(value) {
+  if (typeof value !== "string" || !value.trim()) return "";
+  try {
+    const u = new URL(value, "https://system.gotsport.com/");
+    return u.protocol === "https:" && u.hostname === "system.gotsport.com"
+      ? safeUrl(u.href)
+      : "";
+  } catch {
+    return "";
+  }
+}
 const compactName = (club, name) =>
   norm(name).startsWith(norm(club))
     ? text(name)
@@ -319,7 +348,7 @@ export async function collectGotSport({ db, j, args, cursor, transport: t }) {
           provider: "gotsport",
           native_id: clubId,
           name: text(r.club_name),
-          logo: safeUrl(r.image || r.team_logo_url_full),
+          logo: rankingLogo(r.image || r.team_logo_url_full),
         },
       ];
     records.teams = [
@@ -329,11 +358,43 @@ export async function collectGotSport({ db, j, args, cursor, transport: t }) {
         compactName(r.club_name, r.team_name || r.name),
         {
           club_name: text(r.club_name),
-          logo: safeUrl(r.image || r.team_logo_url_full),
+          profile: true,
+          logo: rankingLogo(r.image || r.team_logo_url_full),
         },
         { club_id: club },
       ),
     ];
+    return out;
+  }
+  if (j.provider === "gotsport" && j.kind === "catalog") {
+    const r = await ranking(t, "/team_ranking_data", { team_id: id });
+    requireValue(
+      native(r.team_ranking_data?.team_id) === id &&
+        Array.isArray(r.events) &&
+        r.events.length <= 2000,
+      "Competition catalog does not match the canonical team.",
+    );
+    const events = unique(r.events, (e) => native(e.id));
+    records.references_data = events.map((e) => ({
+      team_id: key("gotsport", id),
+      kind: "competition_entry",
+      id: key("gotsport", e.id),
+      value: JSON.stringify({
+        team_id: id,
+        event_id: String(e.id),
+        live_event_url: e.live_event_url || null,
+      }),
+      observed_at: stamp(),
+    }));
+    records.competitions = events.map((e) => eventRecord(e.id, e.name));
+    for (const e of events)
+      jobs.push(
+        job("gotsport", "event", String(e.id), {
+          event_id: String(e.id),
+          timezone,
+        }),
+      );
+    out.coverage = "complete_competition_catalog";
     return out;
   }
   if (j.provider === "gotsport" && j.kind === "history") {
@@ -520,23 +581,25 @@ export async function collectGotSport({ db, j, args, cursor, transport: t }) {
         }),
       );
     }
-    const u = safeUrl(
-      /^https?:/i.test(e.website_url || "")
-        ? e.website_url
-        : "https://" + (e.website_url || ""),
-    );
-    let league = "";
-    if (u) {
-      const link = new URL(u);
-      if (link.hostname === "gotsportlive.com" && !link.search && !link.hash)
-        league = native(link.pathname.match(/^\/league\/(\d+)\/?$/)?.[1]);
-    }
-    if (league)
-      for (const team of new Set(pending.map((m) => m.team_id.split(":")[1])))
+    const bridge = liveBridge(e.live_event_url),
+      entries = (
+        await db
+          .prepare(
+            "SELECT team_id FROM references_data WHERE kind='competition_entry' AND id=?",
+          )
+          .bind(key("gotsport", e.id))
+          .all()
+      ).results;
+    if (bridge)
+      for (const team of new Set(
+        [...pending, ...entries].map((m) => m.team_id.split(":")[1]),
+      ))
         jobs.push(
           job("live", "resolve", team + ":" + e.id, {
             team_id: team,
-            bridge_league: league,
+            bridge_kind: bridge.kind,
+            bridge_id: bridge.id,
+            bridge_url: bridge.url,
             event: String(e.id),
             timezone,
           }),
@@ -633,16 +696,26 @@ export async function collectGotSport({ db, j, args, cursor, transport: t }) {
     );
     const phase = cursor.phase || "bridge";
     if (phase === "bridge") {
-      const h = await live(
-        t,
-        "/api/leagueapi/getleagueheader",
-        { LeagueID: args.bridge_league },
-        timezone,
-      );
       requireValue(
-        native(h.LeagueID) === args.bridge_league &&
-          native(h.LeagueOrganizerID),
-        "Live bridge league identity did not match.",
+        ["league", "league-organizer"].includes(args.bridge_kind) &&
+          native(args.bridge_id),
+        "Live bridge identity is incomplete.",
+      );
+      const organizerBridge = args.bridge_kind === "league-organizer",
+        h = await live(
+          t,
+          organizerBridge
+            ? "/api/leagueorganizerapi/getleagueorganizerheader"
+            : "/api/leagueapi/getleagueheader",
+          organizerBridge
+            ? { LeagueOrganizerID: args.bridge_id }
+            : { LeagueID: args.bridge_id },
+          timezone,
+        );
+      requireValue(
+        (organizerBridge ? native(h.LeagueOrganizerID) : native(h.LeagueID)) ===
+          args.bridge_id && native(h.LeagueOrganizerID),
+        "Live bridge identity did not match.",
       );
       return {
         ...out,
@@ -736,7 +809,9 @@ export async function collectGotSport({ db, j, args, cursor, transport: t }) {
         season: cursor.season,
         season_name: cursor.season_name,
         bridge_event: args.event,
-        bridge_league: args.bridge_league,
+        bridge_kind: args.bridge_kind,
+        bridge_id: args.bridge_id,
+        bridge_url: args.bridge_url,
         organizer: cursor.organizer,
         external_key: id,
         verified_at: stamp(),
@@ -756,7 +831,7 @@ export async function collectGotSport({ db, j, args, cursor, transport: t }) {
         provider: "live",
         native_id: club,
         name: clubName,
-        logo: null,
+        logo: safeUrl(parse(profile?.details).logo) || null,
       },
     ];
     records.identity_links = [
