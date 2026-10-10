@@ -1,9 +1,14 @@
 {
   "name": "myts",
-  "version": "6.20.133",
+  "version": "7.0.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy"
+  },
   "devDependencies": {
-    "wrangler": "^4.68.0"
+    "wrangler": "4.149.0"
   }
 }
