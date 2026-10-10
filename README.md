@@ -1,4 +1,34 @@
-# myTS 6.20.129
+# myTS 6.20.131 candidate
+
+## Automatic GotSport Live schedules
+
+This candidate extends deployed 6.20.129 and preserves the reviewed 6.20.130 warning-text fix. It is not deployed by preparing these files.
+
+- Start from a followed canonical GotSport team ID and its verified history/profile. Follow explicit GotSport-provided Live event links into the event-scoped club directory. Club names narrow candidates; exact `ExternalDataSourceName: GotSport` and global team keys from the returned current-season membership establish identity. No team, club, season, event or organizer ID is a runtime seed.
+- Following a team wakes collection. Primary connections and explicitly followed teams share the existing bounded scheduled queue. No per-team or per-event source setup is required.
+- Discover upcoming tournaments and fixtures from the verified native team's public feed. Use the served client's cursor contract, including terminal empty pages. Persist bounded, identity-bound pagination progress across request budgets; never publish incomplete pages as a complete schedule.
+- Keep native fixture IDs namespaced. Public game-detail observations can update omitted games and independent saved bookmarks to explicit final/cancelled states. Omission alone does not cancel a fixture or remove saved data.
+- Where both sources have unambiguous evidence, group corresponding fixtures in the presentation only. Require matching event name, dates, official website domain and season, both exact participant identities, official match number, compatible initial kickoff, and a unique one-to-one match. Both original records and bookmark keys remain stored. Ambiguity, expired proof, changed identity or conflicting final scores restores separate presentation.
+- Preserve UTC kickoff instants and use the selected team's or browser's display time zone. Do not invent a venue time zone from an API request header.
+- Retain data on authentication responses, challenges, partial/empty feeds, malformed data and failed requests. Keep results, full-division schedule coverage and verified Live upcoming coverage distinct. The legacy duplicate-warning correction remains in place.
+
+### Verified scope and remaining limits
+
+Cookie-free ordinary public API reads were verified from the cloud test environment using the public site's request contract. No login, credentials, CAPTCHA interaction or authentication bypass is implemented. Production Worker egress and deployed UI behavior require separately authorized deployment verification.
+
+Captured real sources verify automatic entry for the two requested teams, their upcoming games, exact participant crosswalks, and the three overlapping Fall fixtures. Automated workerd, D1, UI-function and adversarial tests are kept separately from runtime files. Synthetic reschedules, finals, faults and ambiguity cases are labeled in those tests. Candidate browser visual rendering has not been verified.
+
+A team with no usable public historical Live link or no exact current-season identity remains explicitly unresolved. Discovery is bounded to that team's observed competitions and event-scoped candidate clubs; it does not scan a national catalog or silently fall back to manual mappings. Existing user-saved connections are preserved; the older White-specific auto-connect fallback is removed.
+
+Use these four runtime files together only for a separately authorized deployment. Bindings, secrets and database schema remain unchanged. QA scripts, raw captures and reports are outside the runtime package.
+
+## Historical changes retained below
+
+The following entries describe their original release scopes and limits; the 6.20.131 section above describes the current candidate.
+
+## 6.20.130 status explanation candidate
+
+Narrow, unpublished follow-up to deployed 6.20.129 (main `2a62c9c91c2e0c8bc1e31857313650991593e1c7`). Repeated provider messages are deduplicated before the two-message summary limit, while every per-division diagnostic remains available. The shared status dialog also collapses an exact repeated whole explanation from older saved state; distinct messages, source detail timestamps and automatic-retry guidance remain intact. No schedule acquisition, identity, fixture merging, retry scheduling or deployment changes are included. Automatic acquisition and future-competition discovery remain unresolved.
 
 ## 6.20.129 public schedule ingestion candidate
 
