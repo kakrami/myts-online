@@ -8,7 +8,13 @@
     "binding": "ASSETS",
     "run_worker_first": true,
   },
-  "d1_databases": [{ "binding": "DB" }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "myts-v7-data",
+      "database_id": "c3585493-4ad5-44f2-9484-816a615ee633",
+    },
+  ],
   "durable_objects": {
     "bindings": [{ "name": "SYNC", "class_name": "SyncRuntime" }],
   },
