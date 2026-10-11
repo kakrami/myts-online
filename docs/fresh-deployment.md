@@ -1,66 +1,98 @@
-# Fresh review deployment
+# Existing myts-v7 Worker: clean rebuild deployment
 
-Review the complete package and verification document before deployment. Use a new Worker and database; no old resource is upgraded or imported. The default identity is `myts-review`, and the version is `7.1.0`.
+This release targets the existing **myts-v7** Worker and production branch. It needs no third Worker, new scheduler namespace, new URL or another Cloudflare sign-in. Corrected version: **7.1.1**.
 
-## Prepare the resources
+## Why a fresh database is required
 
-1. Keep the complete extracted directory structure. `worker.js`, its `src/` modules, `web/` assets, `package.json`, `package-lock.json`, `scripts/` and `wrangler.jsonc` are required.
-2. Sign into the intended Cloudflare account. On a laptop, run `npm ci`, then `npx wrangler login --config wrangler.jsonc` and complete the browser sign-in. Create a **new D1 database named `myts-review-data`** and copy its database UUID. The laptop command is `npx wrangler d1 create myts-review-data --config wrangler.jsonc`. Confirm the account before creating resources.
-3. Open `wrangler.jsonc`. Replace only the `database_id` placeholder `00000000-0000-0000-0000-000000000000` with that new UUID. Keep the Worker name `myts-review`, database name `myts-review-data` and binding `DB`.
-4. Choose an initial owner password of 16–300 characters. Once the new `myts-review` Worker exists, configure that password as its runtime secret `ADMIN_KEY` before opening `/admin`. Do not put its value in source, Git or this ZIP. On a laptop, the secret command below prompts for it after the initial deployment. In the dashboard, add a **Secret**, not a plain variable, under the new Worker's runtime Variables & Secrets controls.
+The deployed 7.0.1 source defines 34 tables. The rebuild defines 121 tables plus setup_state, 40 explicit indexes, 10 views and 98 triggers. Six names are incompatible: players, competitions, divisions, team_players, coach_profiles and coach_sessions. team_players changes from a table to a view. Creating the new schema over the old one silently retains wrong definitions and produces missing-column failures. See [schema comparison](schema-comparison.md).
 
-The configuration declares `SyncRuntime` with `exports` and SQLite storage and binds it as `SYNC`. This is the current declarative fresh namespace configuration. It needs no migration history. The one-minute scheduled trigger recovers pending demand independently of browser visits.
+The smallest clean change is one isolated D1 database bound to the same Worker. An in-place conversion requires a designed migration; a reset deletes old data. Neither is part of this release.
 
-## Build and deploy after approval
+## Data consequences
 
-On a laptop:
+Keep **myts-v7-data**, ID **c3585493-4ad5-44f2-9484-816a615ee633**, unchanged. No DROP, DELETE, truncation or migration runs against it. The new app starts empty. Old teams, connections, collected history, bookmarks, preferences, corrections, Coach state and share links remain in the old database and do not automatically appear in the new app. Public data can be recollected; TeamSnap and Trace require normal reconnection. Provider sync cannot recreate old manual corrections or Coach plans. Current-format dataset import is not an old-database restoration.
 
-```sh
-npm ci
-npm run build
-npm run deploy
-npx wrangler secret put ADMIN_KEY --config wrangler.jsonc
+Retain the existing runtime **ADMIN_KEY** unchanged. It initializes the new installation, and the old release needs its original value to decrypt old credentials during rollback. Never send the value in chat or put it in Git.
+
+The existing Durable Object namespace stays. Old alarms must wait for valid initialization; old cached status is excluded from the new installation. This release implements and tests both conditions.
+
+## Dot: signed-in local Chrome actions before deployment
+
+1. Record the active **myts-v7** deployment/version, Git commit, DB binding and SYNC namespace. GitHub production currently points to e5e92dccaecf741a88725b30e3bf068d93d048de; verify the actual active dashboard version rather than assuming it matches.
+2. Open **Storage & databases → D1 SQL database → myts-v7-data → Console**. Run the read-only schema query below and return the result. This reads definitions, not credentials or personal rows.
+3. In the D1 list, select **Create database**. Name it **myts-v7-rebuild-data**, in the same account as myts-v7. Copy and return its database UUID. If that name already exists, inspect it instead of creating a duplicate. A populated database is not automatically approved.
+4. Run the emptiness query below on the new database's Console. It must return no application tables. Do not import schema SQL; /admin initializes it.
+5. Cancel any queued/running builds for myts-v7 before cutover. Open **myts-v7 → Settings → Builds**. Confirm repository kakrami/myts-online; production branch myts-v7; root directory empty; build command `npm ci && npm run build`; deploy command `npm run deploy`. Keep nonproduction/review deployment disabled during cutover. Do not change production to myts-review.
+6. Inspect the selected Builds API token. Retain deployment permissions and, if absent, add **Account → D1 → Read**, scoped to the intended account. The guard queries D1 before deployment; the default generated Builds token omits D1. A permission failure must stop deployment. Do not share token values.
+
+Existing schema metadata:
+
+```sql
+SELECT type, name, tbl_name, sql
+FROM sqlite_master
+WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'
+ORDER BY type, name;
 ```
 
-`npm run deploy` is the publishing action. Its guard reads remote D1 metadata before publishing. It accepts an empty D1 database or a review installation with this artifact's exact fresh schema fingerprint. An old database ID/name, placeholder, foreign application table or different initialization fingerprint or incomplete ready schema stops deployment. Failed Cloudflare authentication or unreadable remote metadata also stops deployment; no remote check is claimed successful in that case.
+New database emptiness:
 
-For Cloudflare Workers Builds connected to a repository, first commit all extracted package files together to a reviewed branch in the connected repository. Preserve the committed lockfile and complete paths. The ZIP is a source package; uploading it does not itself create a deployed Worker. Repository upload and account sign-in from a physical phone have not been verified. Use these settings:
+```sql
+SELECT name FROM sqlite_master
+WHERE type='table'
+  AND name NOT LIKE 'sqlite_%'
+  AND name NOT LIKE '_cf_%'
+  AND name <> 'd1_migrations';
+```
 
-| Field | Value |
-| --- | --- |
-| Worker name | `myts-review` |
-| Root directory | The directory containing `package.json` and `wrangler.jsonc` |
-| Build command | `npm ci && npm run build` |
-| Deploy command | `npm run deploy` |
-| Branch/commit | The reviewed fresh release commit |
+**Do not manually change DB while 7.0.1 is running.** Its cron or a request can initialize the old schema in the fresh database. Code and binding must change together through the tested Wrangler deployment.
 
-The build requires the pinned lockfile. The deploy command explicitly selects the review configuration and performs its guard. Do not use an unqualified `npx wrangler deploy` against another configuration. Runtime `ADMIN_KEY` belongs to the Worker, not only to a build environment variable.
+## Final configuration and deployment
 
-## Open and initialize on mobile
+Codex will insert the returned UUID in wrangler.jsonc, repeat release/build checks, and identify the final configured commit before promoting it to myts-v7. The current placeholder intentionally cannot deploy.
 
-These steps begin after the complete package has been deployed and `ADMIN_KEY` has been configured. They initialize that new Worker; they do not upload the ZIP or create a repository.
+| Resource | Required value after cutover |
+|---|---|
+| Worker / production branch | myts-v7 / myts-v7 |
+| DB | myts-v7-rebuild-data, returned new UUID |
+| SYNC | Existing myts-v7_SyncRuntime; class SyncRuntime |
+| Cron | Every minute: * * * * * |
+| Runtime secret | Existing ADMIN_KEY, unchanged |
+| Website | https://myts-v7.kiadesignenterprise.workers.dev |
 
-1. Open the deployed **`myts-review` Worker** in the Cloudflare dashboard.
-2. Open its **Domains** tab. Find its `workers.dev` domain. The configuration enables this domain with `workers_dev: true`; if the dashboard shows it disabled, enable it there.
-3. Tap/copy that exact domain. For an account whose subdomain is `kiadesignenterprise`, the address is `https://myts-review.kiadesignenterprise.workers.dev`. Use the actual value shown in your account.
-4. Open that address in your phone browser and append `/admin`: `https://myts-review.kiadesignenterprise.workers.dev/admin` for that example.
-5. Enter the same password configured as the Worker's `ADMIN_KEY`. Tap **Initialize & sign in**. The browser sends bounded initialization requests until the new schema is ready, then signs in. If initialization is interrupted, reopen `/admin` and use the same password; setup resumes. No SQL import or migrations command is needed.
-6. Confirm the header/Settings version **7.1.0**. Opening `/api/health` on the same domain also returns that version.
+The Git-triggered deploy first inspects remote D1 metadata. It accepts empty storage or this release's matching initialized schema. It rejects the old database ID, placeholder, foreign tables, wrong setup fingerprint, incomplete ready schema and unreadable remote metadata. No destructive SQL or migration runs. Dot must confirm the successful guard, exact approved commit and resulting bindings. Keep the production branch fixed during acceptance so a pending or unrelated build cannot overwrite the cutover.
 
-## Connect and verify complete workflows
+## Real acceptance after deployment
 
-1. On the empty first-run screen, tap **Connect TeamSnap**, **Connect Trace** or **Find a GotSport team**. Once a team exists, open **Settings** and the provider's **Manage** flow.
-2. For TeamSnap, enter the Client ID when the first connection asks for it, then tap **Connect TeamSnap** and complete TeamSnap's consent. Register this exact new site's `/admin` callback in the TeamSnap registration. The app reuses the Client ID later. Real registration/consent remains an external acceptance check.
-3. For Trace, enter your account email, tap **Send sign-in code**, enter the emailed code and tap **Verify code**. The connection checks that account's identity and access.
-4. Choose a named discovered team. In **Connect team**, select **Create this team** for your first team; review **New team name** and **New season starts**, then tap **Connect team**. For another provider covering the same team, select that existing team and season under **Destination** before connecting. This creates an explicit attachment; it does not guess that differently named teams are the same.
-5. For GotSport, search by team name or paste a public team page, select the named result and use the same destination chooser. An unexplained numeric ID is not a prerequisite to normal setup.
+1. Confirm /api/health reports 7.1.1. Open https://myts-v7.kiadesignenterprise.workers.dev/admin and initialize with the existing ADMIN_KEY through the normal form. Setup is bounded and resumable. Confirm the familiar app loads.
+2. Add the actual team through normal provider search/link/account flows. Reconnect TeamSnap and Trace using their real authorization screens. TeamSnap Client ID stays inside its connection flow. Confirm the expected owned teams before attaching sources to the same myTS team.
+3. Check real GotSport/GotSport Live fixtures/results and authenticated roster, attendance and Trace analysis. Record consent, entitlement, verification or missing-component blockers. A queue admission, HTTP 200 or transport save does not establish complete publication.
+4. Verify a correction survives refresh, linked providers produce one game/player, selected totals match evidence, and reports/Coach/viewer permissions work on the actual team.
+5. For closed-browser proof, record the read-only summaries below and the close time in UTC while real source work is queued. Close **every myTS tab on every device**. Cloudflare dashboard may remain open. Do not press Sync/Retry or call runner endpoints during this interval. After several cron cycles, query D1 while myTS is still closed. Require successful last_saved_at/last_complete_at values within the closed interval and published source records/revisions or analysis results. Attempts or a shrinking queue alone are insufficient. Reopen afterwards and verify the stored update appears.
 
-Check roster, past and upcoming schedule, practices, attendance, competitions and standings; match/player details and corrections; approved cross-provider matching; bookmarks; branding/kits; viewer team/category restrictions; private Coach workflows; and all four report previews with full Excel and PDF downloads. Source datasets accept this exact release's current ZIP format and preserve canonical approvals/corrections. Evidence ZIPs cannot be imported.
+```sql
+SELECT provider, stage, component, state, coverage,
+       COUNT(*) AS jobs, SUM(pages_saved) AS pages_saved,
+       SUM(rows_saved) AS rows_saved,
+       MAX(last_attempt_at) AS last_attempt_at,
+       MAX(last_retrieved_at) AS last_retrieved_at,
+       MAX(last_saved_at) AS last_saved_at,
+       MAX(last_complete_at) AS last_complete_at
+FROM sync_jobs
+GROUP BY provider, stage, component, state, coverage
+ORDER BY provider, stage, component, state;
+```
 
-In Trace Manage, open **Tracking evidence**. Choose an eligible game, a half, a start time and duration, and one to four observed tracks. Start the fresh capture, then reopen this sheet to find its saved status and JSON download. Check both complete and partial results; capture files are diagnostic evidence and cannot be imported as datasets.
+```sql
+SELECT COUNT(*) AS source_events FROM source_events;
+SELECT COUNT(*) AS source_players FROM source_players;
+SELECT app_team_id, content_revision, status_revision, pending
+FROM team_read_state ORDER BY app_team_id;
+```
 
-Queue a source update, close every browser tab, then reopen later. Diagnostics must show server retrieval/save/complete progress that occurred while the browser was closed. Repeat for projection/analysis, report exports and a source import after every segment has uploaded and the import is committed. Upload requires the page open until staging finishes; committed processing does not. Check that a blocked source leaves saved data accessible and does not block independent sources.
+Record before/after snapshots and UTC times, deployed commit, providers, errors and reopened-app observations. Local/simulated tests are separate evidence. The rebuild is not complete until real imports and server background updates pass on the target Worker.
 
-Record any provider verification wall, missing consent/entitlement, production CPU/quota issue or unverified external result in the review evidence. Do not switch the existing public domain or remove previous resources until the reviewed new installation passes the production checks. This guide does not perform that cutover.
+## Rollback
 
-Current primary references: [Wrangler configuration](https://developers.cloudflare.com/workers/wrangler/configuration/), [Workers Builds settings](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/), [Wrangler bundling/dry run](https://developers.cloudflare.com/workers/wrangler/bundling/) and [declarative Durable Object exports](https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/). Configuration syntax was also checked against pinned Wrangler 4.149.0's installed schema.
+Close myTS tabs and cancel queued/running builds. Pause automatic builds, or revert the production branch/configuration to the recorded old commit before re-enabling them; otherwise a later build can redeploy the rebuild. Restore the recorded old Worker version **with DB pointing to myts-v7-data** and the unchanged ADMIN_KEY. Verify its health and binding before using it. If redeploying old code, its configuration must specify the original database. Never run 7.0.1 against the rebuild database or 7.1.1 against the old database. Keep both databases; no cross-version merge happens automatically.
+
+Cloudflare reference: https://developers.cloudflare.com/workers/ci-cd/builds/configuration/ and https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/query/ describe Builds-token permissions and D1 Read requirements. Menu labels should be matched to the local signed-in dashboard's actual controls.

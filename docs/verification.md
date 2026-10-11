@@ -1,4 +1,6 @@
-# myTS 7.1.0 verification ledger
+# myTS 7.1.0 verification ledger (historical baseline)
+
+The corrected 7.1.1 release is documented in deployment-verification.md. This ledger records the original 7.1.0 candidate only.
 
 This ledger distinguishes the rebuilt implementation, local component tests, tests of the extracted required-only package, and real-provider/production acceptance. It does **not** declare all 31 gates fully accepted. All 25 final automated checks passed. Real-provider and production acceptance remain unverified. The delivered archive contains the same tested application, assets, configuration and tooling; only this finalized ledger, the clarified deployment guide and the manifest differ from the tested candidate.
 
@@ -10,7 +12,7 @@ This ledger distinguishes the rebuilt implementation, local component tests, tes
 | Delivered files | 125 required files plus one release manifest: 126 total; tests, fixture accounts, node_modules, historical runtime and migrations excluded |
 | Frozen runtime SHA-256 | `875993732131b47d35532adfea27a6b99075de6ab1ac720ab7b58de4fc710500` |
 | Fresh schema fingerprint | `e52ac3c69e4cdf8d5b30a8c4587b9080a6220436b3b6d421d72a45781420b003` |
-| Fresh schema | 121 tables; domain version 1 |
+| Fresh schema | 121 schema tables plus setup_state (122 application tables after initialization); domain version 1 |
 | Candidate ZIP SHA-256 | `5a7885dc8b49d13ce1db2e3461934ecadea742719073ea75a458604050e12658` — pre-final-ledger candidate, not the final delivered ZIP |
 | Candidate manifest SHA-256 | `b82c961203989f2542239e5c6b065109b5d108d903e8c44a0ce3c4bf108c51ec` |
 | Final ZIP / manifest SHA-256 | Recorded in the external final release receipt; the included manifest records every required file hash. An archive cannot contain its own hash. |

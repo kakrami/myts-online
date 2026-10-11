@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "myts-review",
+  "name": "myts-v7",
   "main": "worker.js",
   "compatibility_date": "2026-09-09",
   "workers_dev": true,
@@ -12,17 +12,33 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "myts-review-data",
+      "database_name": "myts-v7-rebuild-data",
       "database_id": "00000000-0000-0000-0000-000000000000"
     }
   ],
   "durable_objects": {
-    "bindings": [{ "name": "SYNC", "class_name": "SyncRuntime" }]
+    "bindings": [
+      {
+        "name": "SYNC",
+        "class_name": "SyncRuntime"
+      }
+    ]
   },
   "exports": {
-    "SyncRuntime": { "type": "durable-object", "storage": "sqlite" }
+    "SyncRuntime": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
   },
-  "triggers": { "crons": ["* * * * *"] },
-  "version_metadata": { "binding": "CF_VERSION_METADATA" },
-  "observability": { "enabled": true }
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
+  },
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA"
+  },
+  "observability": {
+    "enabled": true
+  }
 }

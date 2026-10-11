@@ -9,6 +9,17 @@ export function createSyncRuntime(collector, options = {}) {
     constructor(ctx, env) {
       this.ctx = ctx; this.env = env; this.running = null; this.arming = Promise.resolve();
     }
+    async installation(db=new BudgetDB(this.env.DB,options.statementLimit ?? 48)) {
+      if(!options.inspectInstallation)return {state:'ready',identity:null};
+      try{return await options.inspectInstallation({db,env:this.env});}
+      catch(error){
+        if(!['fresh_database_required','installation_incomplete'].includes(error.code))throw error;
+        return {state:'blocked',error:{code:error.code,kind:'blocked',message:'The database does not match this application installation.'}};
+      }
+    }
+    installationStatus(installation) {
+      return installation.state==='blocked'?{state:'blocked',error:installation.error}:{state:'waiting_for_initialization',setup_state:installation.state};
+    }
     async arm(at = Date.now() + (options.alarmDelayMs ?? 500)) {
       const prior = this.arming;
       // A prior failure stays observable to its caller; a later wake can retry.
@@ -23,11 +34,16 @@ export function createSyncRuntime(collector, options = {}) {
     }
     async wake() {
       const task = async () => {
+        const installation=await this.installation();
+        if(installation.state!=='ready'){
+          await this.ctx.storage.deleteAlarm();return {queued:false,...this.installationStatus(installation)};
+        }
         const sequence = (await this.ctx.storage.get('wake_sequence') || 0) + 1;
         await this.ctx.storage.put('wake_sequence',sequence);
         const at = Date.now() + (options.alarmDelayMs ?? 500);
         const current = await this.ctx.storage.getAlarm();
         if (current === null || current > at) await this.ctx.storage.setAlarm(at);
+        return {queued:true};
       };
       const next = this.arming.then(task,task); this.arming = next; return next;
     }
@@ -47,9 +63,16 @@ export function createSyncRuntime(collector, options = {}) {
     async fetch(request) {
       const path = new URL(request.url).pathname;
       if (path === '/wake' && request.method === 'POST') {
-        await this.wake(); return Response.json({ queued:true },{status:202});
+        return Response.json(await this.wake(),{status:202});
       }
-      if (path === '/status' && request.method === 'GET') return Response.json(await this.ctx.storage.get('last_run') || {state:'not_started'});
+      if (path === '/status' && request.method === 'GET') {
+        try{
+          const installation=await this.installation();
+          if(installation.state!=='ready')return Response.json(this.installationStatus(installation));
+          const last=await this.ctx.storage.get('last_run');
+          return Response.json(last&&(!options.inspectInstallation||last.installation_id===installation.identity)?last:{state:'not_started'});
+        }catch(error){return Response.json({state:'error',error:classifyFailure(error)});}
+      }
       return Response.json({error:'not_found'},{status:404});
     }
     async alarm() {
@@ -59,22 +82,29 @@ export function createSyncRuntime(collector, options = {}) {
     }
     async run() {
       const started = Date.now(), db = new BudgetDB(this.env.DB,options.statementLimit ?? 48);
-      const coordinator = new JobCoordinator(db,options);
-      const wakeSequence = await this.ctx.storage.get('wake_sequence') || 0;
-      // Persist recovery before external work. An interrupted invocation cannot
-      // strand a running lease until somebody opens the browser.
-      await this.arm(started + (options.leaseMs ?? 45000) + (options.alarmDelayMs ?? 500));
+      let installation;
       try {
+        const wakeSequence = await this.ctx.storage.get('wake_sequence') || 0;
+        installation=await this.installation(db);
+        // Existing namespace alarms survive deployment. They must not query or
+        // modify a fresh, partial, or foreign schema before owner setup finishes.
+        if(installation.state!=='ready'){
+          await this.scheduleAfterRun(null,wakeSequence);return this.installationStatus(installation);
+        }
+        const coordinator = new JobCoordinator(db,options);
+        // Persist recovery before external work. An interrupted invocation cannot
+        // strand a running lease until somebody opens the browser.
+        await this.arm(started + (options.leaseMs ?? 45000) + (options.alarmDelayMs ?? 500));
         const result = await coordinator.runOne(collector,{env:this.env});
         // A page may legitimately use the whole invocation. It has already
         // saved its checkpoint: schedule another bounded invocation rather
         // than turn the due-queue read into a fictitious source failure.
         const next = db.remaining ? await coordinator.nextWake() : Date.now()+(options.alarmDelayMs ?? 500);
-        await this.ctx.storage.put('last_run',{...result,started_at:started,finished_at:Date.now(),statements:db.used,rows_read:db.rowsRead,rows_written:db.rowsWritten});
+        await this.ctx.storage.put('last_run',{...result,...(options.inspectInstallation?{installation_id:installation.identity}:{}),started_at:started,finished_at:Date.now(),statements:db.used,rows_read:db.rowsRead,rows_written:db.rowsWritten});
         await this.scheduleAfterRun(next,wakeSequence);
       } catch (error) {
         const failure = classifyFailure(error);
-        await this.ctx.storage.put('last_run',{state:'error',error:failure,started_at:started,finished_at:Date.now(),statements:db.used});
+        await this.ctx.storage.put('last_run',{state:'error',error:failure,...(options.inspectInstallation?{installation_id:installation?.identity??null}:{}),started_at:started,finished_at:Date.now(),statements:db.used});
         await this.arm(Date.now()+(options.runtimeRetryMs ?? 60000));
       }
     }

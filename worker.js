@@ -20,9 +20,18 @@ import {collectReportJob,reportService,dataFileService} from './src/application/
 import {wakeSync} from './src/sync/runtime.js';
 import {coachingRoutes} from './src/coaching/routes.js';
 
-export const SyncRuntime=createApplicationRuntime({reportCollector:collectReportJob,trackingCollector:collectTrackingCaptureJob});
 const SCHEMA=[...DOMAIN_SCHEMA,...SECURITY_SCHEMA,...SYNC_SCHEMA,...TEAM_FEATURE_SCHEMA,...CATALOG_SCHEMA,...COACH_SCHEMA,...ANALYSIS_SCHEMA,...REPORT_SCHEMA,...DATA_FILE_SCHEMA,...TRACKING_CAPTURE_SCHEMA,...AWARDS_SCHEMA];
 const SEED=[{sql:`INSERT INTO domain_installation(id,schema_version,created_at) VALUES(1,${DOMAIN_SCHEMA_VERSION},strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(id) DO NOTHING`,params:[]}];
+export const SyncRuntime=createApplicationRuntime({reportCollector:collectReportJob,trackingCollector:collectTrackingCaptureJob,runtimeOptions:{
+  // Keep the existing 48-query job allowance plus the two read-only installation
+  // checks inside the same 50-query invocation ceiling.
+  statementLimit:50,
+  async inspectInstallation({db,env}){
+    const state=await new FreshInstallation(db,{schema:SCHEMA,seed:SEED,bootstrapPassword:env.ADMIN_KEY}).inspect();
+    if(state.state!=='ready')return state;
+    return {...state,identity:state.schema_fingerprint+':'+state.started_at};
+  },
+}});
 const HEADERS={'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self' https://auth.teamsnap.com"};
 export default {
   async fetch(request,env,ctx){

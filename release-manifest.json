@@ -1,12 +1,12 @@
 {
   "service": "myTS",
-  "version": "7.1.0",
+  "version": "7.1.1",
   "review": true,
   "files": [
     {
       "path": "README.md",
-      "bytes": 5215,
-      "sha256": "2fa744a0daf2714f16004dcac33312ff8057cdbb8e362e32f597026ab84eded3"
+      "bytes": 5651,
+      "sha256": "a4bcf79c0d013340978412ab7bb7910e8ed2f91de1dc08d3ea734065dad2d9b7"
     },
     {
       "path": "docs/acceptance-baseline.md",
@@ -29,6 +29,11 @@
       "sha256": "db05469c33fcc9052a67849663be58fd06e7bdb3130816940e4509249c34c167"
     },
     {
+      "path": "docs/deployment-verification.md",
+      "bytes": 5377,
+      "sha256": "4fac3a22f13109d7823ee67fba5887984a15376592a5db606902b230d6f57c6c"
+    },
+    {
       "path": "docs/domain-contract.md",
       "bytes": 39174,
       "sha256": "6aadf73c8590e08dcdca41b8e1e4fe2b9228dfd8cec6c980913ffe925cb5ed4f"
@@ -40,8 +45,8 @@
     },
     {
       "path": "docs/fresh-deployment.md",
-      "bytes": 8112,
-      "sha256": "4b7c816291525520a5b858c377fec134894c7922b52605243eb174194fe92de9"
+      "bytes": 8724,
+      "sha256": "455eb2ad47417864b8e6dcca30f9817ad3c1f52a76b53e93c6fe244e51459f2b"
     },
     {
       "path": "docs/frontend-contract.md",
@@ -62,6 +67,11 @@
       "path": "docs/reporting-contract.md",
       "bytes": 4466,
       "sha256": "278ef22d36a881c4ba5a94414cdbcc72f37665514bc47b52023e8c4192a88029"
+    },
+    {
+      "path": "docs/schema-comparison.md",
+      "bytes": 6708,
+      "sha256": "ca112d1fb16e8f312933a7f63f7eca8c4941ea61bd48d3d054620a4f9d5a99f1"
     },
     {
       "path": "docs/security-contract.md",
@@ -85,23 +95,23 @@
     },
     {
       "path": "docs/verification.md",
-      "bytes": 19617,
-      "sha256": "6e0010825135d8b1d7ea5f68bc42fd2559e01ae0c582c59585b909600a3f9b1d"
+      "bytes": 19838,
+      "sha256": "ff13b4f3e1e8d47b4cd6c3c77b9f51baecf8731ad1326d94c01dd82966188dec"
     },
     {
       "path": "package-lock.json",
       "bytes": 49485,
-      "sha256": "e7c1370398e31a6a70e7c7c807576390e134e08ddef8b9dce625a716d050d3ae"
+      "sha256": "f746d85a32e7706ec5b4b77dbcccc3a59f8d2d66532efeae7fe80e1af60d72b1"
     },
     {
       "path": "package.json",
-      "bytes": 520,
-      "sha256": "1daad37d01ab08ddd819b2c4c15310365947014aa0c932d52e156f9006f8cf0f"
+      "bytes": 580,
+      "sha256": "b3a2865dc379311e7daaa1f1d229ce8bf6f691e0286389c3248b4cc9eb0cca60"
     },
     {
       "path": "scripts/release-check.mjs",
-      "bytes": 14321,
-      "sha256": "53fd37474ae4ffae0b6f45cb54ec1812ed1e318c759424252803382c96f96e2d"
+      "bytes": 14457,
+      "sha256": "fec66315fbe951c7aee24c90cedd44ade9aa7e25cc1c18b3b1095899e3adddfe"
     },
     {
       "path": "src/analysis/native-facts.js",
@@ -170,8 +180,8 @@
     },
     {
       "path": "src/application/fresh-install.js",
-      "bytes": 5217,
-      "sha256": "6913d9ccd33829d6ad484376e15d67ad0942f661457824f82b1730d61f821468"
+      "bytes": 5228,
+      "sha256": "4fb28148256d61341bb530056497ca5e01f4021a638dd60e508bd4158e7e1fd8"
     },
     {
       "path": "src/application/http.js",
@@ -231,7 +241,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 30,
-      "sha256": "ee167e8e6ef7964dd5cd85d15086896d9bd478eea7fd253f24f90494e45395bb"
+      "sha256": "d1ee0d668b78dc1dd6ee5847e8a48914a18d55ac6afab360661b3acc882e9951"
     },
     {
       "path": "src/coaching/routes.js",
@@ -475,8 +485,8 @@
     },
     {
       "path": "src/sync/runtime.js",
-      "bytes": 4767,
-      "sha256": "065a0909d898419b7a5615d4081de9e616bb9a58c257a22226bc1215bfc40db1"
+      "bytes": 6657,
+      "sha256": "4972fbe7b4af5057a0f99332c0b6cb2a2b38a0a03b362f8fc781799baf4a0e2a"
     },
     {
       "path": "src/sync/schema.js",
@@ -620,13 +630,13 @@
     },
     {
       "path": "worker.js",
-      "bytes": 4364,
-      "sha256": "47ff437daeea48348ce895615b2c1169bb8d290bf508a0d47cb5be453c2de777"
+      "bytes": 4825,
+      "sha256": "906c5efc78e8a0bc1423d95f38cbf6ae18a25a3493994b358cbe87a1f555f95e"
     },
     {
       "path": "wrangler.jsonc",
-      "bytes": 758,
-      "sha256": "0ffe5f7a338277a6593ffecc04e7fea6d9ddb2197121dbef7f7da96e67048538"
+      "bytes": 838,
+      "sha256": "4811e810153ace59943eacad7f3cd9dc42e29c11b460e81204e830abd8428f13"
     }
   ]
 }

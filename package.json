@@ -1,10 +1,11 @@
 {
   "name": "myts",
-  "version": "7.1.0",
+  "version": "7.1.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --config wrangler.jsonc",
+    "test": "node --test tests/*.test.js tests/*.test.mjs",
     "check:release": "node scripts/release-check.mjs",
     "build": "node scripts/release-check.mjs && wrangler deploy --config wrangler.jsonc --dry-run --outdir tmp/review-build",
     "deploy": "node scripts/release-check.mjs --deploy && wrangler deploy --config wrangler.jsonc"

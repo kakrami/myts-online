@@ -6,7 +6,7 @@ export class InstallationError extends Error {
 const fail=(code,message,status)=>{throw new InstallationError(code,message,status);};
 const META=`CREATE TABLE IF NOT EXISTS setup_state(id INTEGER PRIMARY KEY CHECK(id=1),schema_fingerprint TEXT NOT NULL,next_index INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL CHECK(state IN('initializing','ready')),started_at TEXT NOT NULL,completed_at TEXT)`;
 const query="SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'";
-const readyRow='SELECT schema_fingerprint,next_index,state FROM setup_state WHERE id=1';
+const readyRow='SELECT schema_fingerprint,next_index,state,started_at FROM setup_state WHERE id=1';
 const encode=new TextEncoder();
 
 /** Only CREATE statements for the single fresh schema are accepted. No upgrades. */
