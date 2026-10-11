@@ -1,184 +1,58 @@
-import { VERSION, body, errInfo, fail, hash, json, stamp } from "./src/core.js";
-import { DB } from "./src/db.js";
-import { installed, initialize } from "./src/schema.js";
-import { access, ownerOnly, session, sameOrigin } from "./src/auth.js";
-import { api } from "./src/api.js";
-import { runOne, wake } from "./src/jobs.js";
-const HEADERS = {
-  "X-Content-Type-Options": "nosniff",
-  "Referrer-Policy": "no-referrer",
-  "Content-Security-Policy":
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self' https://auth.teamsnap.com",
-};
-export class SyncRuntime {
-  constructor(ctx, env) {
-    this.ctx = ctx;
-    this.env = env;
-    this.running = null;
-    this.arming = Promise.resolve();
-  }
-  async arm(at = Date.now() + 1000) {
-    const p = this.arming.then(async () => {
-      const current = await this.ctx.storage.getAlarm();
-      if (current === null || current > at || current < Date.now() - 60000)
-        await this.ctx.storage.setAlarm(at);
-    });
-    this.arming = p.catch(() => {});
-    return p;
-  }
-  async fetch(request) {
-    const path = new URL(request.url).pathname;
-    if (path === "/wake" && request.method === "POST") {
-      await this.arm();
-      return json({ queued: true }, 202);
-    }
-    if (path === "/status")
-      return json(
-        (await this.ctx.storage.get("last_run")) || { state: "not_started" },
-      );
-    return json({ error: "not_found" }, 404);
-  }
-  async alarm() {
-    if (this.running) return this.running;
-    this.running = this.run().finally(() => {
-      this.running = null;
-    });
-    return this.running;
-  }
-  async run() {
-    const db = new DB(this.env.DB),
-      started = stamp();
-    let result;
-    try {
-      if (!(await installed(db))) return;
-      result = await runOne(db, this.env);
-      const maintenance = await this.ctx.storage.get("maintenance_at");
-      if (
-        (!maintenance || Date.now() - maintenance > 3600000) &&
-        db.used + 5 <= db.limit
-      ) {
-        await db.batch([
-          db
-            .prepare(
-              "DELETE FROM observations WHERE id IN (SELECT id FROM observations WHERE at<? ORDER BY at LIMIT 2000)",
-            )
-            .bind(new Date(Date.now() - 14 * 86400000).toISOString()),
-          db
-            .prepare("DELETE FROM rate_limits WHERE expires_at<?")
-            .bind(Date.now()),
-          db
-            .prepare("DELETE FROM auth_pending WHERE expires_at<?")
-            .bind(Date.now()),
-          db.prepare(
-            "DELETE FROM scan_rows WHERE rowid IN (SELECT r.rowid FROM scan_rows r WHERE NOT EXISTS(SELECT 1 FROM jobs j WHERE j.id=r.job_id AND j.scan_id=r.scan_id) LIMIT 2000)",
-          ),
-        ]);
-        await this.ctx.storage.put("maintenance_at", Date.now());
-      }
-      await this.ctx.storage.put("last_run", {
-        started_at: started,
-        finished_at: stamp(),
-        ...result,
-        queries: db.used,
-        rows_read: db.read,
-        rows_written: db.written,
-      });
-      const next = await db
-        .prepare(
-          `SELECT MIN(next_at) AS next FROM jobs WHERE state<>'disabled' AND (provider='teamsnap' AND (kind='catalog' OR EXISTS(SELECT 1 FROM space_teams st WHERE st.team_id=jobs.scope AND st.role='primary')) AND EXISTS(SELECT 1 FROM connections c WHERE c.id=jobs.connection_id AND c.active=1) OR EXISTS(SELECT 1 FROM job_interests i JOIN subscriptions s ON s.id=i.subscription_id WHERE i.job_id=jobs.id AND s.active=1))`,
-        )
-        .first();
-      if (next.next != null)
-        await this.arm(Math.max(Date.now() + 1000, Number(next.next)));
-    } catch (e) {
-      await this.ctx.storage.put("last_run", {
-        started_at: started,
-        finished_at: stamp(),
-        state: "error",
-        error: errInfo(e),
-        queries: db.used,
-        rows_read: db.read,
-        rows_written: db.written,
-      });
-      await this.arm(Date.now() + 60000);
-    }
-  }
-}
+import {DOMAIN_SCHEMA,DOMAIN_SCHEMA_VERSION} from './src/domain/schema.js';
+import {SECURITY_SCHEMA} from './src/security/schema.js';
+import {SYNC_SCHEMA} from './src/sync/schema.js';
+import {COACH_SCHEMA} from './src/coaching/schema.js';
+import {ANALYSIS_SCHEMA} from './src/analysis/schema.js';
+import {REPORT_SCHEMA} from './src/reporting/schema.js';
+import {DATA_FILE_SCHEMA} from './src/reporting/data-schema.js';
+import {TRACKING_CAPTURE_SCHEMA} from './src/tracking/schema.js';
+import {trackingCaptureService,collectTrackingCaptureJob} from './src/application/tracking.js';
+import {TEAM_FEATURE_SCHEMA} from './src/application/team-features.js';
+import {CATALOG_SCHEMA} from './src/application/team-catalog.js';
+import {AWARDS_SCHEMA} from './src/read-model/feature-schema.js';
+import {FreshInstallation} from './src/application/fresh-install.js';
+import {VERSION} from './src/application/version.js';
+import {applicationRoutes} from './src/application/routes.js';
+import {json,errorResponse} from './src/application/http.js';
+import {BudgetDB} from './src/sync/budget.js';
+import {createApplicationRuntime,ApplicationSyncService} from './src/application/sync-service.js';
+import {collectReportJob,reportService,dataFileService} from './src/application/reports.js';
+import {wakeSync} from './src/sync/runtime.js';
+import {coachingRoutes} from './src/coaching/routes.js';
+
+export const SyncRuntime=createApplicationRuntime({reportCollector:collectReportJob,trackingCollector:collectTrackingCaptureJob});
+const SCHEMA=[...DOMAIN_SCHEMA,...SECURITY_SCHEMA,...SYNC_SCHEMA,...TEAM_FEATURE_SCHEMA,...CATALOG_SCHEMA,...COACH_SCHEMA,...ANALYSIS_SCHEMA,...REPORT_SCHEMA,...DATA_FILE_SCHEMA,...TRACKING_CAPTURE_SCHEMA,...AWARDS_SCHEMA];
+const SEED=[{sql:`INSERT INTO domain_installation(id,schema_version,created_at) VALUES(1,${DOMAIN_SCHEMA_VERSION},strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(id) DO NOTHING`,params:[]}];
+const HEADERS={'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self' https://auth.teamsnap.com"};
 export default {
-  async fetch(request, env, ctx) {
-    const u = new URL(request.url);
-    try {
-      if (u.pathname === "/api/health")
-        return json({ service: "myTS", version: VERSION });
-      if (u.pathname === "/api/state") {
-        const db = new DB(env.DB);
-        return json({
-          version: VERSION,
-          installed: await installed(db),
-          secret_configured: !!env.ADMIN_KEY && env.ADMIN_KEY.length >= 16,
-        });
+  async fetch(request,env,ctx){
+    const url=new URL(request.url);
+    try{
+      if(url.pathname==='/api/health'&&request.method==='GET')return json({service:'myTS',version:VERSION});
+      if(url.pathname.startsWith('/api/')){
+        if(!env.DB)return json({error:{code:'database_unconfigured',message:'Connect a new database to this installation.'}},503);
+        const db=new BudgetDB(env.DB),installation=new FreshInstallation(db,{schema:SCHEMA,seed:SEED,bootstrapPassword:env.ADMIN_KEY});
+        return await applicationRoutes(request,env,{db,installation,extraRoutes:[coachingRoutes]});
       }
-      if (u.pathname === "/api/setup" && request.method === "POST") {
-        const provided = request.headers.get("x-admin-key");
-        if (!env.ADMIN_KEY || env.ADMIN_KEY.length < 16)
-          throw fail(
-            "Set ADMIN_KEY to at least 16 characters.",
-            503,
-            "setup_secret",
-          );
-        if (!provided || (await hash(provided)) !== (await hash(env.ADMIN_KEY)))
-          throw fail("Invalid admin key.", 401, "unauthorized");
-        if (!(await installed(env.DB))) await initialize(env.DB);
-        return json({ ok: true, version: VERSION });
-      }
-      if (u.pathname.startsWith("/api/")) {
-        const db = new DB(env.DB);
-        if (!(await installed(db)))
-          throw fail(
-            "Initialize the fresh database first.",
-            503,
-            "setup_database",
-          );
-        if (u.pathname === "/api/session")
-          return await session(request, env, db);
-        if (u.pathname === "/api/admin/runtime" && request.method === "GET") {
-          ownerOnly(await access(request, env, db));
-          return env.SYNC.get(env.SYNC.idFromName("scheduler")).fetch(
-            "https://sync/status",
-          );
-        }
-        return await api(request, env, db);
-      }
-      if (!["GET", "HEAD"].includes(request.method))
-        throw fail("Method not allowed.", 405, "method_not_allowed");
-      const target = new URL(request.url);
-      if (
-        u.pathname === "/" ||
-        u.pathname === "/admin" ||
-        u.pathname === "/oauth" ||
-        /^\/view\/[A-Za-z0-9_-]{20,}$/.test(u.pathname)
-      )
-        target.pathname = "/";
-      const response = await env.ASSETS.fetch(new Request(target, request));
-      const headers = new Headers(response.headers);
-      for (const [k, v] of Object.entries(HEADERS)) headers.set(k, v);
-      headers.set(
-        "Cache-Control",
-        target.pathname === "/" || target.pathname.endsWith(".html")
-          ? "no-store"
-          : "public, max-age=300",
-      );
-      return new Response(response.body, { status: response.status, headers });
-    } catch (e) {
-      console.error(
-        "myTS request failed",
-        e.code || "internal_error",
-        e.code ? "" : e.message,
-      );
-      return json({ error: errInfo(e) }, e.status || 500);
-    }
+      if(!['GET','HEAD'].includes(request.method))return json({error:{code:'method_not_allowed',message:'Use a supported request method.'}},405);
+      const target=new URL(request.url);
+      const shell=url.pathname==='/'||url.pathname==='/admin'||/^\/view\/[A-Za-z0-9_-]{43}$/.test(url.pathname);
+      if(shell)target.pathname='/app/';
+      const response=await env.ASSETS.fetch(new Request(target,request)),headers=new Headers(response.headers);
+      Object.entries(HEADERS).forEach(([key,value])=>headers.set(key,value));headers.set('Cache-Control',shell||target.pathname.endsWith('.html')?'no-store':'public, max-age=300');
+      return new Response(response.body,{status:response.status,headers});
+    }catch(error){return errorResponse(error);}
   },
-  async scheduled(controller, env, ctx) {
-    ctx.waitUntil(wake(env));
-  },
+  async scheduled(controller,env,ctx){ctx.waitUntil((async()=>{
+    if(!env.DB)return;
+    const db=new BudgetDB(env.DB),installation=new FreshInstallation(db,{schema:SCHEMA,seed:SEED,bootstrapPassword:env.ADMIN_KEY});
+    if((await installation.inspect()).state!=='ready')return;
+    try{
+      if(db.remaining>=7)await trackingCaptureService(db,env).pruneExpired();
+      if(db.remaining>=7)await reportService(db,env).pruneExpired({limit:5});
+      if(db.remaining>=8)await dataFileService(db,env).pruneExpired({limit:5});
+      if(db.remaining>=12)await trackingCaptureService(db,env).recover({limit:1});
+      await new ApplicationSyncService(db,env).recoverDemand({wake:false});
+    }finally{await wakeSync(env);}
+  })());},
 };

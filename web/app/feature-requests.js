@@ -1,0 +1,2 @@
+export async function guardedRead(api,key,path){const epoch=api.state.routeEpoch,result=await api.transport.read(key,path);return result.discarded||epoch!==api.state.routeEpoch||!api.state.active ? null : result.data;}
+export async function guardedCommand(api,path,body,options={}){api.requireOwner();const epoch=api.state.routeEpoch,result=await api.transport.command(path,body,options);return result.discarded||epoch!==api.state.routeEpoch||!api.state.active ? null : result.data;}

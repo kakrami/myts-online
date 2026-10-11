@@ -1,13 +1,15 @@
 {
   "name": "myts",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "build": "wrangler deploy --dry-run",
-    "deploy": "wrangler deploy"
+    "dev": "wrangler dev --config wrangler.jsonc",
+    "check:release": "node scripts/release-check.mjs",
+    "build": "node scripts/release-check.mjs && wrangler deploy --config wrangler.jsonc --dry-run --outdir tmp/review-build",
+    "deploy": "node scripts/release-check.mjs --deploy && wrangler deploy --config wrangler.jsonc"
   },
+  "engines": { "node": ">=22" },
   "devDependencies": {
     "wrangler": "4.149.0"
   }

@@ -1,0 +1,10 @@
+// Fresh selective provider evidence artifacts. They are never source imports.
+export const TRACKING_CAPTURE_SCHEMA = [
+  `CREATE TABLE tracking_capture_plans(id TEXT PRIMARY KEY,app_team_id TEXT NOT NULL REFERENCES app_teams(id) ON DELETE CASCADE,team_season_id TEXT NOT NULL REFERENCES team_seasons(id) ON DELETE CASCADE,attachment_id TEXT NOT NULL,context TEXT NOT NULL CHECK(length(CAST(context AS BLOB))<=64000),created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL)`,
+  `CREATE INDEX tracking_plan_scope ON tracking_capture_plans(app_team_id,team_season_id,expires_at)`,
+  `CREATE TABLE tracking_capture_choices(plan_id TEXT NOT NULL REFERENCES tracking_capture_plans(id) ON DELETE CASCADE,id TEXT NOT NULL,member_key TEXT NOT NULL,gid TEXT NOT NULL,name TEXT NOT NULL,jersey TEXT,position TEXT,dummy INTEGER NOT NULL CHECK(dummy IN(0,1)),PRIMARY KEY(plan_id,id),UNIQUE(plan_id,gid))`,
+  `CREATE TABLE tracking_captures(id TEXT PRIMARY KEY,app_team_id TEXT NOT NULL REFERENCES app_teams(id) ON DELETE CASCADE,team_season_id TEXT NOT NULL REFERENCES team_seasons(id) ON DELETE CASCADE,attachment_id TEXT NOT NULL,account_id TEXT NOT NULL REFERENCES provider_accounts(id),account_generation INTEGER NOT NULL,selection TEXT NOT NULL CHECK(length(CAST(selection AS BLOB))<=16000),state TEXT NOT NULL CHECK(state IN('queued','capturing','complete','partial','failed')),checkpoint TEXT NOT NULL DEFAULT '{}' CHECK(length(CAST(checkpoint AS BLOB))<=8192),records TEXT NOT NULL DEFAULT '[]' CHECK(length(CAST(records AS BLOB))<=16000),part_count INTEGER NOT NULL DEFAULT 0,byte_length INTEGER NOT NULL DEFAULT 0 CHECK(byte_length<=12582912),capture_fence TEXT,error_code TEXT,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL)`,
+  `CREATE INDEX tracking_capture_scope ON tracking_captures(app_team_id,team_season_id,attachment_id,created_at,id)`,
+  `CREATE TABLE tracking_capture_parts(capture_id TEXT NOT NULL REFERENCES tracking_captures(id) ON DELETE CASCADE,ordinal INTEGER NOT NULL,bytes BLOB NOT NULL CHECK(length(bytes)<=64000),PRIMARY KEY(capture_id,ordinal))`,
+];
+export const TRACKING_SCHEMA=TRACKING_CAPTURE_SCHEMA;
