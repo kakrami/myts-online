@@ -1,6 +1,6 @@
-# myTS 7.1.1
+# myTS 7.1.2
 
-This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.1.1**. This package is not a production deployment.
+This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.1.2**. This package is not a production deployment.
 
 The original compact mobile interface, team and season navigation, schedule, competitions, player and match details, bookmarks, source management, branding, corrections, matching, awards, four reports and private Coach workflows are retained. Their server records and background processing use the new architecture. Exact behavior and verification boundaries are documented in the included contracts and final review evidence.
 
@@ -32,16 +32,18 @@ npm ci
 npm run build
 ```
 
+Run native application/D1/Workers tests with `npm test`. The separate `npm run test:browser` suite requires Playwright and Chromium; its header documents `MYTS_PLAYWRIGHT_MODULE` and `MYTS_TEST_CHROMIUM` for existing installations. Browser dependencies are not production dependencies or part of the default native suite.
+
 The committed npm lock pins Wrangler **4.149.0**. `build` validates the release files and performs a deployment **dry run** using `wrangler.jsonc`; it does not publish. Use `npm run dev` for a local preview with a local bootstrap password configured for Wrangler. Local D1 is separate from remote D1.
 
-Follow [fresh deployment instructions](docs/fresh-deployment.md) after review approval. The configuration now selects `myts-v7-rebuild-data`, UUID `60f77502-33d4-41d6-80d4-1c5577ebba76`, for the existing `myts-v7` Worker. Cutover remains held for review. The deploy guard rejects that placeholder, the preserved previous database, unexpected bindings and a remote database whose initialization fingerprint belongs to another build. It permits an empty rebuild database or a matching initialized rebuild installation. No ordered migrations or compatibility readers are included.
+Follow [fresh deployment instructions](docs/fresh-deployment.md) after review approval. The configuration now selects `myts-v7-rebuild-data`, UUID `60f77502-33d4-41d6-80d4-1c5577ebba76`, for the existing `myts-v7` Worker. Cutover remains held for review. The deploy guard rejects an unset UUID, the preserved previous database, unexpected bindings and a remote database whose initialization fingerprint belongs to another build. It permits an empty rebuild database or a matching initialized rebuild installation. No ordered migrations or compatibility readers are included.
 
 Native Workerd/D1 and frontend checks against the required-only package are local evidence; the verification document records the tested artifact and checks. Synthetic private-provider authentication does not prove real TeamSnap consent or Trace entitlements. Production credentials, Cloudflare plan/CPU behavior and closed-browser execution in the target account must be verified separately and identified in the release review. The final verification document is the authority for which gates passed.
 
 Maintainer packaging, after the release gates pass:
 
 ```sh
-node scripts/release-check.mjs --stage tmp/release-stage --zip tmp/myTS-7.1.1.zip
+node scripts/release-check.mjs --stage tmp/release-stage --zip tmp/myTS-7.1.2.zip
 ```
 
 The staging recipe follows the actual fresh Worker/browser import graph and copies required source, assets, pinned configuration, documentation and a SHA-256 manifest. It excludes old modules, dependency directories, provider credentials, local databases, tests, screenshots and temporary work. The verification ledger is required automatically; finalize it with the exact-package results before the release is packaged. Do not substitute a ZIP of the entire workspace.

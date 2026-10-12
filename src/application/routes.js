@@ -40,9 +40,8 @@ export async function applicationRoutes(request,env,{db,installation,extraRoutes
     if(state.state!=='ready'){
       const result=await installation.advance(body.password);if(result.continue)return json(result,202);
     }
-    const configured=await security.ownerConfigured();
-    const session=configured?await security.login(body.password,{clientKey:request.headers.get('cf-connecting-ip')??'local'}):await security.initializeOwner(body.password,{clientKey:request.headers.get('cf-connecting-ip')??'local'});
-    return json({ok:true,role:'owner',expires_at:session.expires_at,setup:{state:'ready',progress:100},continue:false},200,{'Set-Cookie':ownerCookie(session.token)});
+    const session=await security.initializeOwner(body.password,{clientKey:request.headers.get('cf-connecting-ip')??'local'});
+    return json({ok:true,role:'owner',expires_at:session.expires_at,setup:{state:'ready',progress:100,owner_ready:true},continue:false},200,{'Set-Cookie':ownerCookie(session.token)});
   }
   const state=await installation.inspect();if(state.state!=='ready')throw invalid('Initialize this new installation first.','installation_uninitialized',503);
   const domain=new DomainRepository(db),sync=new ApplicationSyncService(db,env,syncOptions);

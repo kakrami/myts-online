@@ -1,3 +1,6 @@
+import { pbkdf2 } from './vendor/noble-hashes-1.7.1/pbkdf2.js';
+import { sha256 } from './vendor/noble-hashes-1.7.1/sha256.js';
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -31,10 +34,12 @@ export function constantEqual(a, b) {
 }
 
 export async function passwordVerifier(password, salt, iterations) {
-  const input = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
-  return new Uint8Array(await crypto.subtle.deriveBits({
-    name: 'PBKDF2', hash: 'SHA-256', salt: decodeBase64url(salt), iterations,
-  }, input, 256));
+  // Hosted Workers can impose a native PBKDF2 limit absent in local Workerd.
+  // Use the same portable standard derivation for initialization, login and
+  // password rotation, retaining stored work factors and 32-byte hashes.
+  return pbkdf2(sha256, encoder.encode(password), decodeBase64url(salt), {
+    c: iterations, dkLen: 32,
+  });
 }
 
 export async function encrypt(keyBytes, keyId, binding, plaintext) {

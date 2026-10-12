@@ -37,7 +37,8 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
   const selectedSeason=()=>selectedTeam()?.seasons?.find(season=>season.id===state.season);
   const context=()=>({team_id:state.team,team_season_id:state.season});
   const pathFor=(path,params={})=>path+"?"+new URLSearchParams(Object.entries({...context(),...params}).filter(([,value])=>value!=null));
-  const shellModel=()=>({mode:role()!=="anonymous" ? "dashboard" : "login",version:state.bootstrap?.version??"",owner_login:location.pathname.startsWith("/admin"),needs_initialization:!!state.bootstrap?.setup&&state.bootstrap.setup.state!=="ready",teams:(state.bootstrap?.teams??[]).map(team=>({value:team.id,label:team.name,group:team.group??"My team",logo:team.display_logo??team.logo_url??null})),selected_team_id:state.team,seasons:(selectedTeam()?.seasons??[]).map(season=>({value:season.id,label:season.label})),selected_season_id:state.season,active_view:state.view,owner:role()==="owner",allowed_views:["overview","schedule","competitions","team","bookmarks"].filter(canView),team_catalog:state.teamCatalog,season_catalog:state.seasonCatalog,login_title:state.bootstrap?.setup?.state==="empty" ? "Initialize myTS" : "Owner console",login_help:state.bootstrap?.setup?.state==="empty" ? "Create the owner password for this installation." : undefined});
+  const needsInitialization=()=>!!state.bootstrap?.setup&&(state.bootstrap.setup.state!=="ready"||state.bootstrap.setup.owner_ready===false);
+  const shellModel=()=>({mode:role()!=="anonymous" ? "dashboard" : "login",version:state.bootstrap?.version??"",owner_login:location.pathname.startsWith("/admin"),needs_initialization:needsInitialization(),teams:(state.bootstrap?.teams??[]).map(team=>({value:team.id,label:team.name,group:team.group??"My team",logo:team.display_logo??team.logo_url??null})),selected_team_id:state.team,seasons:(selectedTeam()?.seasons??[]).map(season=>({value:season.id,label:season.label})),selected_season_id:state.season,active_view:state.view,owner:role()==="owner",allowed_views:["overview","schedule","competitions","team","bookmarks"].filter(canView),team_catalog:state.teamCatalog,season_catalog:state.seasonCatalog,login_title:needsInitialization() ? "Initialize myTS" : "Owner console",login_help:state.bootstrap?.setup?.state==="ready"&&state.bootstrap.setup.owner_ready===false ? "Finish owner access with the configured owner password." : needsInitialization() ? "Use the configured owner password to initialize this installation." : undefined});
   const notice=message=>{clearTimeout(toastTimer);const node=host.querySelector("#toast");if(node){node.textContent=message;node.classList.remove("hidden");toastTimer=setTimeout(()=>node.classList.add("hidden"),4500);}};
   function showError(error,{target=null}={}) {
     if(error?.name==="AbortError")return;
@@ -279,10 +280,10 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
       if(name==="owner-login"){
         let password=String(form.get("key")??"");event.target.querySelector('[name="key"]').value="";
         try{
-          const initializing=state.bootstrap?.setup?.state!=="ready";let done=false;
+          const initializing=needsInitialization();let done=false;
           for(let step=0;step<100;step++){
             const result=await transport.command(initializing?routes.ownerInitialize:routes.ownerLogin,{password});
-            if(result.data.continue){const help=host.querySelector("#loginText");if(help)help.textContent=`Initializing myTS · ${result.data.setup?.progress??0}`;continue;}done=true;break;
+            if(result.data.continue){const help=host.querySelector("#loginText");if(help)help.textContent=`Initializing myTS · ${result.data.setup?.progress??0}%`;continue;}done=true;break;
           }
           if(!done)throw new AppError("Initialization has not finished. Sign in again to resume.","setup_incomplete");
           await bootstrap();
@@ -296,7 +297,12 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
       else if(name==='source-club-choice'){if(!form.get('confirmed'))throw new AppError('Confirm the shared teams affected by this choice.','club_choice_confirmation_required');await commitAttachment(String(form.get('keep')??''));}
       else if(handlers.forms?.[name])await handlers.forms[name](form,{...event.target.dataset},api);
       else throw new AppError("This form has not been connected in this review build yet.","workflow_unimplemented");
-    }catch(error){if(name==="owner-login"){const node=host.querySelector("#loginError");node.textContent=error.message;node.classList.remove("hidden");}else showError(error);}
+    }catch(error){if(name==="owner-login"){
+      // Read the persisted phase after failure or a lost response so the next
+      // attempt resumes owner setup/sign-in and never displays an old cursor.
+      try{await bootstrap();}catch{const help=host.querySelector("#loginText");if(help)help.textContent="Sign in again to resume.";}
+      const node=host.querySelector("#loginError");node.textContent=error.message;node.classList.remove("hidden");
+    }else showError(error);}
     finally{controls.forEach(node=>node.disabled=false);}
   }
   const api={state,transport,host,context,selection,pathFor,action,bootstrap,renderView,settings,canView,hydrateModel,followSourceTeam,manageSource,accountTeams,openModal,closeModal,setDetail:options=>{setDetail(host,options);applyCapabilities();},requireOwner,notice,showError,captureRoute,canLeave};

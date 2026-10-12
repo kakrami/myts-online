@@ -1,12 +1,12 @@
 {
   "service": "myTS",
-  "version": "7.1.1",
+  "version": "7.1.2",
   "review": true,
   "files": [
     {
       "path": "README.md",
-      "bytes": 5754,
-      "sha256": "3b8720461f80994a1238763720ce1e0cf828f06a1974c3375f4d22ebba939362"
+      "bytes": 6074,
+      "sha256": "43b41225c6cb9f3d66b6a0b9d6cd2a06337fe1d7488267169adc223c9389d1a6"
     },
     {
       "path": "docs/acceptance-baseline.md",
@@ -30,8 +30,8 @@
     },
     {
       "path": "docs/deployment-verification.md",
-      "bytes": 9222,
-      "sha256": "40e4c2d56d89e0aafaaac1bf5e1a3249fd6583013e59981c7107d4e5e8e1bee6"
+      "bytes": 13433,
+      "sha256": "ea930491ad233c6b2b5b1ac468012598a439dd4af2b72fc52138e68050db5dd9"
     },
     {
       "path": "docs/domain-contract.md",
@@ -45,8 +45,8 @@
     },
     {
       "path": "docs/fresh-deployment.md",
-      "bytes": 10884,
-      "sha256": "bea0063dc6fdacd5caa75b275a191eeffa148f0d4c01a3b76f76b63f875541b8"
+      "bytes": 12666,
+      "sha256": "6bd997c5d7ea27600fb603aad0e53915afa926d748d7df7f5585f191654267bc"
     },
     {
       "path": "docs/frontend-contract.md",
@@ -57,6 +57,11 @@
       "path": "docs/matching-contract.md",
       "bytes": 12454,
       "sha256": "4dc1beddfef5b40aad6488b94793f2149075588fea7bb1031e220e2beb99b2de"
+    },
+    {
+      "path": "docs/owner-initialization.md",
+      "bytes": 6183,
+      "sha256": "89951cba8a5ff1fec5274db3ed5784b5eda971266224620592c0c3948cf38c87"
     },
     {
       "path": "docs/provider-access.md",
@@ -75,8 +80,8 @@
     },
     {
       "path": "docs/security-contract.md",
-      "bytes": 13292,
-      "sha256": "b25faf4f4096121d421528dfa5bedea260f97a41aeeeb601b075a5c5da696c64"
+      "bytes": 14526,
+      "sha256": "3cbdfec2f4a0d53757d97399f9a94dd36ad9a238bde57a3b8a0b7a1b7f70fb2d"
     },
     {
       "path": "docs/sync-contract.md",
@@ -101,17 +106,17 @@
     {
       "path": "package-lock.json",
       "bytes": 49485,
-      "sha256": "f746d85a32e7706ec5b4b77dbcccc3a59f8d2d66532efeae7fe80e1af60d72b1"
+      "sha256": "7d95712ef974b17cd8f04b4bbd6565ad1bbaea0bf48969486ffacb656694b06d"
     },
     {
       "path": "package.json",
-      "bytes": 580,
-      "sha256": "b3a2865dc379311e7daaa1f1d229ce8bf6f691e0286389c3248b4cc9eb0cca60"
+      "bytes": 635,
+      "sha256": "88c9e16a43a5f657f58f024bda5763d5ac022f7af76ed00fe651d0a079a2d3dc"
     },
     {
       "path": "scripts/release-check.mjs",
-      "bytes": 14614,
-      "sha256": "7ac2c236d16ed82c48d19db77b44d24f3ceaf10d18b869e768f209ecf6fc3452"
+      "bytes": 14974,
+      "sha256": "2352619ed2dd5f6eff56a04139227e161deb77e6f3ea31d6f7d0497f0f3c4f3e"
     },
     {
       "path": "src/analysis/native-facts.js",
@@ -165,8 +170,8 @@
     },
     {
       "path": "src/application/bootstrap.js",
-      "bytes": 2770,
-      "sha256": "e80acab8da7cfa93f76a7878b81c17ee5166845b6520901d14f48d1e2eae80d7"
+      "bytes": 2822,
+      "sha256": "998b64d133acdfd25f4a65938b0aa7e46ba60a642a63c2fd642542ac200f4c77"
     },
     {
       "path": "src/application/club-kits.js",
@@ -205,8 +210,8 @@
     },
     {
       "path": "src/application/routes.js",
-      "bytes": 21076,
-      "sha256": "57847eee983e95d269db49b958c68ca8c79d1e6b5234466e7cbebdd80d2e38a1"
+      "bytes": 20930,
+      "sha256": "081d4d39c7692dff5d9b9587c943e6a21ab9cbf34e597e4e59b858d5008ae199"
     },
     {
       "path": "src/application/source-team-routes.js",
@@ -241,7 +246,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 30,
-      "sha256": "d1ee0d668b78dc1dd6ee5847e8a48914a18d55ac6afab360661b3acc882e9951"
+      "sha256": "c57cc63a1164b7f8b6f195ce0c341428b0d0c255ea2e5fe03e798ada2c39fb49"
     },
     {
       "path": "src/coaching/routes.js",
@@ -410,18 +415,68 @@
     },
     {
       "path": "src/security/crypto.js",
-      "bytes": 2524,
-      "sha256": "b4f3551fe51f3801086200db5d54791dae4ca3c2b86b464484dfbd30e4498be5"
+      "bytes": 2726,
+      "sha256": "8243996aaff628bdf78f19028269dff739592b5e94afdc73ce30b6a99be6a507"
     },
     {
       "path": "src/security/index.js",
-      "bytes": 27606,
-      "sha256": "61326fede2104a4234f4ff9df79ecc1b7b0f1295c74d39d741018568cbc209c4"
+      "bytes": 30032,
+      "sha256": "4d8a65d5dfe35253a4dcbf7fda4edef2ef0754359fc540a6b347089a6818899d"
     },
     {
       "path": "src/security/schema.js",
       "bytes": 3257,
       "sha256": "7e9580387ea2bfc4ae5ef2861232f04e6b338374e6fd70a0ac9c9f621d00c3e3"
+    },
+    {
+      "path": "src/security/vendor/noble-hashes-1.7.1/LICENSE",
+      "bytes": 1109,
+      "sha256": "4f221aee6e072336700c408c68ab3b96a3fc09f6aebe6f48f1bd99e5ef13faec"
+    },
+    {
+      "path": "src/security/vendor/noble-hashes-1.7.1/README.md",
+      "bytes": 1091,
+      "sha256": "29fa06fcce39e3b67aaf65ab9e7dadbef6a64ed4412f47caa3897675e1eba04c"
+    },
+    {
+      "path": "src/security/vendor/noble-hashes-1.7.1/SOURCE.json",
+      "bytes": 1934,
+      "sha256": "2b753b8cff5612a07c84b4887ff3618f3226bd085868a47244ccf1b92fbc48dd"
+    },
+    {
+      "path": "src/security/vendor/noble-hashes-1.7.1/_assert.js",
+      "bytes": 1631,
+      "sha256": "1582e57bcc70aa128e1c0b7de2b4101404d9c739dd8efec166345e23ba355e0c"
+    },
+    {
+      "path": "src/security/vendor/noble-hashes-1.7.1/_md.js",
+      "bytes": 4810,
+      "sha256": "6eda88b5ed45624ec7c5bcc67c15a1d61bc771e12f5adb1d880b003acfb932f7"
+    },
+    {
+      "path": "src/security/vendor/noble-hashes-1.7.1/crypto.js",
+      "bytes": 146,
+      "sha256": "9211d026c5d21e60e0126dd6f01150d87da5ba7261b8f468215c1264372ff5a5"
+    },
+    {
+      "path": "src/security/vendor/noble-hashes-1.7.1/hmac.js",
+      "bytes": 2933,
+      "sha256": "219ff96020592b7b9b4f8bc67e94f72d7a4203e296d370413fb215643c60ea6d"
+    },
+    {
+      "path": "src/security/vendor/noble-hashes-1.7.1/pbkdf2.js",
+      "bytes": 3850,
+      "sha256": "1c8a71b22e80668882ef5278e2e426cd8c1b37ea2e9659ea326b7ceff309c4a8"
+    },
+    {
+      "path": "src/security/vendor/noble-hashes-1.7.1/sha256.js",
+      "bytes": 5134,
+      "sha256": "8325bed671a16399f427c6dbd7f5e72ac567c523ceec0ead1551c7e7ff94ecc8"
+    },
+    {
+      "path": "src/security/vendor/noble-hashes-1.7.1/utils.js",
+      "bytes": 7891,
+      "sha256": "de2c05ff4d11a38b2de58464aadb29b0e75fd9f8878c0651ebfd9e0e60eb019b"
     },
     {
       "path": "src/sources/common.js",
@@ -555,8 +610,8 @@
     },
     {
       "path": "web/app/main.js",
-      "bytes": 52717,
-      "sha256": "358728172abb6ebbb148a4af1e3c20c048933e229abad423550df93a70108f44"
+      "bytes": 53230,
+      "sha256": "5b40f6a528e3e200e2b9079be0ebce74acb8c20d4554ed8316f822478e6de558"
     },
     {
       "path": "web/app/reports.js",

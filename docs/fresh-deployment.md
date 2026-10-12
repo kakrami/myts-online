@@ -1,6 +1,14 @@
 # Existing myts-v7 Worker: clean rebuild deployment
 
-This release targets the existing **myts-v7** Worker and production branch. It needs no third Worker, new scheduler namespace, new URL or another Cloudflare sign-in. Corrected version: **7.1.1**.
+This release targets the existing **myts-v7** Worker and production branch. It needs no third Worker, new scheduler namespace, new URL or another Cloudflare sign-in. Corrected version: **7.1.2**.
+
+## Owner initialization follow-up on the ready database
+
+Production currently uses commit 8411d36d9a2a6f66df35fdf83c7964d7a13509c8. The user reports setup_state ready at cursor 270, completed 2026-10-12T05:29:49.040Z, with 122 tables, 40 indexes, 98 triggers, 10 views and one domain seed. Owner, vault and session counts are zero after HTTP 500 from invocation 21dc2c94bba9d696646b078b427ff18b. The displayed 88 was stale. This correction reuses that ready database; the original empty-database preparation below is historical and must not be repeated.
+
+After approval, promote the exact tested 7.1.2 review commit to myts-v7. Keep code and wrangler.jsonc DB binding together; keep DB UUID 60f77502-33d4-41d6-80d4-1c5577ebba76, ADMIN_KEY, SYNC, the one-minute cron, preview_urls:false and disabled nonproduction builds. Do not import schema, clear setup_state, reset either database or create another setup. There is no data-loss operation. Read [owner initialization evidence and live checks](owner-initialization.md) before the follow-up deployment. Preserve the current Worker deployment reference for rollback with the same rebuild binding.
+
+Dot should confirm the actual HTTP CPU limit on the existing paid Worker before deployment. After the successful build, require /api/health version 7.1.2 and bootstrap schema ready / owner_ready:false. Retry through /admin using the existing configured password. Verify the unchanged setup row and schema, one owner and vault, at least one session, no native-PBKDF2 cap or CPU failure, ordinary logout/login and password rotation with the vault preserved. If a failure occurs, capture its invocation and safe phase diagnostic; retry without reset. Real provider sync and processing after all tabs close still require live acceptance.
 
 ## Why a fresh database is required
 

@@ -16,7 +16,7 @@ const good = (result, status = 200) => { assert.equal(result.status, status, JSO
 test.before(async () => {
   const root = path.resolve('.'), modules = {};
   for (const folder of ['src/security', 'src/domain', 'src/sources']) {
-    for (const file of await readdir(path.join(root, folder))) if (file.endsWith('.js'))
+    for (const file of await readdir(path.join(root, folder), {recursive:true})) if (file.endsWith('.js'))
       modules[folder + '/' + file] = { type: 'esm', contents: await readFile(path.join(root, folder, file), 'utf8') };
   }
   modules['src/application/auth-routes.js'] = { type: 'esm', contents: await readFile('src/application/auth-routes.js', 'utf8') };

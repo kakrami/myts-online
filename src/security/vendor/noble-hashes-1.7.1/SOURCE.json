@@ -1,0 +1,40 @@
+{
+  "package": "@noble/hashes",
+  "version": "1.7.1",
+  "source": "https://registry.npmjs.org/@noble/hashes/-/hashes-1.7.1.tgz",
+  "tarball_integrity": "sha512-B8XBPsn4vT/KJAGqDzbwztd+6Yte3P4V7iafm24bxgDe/mlRuK6xmWPuCNrKt2vDafZ8MfJLlchDG/vYafQEjQ==",
+  "upstream_tag": "https://github.com/paulmillr/noble-hashes/tree/1.7.1",
+  "modifications": {
+    "utils.js": "Relocated @noble/hashes/crypto import to ./crypto.js; algorithm unchanged."
+  },
+  "files": {
+    "_assert.js": {
+      "upstream_sha256": "1582e57bcc70aa128e1c0b7de2b4101404d9c739dd8efec166345e23ba355e0c",
+      "vendored_sha256": "1582e57bcc70aa128e1c0b7de2b4101404d9c739dd8efec166345e23ba355e0c"
+    },
+    "_md.js": {
+      "upstream_sha256": "6eda88b5ed45624ec7c5bcc67c15a1d61bc771e12f5adb1d880b003acfb932f7",
+      "vendored_sha256": "6eda88b5ed45624ec7c5bcc67c15a1d61bc771e12f5adb1d880b003acfb932f7"
+    },
+    "crypto.js": {
+      "upstream_sha256": "9211d026c5d21e60e0126dd6f01150d87da5ba7261b8f468215c1264372ff5a5",
+      "vendored_sha256": "9211d026c5d21e60e0126dd6f01150d87da5ba7261b8f468215c1264372ff5a5"
+    },
+    "hmac.js": {
+      "upstream_sha256": "219ff96020592b7b9b4f8bc67e94f72d7a4203e296d370413fb215643c60ea6d",
+      "vendored_sha256": "219ff96020592b7b9b4f8bc67e94f72d7a4203e296d370413fb215643c60ea6d"
+    },
+    "pbkdf2.js": {
+      "upstream_sha256": "1c8a71b22e80668882ef5278e2e426cd8c1b37ea2e9659ea326b7ceff309c4a8",
+      "vendored_sha256": "1c8a71b22e80668882ef5278e2e426cd8c1b37ea2e9659ea326b7ceff309c4a8"
+    },
+    "sha256.js": {
+      "upstream_sha256": "8325bed671a16399f427c6dbd7f5e72ac567c523ceec0ead1551c7e7ff94ecc8",
+      "vendored_sha256": "8325bed671a16399f427c6dbd7f5e72ac567c523ceec0ead1551c7e7ff94ecc8"
+    },
+    "utils.js": {
+      "upstream_sha256": "a86f6602cc39709cb00ddd65b55e3d2a330d684c0b3e530b9c2c73558925c059",
+      "vendored_sha256": "de2c05ff4d11a38b2de58464aadb29b0e75fd9f8878c0651ebfd9e0e60eb019b"
+    }
+  }
+}

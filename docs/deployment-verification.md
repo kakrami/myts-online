@@ -65,3 +65,32 @@ wrangler.jsonc explicitly sets preview_urls:false. This setting controls Preview
 The follow-up affects deployment tooling and configuration only. Worker modules, frontend, DB target/UUID, ADMIN_KEY lifecycle, SYNC class/export and cron are unchanged. Production retains commit b9e69bea028172d13f59e6dcedd8f7d6c329e495 until this follow-up is approved.
 
 Regression tests execute the actual npm run deploy pipeline in an isolated copy of the required release. A local Wrangler stub supplies metadata/errors and records whether the publish step was reached; no credentials, Cloudflare login, remote queries or real deployment are used. Tests cover correct status reporting and inspection failures, including warning-mode unhandled-rejection policy so failing closed does not depend on Node's default crash behavior. Follow-up receipts: 14/14 targeted tests passed (7 actual deploy-pipeline cases and 7 native release/schema cases), with no failures or skips; npm run build passed using pinned Wrangler 4.149.0, 27 assets and the unchanged 1070.30 KiB Worker. The earlier 59-test runtime baseline remains applicable to the byte-identical Worker/frontend; this follow-up does not claim a new full 66-test run. An isolated control using the original unawaited call plus warning-mode rejections did reach the fake deployment step after a failed query, proving the regression catches the reported defect. No shared source was changed for that control.
+
+
+## Owner initialization follow-up: 7.1.2
+
+This section supersedes the earlier publication holds and verification boundaries for 7.1.1. Production reached commit 8411d36d9a2a6f66df35fdf83c7964d7a13509c8; this correction is prepared for myts-review only. The user reports setup ready at cursor 270 with the complete 122-table schema and one domain seed, and owner/vault/session counts 0/0/0 after initialization returned HTTP 500. No live query, reset, credential read or publication was performed during this correction.
+
+Both a native PBKDF2 cap rejection and an aborted owner batch reproduce the zero counts. These native reproductions do not identify the original live exception. Local Workerd accepting 600,000 rounds does not establish hosted support. The shared verifier now computes exact standard PBKDF2-HMAC-SHA256 through pinned Noble 1.7.1, retaining the 600,000 work factor and existing hash compatibility. License and provenance ship with the release.
+
+Owner, vault and first session commit atomically. A unique nonce guards concurrent session issuance, and retries verify the stored password without replacing the vault. Bootstrap and the form distinguish schema ready / owner pending and reread persisted state after an error. Diagnostic logs expose only the event, bounded phase and known error class.
+
+| Current check | Result |
+|---|---|
+| npm test | PASS: 79/79, 0 failures, 0 skips; 168.493 seconds |
+| Focused owner suite | PASS: 9/9; native D1 prehash/each-statement rollback, post-commit/lost-response retries, existing vault, concurrency, stored password authority and actual API login/rotation |
+| Independent PBKDF2 vectors/provenance | PASS: 4/4; Node reference at 100k/600k, Unicode/NUL/long UTF-8, vendor digests, native PBKDF2 forbidden with a simulated 100k cap |
+| npm run test:browser | PASS: 3/3, 0 skips; mobile Chromium form/controllers, owner-pending selection, stale 88% recovery and lost response followed by login |
+| Deployment npm pipeline regressions | PASS: 7/7; awaited success reporting and failed/malformed/foreign inspection prevent publishing |
+| npm run build | PASS; Wrangler 4.149.0 dry run, 27 assets, 1084.43 KiB uncompressed Worker, 255.42 KiB gzip |
+| Independent code review | No blocking authentication, race or data-preservation defect found |
+| Schema and configuration | Schema fingerprint unchanged; wrangler.jsonc byte-identical to 8411d36, including DB UUID and preview_urls:false |
+| Production CPU, owner retry, real providers and closed-browser processing | PENDING live verification by dot after approved deployment |
+
+The focused owner/verifier/guard checks are subsets of the 79 native tests. The three browser tests run separately and require Playwright/Chromium; they are outside the default native command. Local Workerd measured about 1.7–2.0 seconds wall per 600,000-round derivation. This is not production CPU evidence. Dot must inspect the actual Worker CPU setting before promotion and record live initialization, login and rotation outcomes afterward.
+
+The required-only runtime graph contains 114 worker/src/web files, including the vendor modules and provenance. Runtime fingerprint: f1ab6c94561e5095b83622ee403b6099e68ba8531f28fc5c9bcf1b23c4129e76, using the same ordered {path,sha256} JSON algorithm. Schema fingerprint remains e52ac3c69e4cdf8d5b30a8c4587b9080a6220436b3b6d421d72a45781420b003: 121 table definitions plus setup_state. Version 7.1.2 is consistent in source/package/lock. No schema statement or seed changed.
+
+Exact promotion and no-reset live retry instructions are in owner-initialization.md and fresh-deployment.md. Preserve both databases, ADMIN_KEY, SYNC and the minute cron. This patch performs no data-loss operation. Full rebuild acceptance remains open until real provider sync and background persistence after all tabs close are observed.
+
+The required-only staged package independently passed owner initialization under the simulated native cap and the actual API login/password-rotation/credential-retention lifecycle (two selected tests, each passing). All 114 runtime files in the final package are byte-identical to that tested stage; only the final evidence documents were completed afterward.

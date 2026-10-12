@@ -82,23 +82,62 @@ export class SecurityStore {
 
   async initializeOwner(password, { clientKey = 'unknown' } = {}) {
     passwordInput(password);
-    await this.consumeRate('owner-initialize', clientKey);
-    if (await this.ownerConfigured()) reject('owner_exists', 'Owner access is already initialized.', 409);
-    if (typeof this.#bootstrapPassword !== 'string' || this.#bootstrapPassword.length < 16)
-      reject('bootstrap_unconfigured', 'The initial owner password must be configured for this installation.', 503);
-    const [inputHash, expectedHash] = await Promise.all([digest(password), digest(this.#bootstrapPassword)]);
-    if (!constantEqual(new TextEncoder().encode(inputHash), new TextEncoder().encode(expectedHash)))
-      reject('password_incorrect', 'Incorrect password.', 401);
-    const now = this.now(), salt = base64url(crypto.getRandomValues(new Uint8Array(16)));
-    const hash = base64url(await passwordVerifier(password, salt, PASSWORD_ITERATIONS));
-    const results = await this.db.batch([
-      this.db.prepare(`INSERT INTO security_installation VALUES(1,?,?,?) ON CONFLICT(id) DO NOTHING`)
-        .bind(crypto.randomUUID(), randomToken(), now),
-      this.db.prepare(`INSERT INTO security_owner VALUES(1,?,?,?,1,?,?,?) ON CONFLICT(id) DO NOTHING RETURNING id`)
-        .bind(salt, hash, PASSWORD_ITERATIONS, crypto.randomUUID(), now, now),
-    ]);
-    if (!results[1].results.length) reject('owner_exists', 'Owner access is already initialized.', 409);
-    return this.#issueSession(1);
+    let phase = 'rate-limit';
+    try {
+      await this.consumeRate('owner-initialize', clientKey);
+      phase = 'owner-read';
+      const existing = await this.db.prepare('SELECT * FROM security_owner WHERE id=1').first();
+      // A committed initialization can be retried after a lost response. The
+      // stored verifier, including any subsequent rotation, is authoritative.
+      if (existing) {
+        phase = 'resume-password';
+        if (!(await this.#verifyPassword(password, existing))) reject('password_incorrect', 'Incorrect password.', 401);
+        phase = 'resume-session';
+        return await this.#issueSession(existing.password_revision);
+      }
+      if (typeof this.#bootstrapPassword !== 'string' || this.#bootstrapPassword.length < 16)
+        reject('bootstrap_unconfigured', 'The initial owner password must be configured for this installation.', 503);
+      phase = 'bootstrap-password';
+      const [inputHash, expectedHash] = await Promise.all([digest(password), digest(this.#bootstrapPassword)]);
+      if (!constantEqual(new TextEncoder().encode(inputHash), new TextEncoder().encode(expectedHash)))
+        reject('password_incorrect', 'Incorrect password.', 401);
+      const now = this.now(), salt = base64url(crypto.getRandomValues(new Uint8Array(16)));
+      phase = 'password-derivation';
+      const hash = base64url(await passwordVerifier(password, salt, PASSWORD_ITERATIONS));
+      phase = 'session-derivation';
+      const token = randomToken(), tokenHash = await digest(token), initializationId = crypto.randomUUID();
+      // D1 rolls back the whole batch if any statement fails. All cryptographic
+      // material is ready before vault, owner and first session commit together.
+      phase = 'owner-batch';
+      const results = await this.db.batch([
+        this.db.prepare(`INSERT INTO security_installation VALUES(1,?,?,?) ON CONFLICT(id) DO NOTHING`)
+          .bind(crypto.randomUUID(), randomToken(), now),
+        this.db.prepare(`INSERT INTO security_owner VALUES(1,?,?,?,1,?,?,?) ON CONFLICT(id) DO NOTHING RETURNING id`)
+          .bind(salt, hash, PASSWORD_ITERATIONS, initializationId, now, now),
+        this.db.prepare(`INSERT INTO security_sessions
+          SELECT ?,password_revision,?,?,NULL FROM security_owner
+          WHERE id=1 AND password_revision=1 AND last_password_change=? RETURNING expires_at`)
+          .bind(tokenHash, now, now + SESSION_MS, initializationId),
+      ]);
+      if (results[1].results.length) {
+        if (!results[2].results.length) throw new Error('Initial session was not committed.');
+        return { token, expires_at: results[2].results[0].expires_at };
+      }
+      // Another initializer won the transaction. Its nonce blocked our session;
+      // verify its actual password before issuing any authenticated response.
+      phase = 'concurrent-password';
+      const winner = await this.db.prepare('SELECT * FROM security_owner WHERE id=1').first();
+      if (!(await this.#verifyPassword(password, winner))) reject('password_incorrect', 'Incorrect password.', 401);
+      phase = 'concurrent-session';
+      return await this.#issueSession(winner.password_revision);
+    } catch (error) {
+      if (error instanceof SecurityError) throw error;
+      // Log only a bounded stage and known error class. Passwords, SQL values,
+      // salts, hashes, vault keys and raw exception messages are never logged.
+      const errorClass = ['Error', 'TypeError', 'RangeError', 'NotSupportedError', 'OperationError'].includes(error?.name) ? error.name : 'Error';
+      console.error(JSON.stringify({ event: 'owner_initialization_failed', phase, error_class: errorClass }));
+      reject('owner_initialization_failed', 'Owner access could not be initialized. Sign in again to resume.', 503);
+    }
   }
 
   async #verifyPassword(password, row) {
