@@ -160,3 +160,39 @@ Use native ES modules and the existing DOM/template approach. These boundaries d
 | Settings/connections/files | Familiar source Manage sheets, selection/lifecycle actions, branding/share/diagnostics/current-format import/export |
 
 Validation pairs the original screenshots/markup reference with acceptance checks from `acceptance-baseline.md`. All 31 gates map to these reads/actions: frontend similarity alone cannot pass missing reports, inaccurate totals, broken attachment, or production background work. Live provider/private authentication and Cloudflare browser-closed results must be recorded separately from this design contract and from mocked/local checks.
+
+## 9. Connection interruption contract (7.1.3)
+
+One connection controller owns provider, named account, intended destination,
+selected source, nonsecret draft, stage and stable mutation request identity.
+Every asynchronous transition checks its flow ticket before presentation; post-
+commit bootstrap also checks the independent user interaction/history epoch before
+changing selection. Close, Back, newer flows and same-team history navigation
+cannot be overwritten by a late sign-in, discovery or connection response.
+
+Session storage retains only allowlisted nonsecret intent, opaque Trace attempt
+handle and the immutable connection command. Passwords, email/code values, OAuth
+tokens, credential objects and arbitrary responses are excluded. Explicit owner
+sign-out clears the intent. Owner expiry may retain a pending immutable command
+for recovery after sign-in; the server reauthenticates every request.
+
+POST /api/connections atomically creates the new team, season, profile and source
+attachment using existing tables. Existing app_teams.request_id uniqueness plus
+an immutable command-derived team identity reject conflicting payload reuse.
+The same request and body survive lost replies, reload and queue-admission retry;
+removed attachments are not restored by replay. GET /api/connections?request_id=…
+is owner-only and read-only: it reports saved identity and current lifecycle,
+attachment/account state without queueing or claiming that a payload was verified
+or an import finished. Recovery can open that saved team without another write.
+
+Existing-team attachment routes retain natural-key deduplication and explicit
+club decisions, not a durable request receipt. Their retry may refresh demand or
+reactivate an attachment removed elsewhere; the recovery screen explains that and
+requires an explicit Reconnect this source if needed action. A lost club-choice
+reply retries the plain attachment, asking for a new choice if a conflict remains.
+
+A pending command can be dismissed and resumed, or explicitly abandoned after a
+warning that it may already be saved. Start over drops only browser intent and
+never removes a team/source. Users are told to check their saved teams before
+connecting the same source again. Creation and attachment are never two separate
+browser mutations, so cancellation cannot leave a newly created unattached team.

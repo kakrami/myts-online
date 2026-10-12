@@ -105,25 +105,47 @@ export class DomainRepository {
     ],precondition);
     return this.db.prepare("SELECT * FROM provider_accounts WHERE id=?").bind(accountId).first();
   }
-  async createTeam({name,timezone="America/Los_Angeles",seasonYear,requestId=null}) {
+  prepareTeam({name,timezone="America/Los_Angeles",seasonYear,requestId=null,teamId=id(),seasonId=id()}) {
     name=String(name||"").trim();
     requireValue(name && name.length<=100,"Enter a team name.");
     try { new Intl.DateTimeFormat("en-US",{timeZone:timezone}).format(); } catch { throw fail("Invalid team timezone."); }
     const now=new Date();
     seasonYear=Number(seasonYear??(now.getUTCFullYear()-(now.getUTCMonth()<5?1:0)));
     requireValue(Number.isInteger(seasonYear)&&seasonYear>=2000&&seasonYear<=2100,"Invalid season.");
-    if (requestId) {
-      const previous=await this.db.prepare("SELECT id FROM app_teams WHERE request_id=?").bind(requestId).first();
+    const startDay=`${seasonYear}-06-01`,endDay=`${seasonYear+1}-06-01`;
+    return {id:teamId,name,timezone,season_year:seasonYear,request_id:requestId,created_at:stamp(),season_id:seasonId,start_day:startDay,end_day:endDay,start_at:localMidnight(startDay,timezone),end_at:localMidnight(endDay,timezone),include_june:1};
+  }
+  teamCreationStatements(team,guard,token) {
+    return [
+      this.db.prepare(`INSERT INTO app_teams SELECT ?,?,?,?,?,? WHERE ${guard}`).bind(team.id,team.name,team.timezone,team.season_year,team.request_id,team.created_at,token),
+      this.db.prepare(`INSERT INTO team_seasons SELECT ?,?,?,?,?,?,?,1 WHERE ${guard}`).bind(team.season_id,team.id,team.season_year,team.start_day,team.end_day,team.start_at,team.end_at,token),
+      this.db.prepare(`INSERT INTO team_read_state(app_team_id,pending) SELECT ?,1 WHERE ${guard}`).bind(team.id,token),
+      this.db.prepare(`INSERT INTO team_projection_state(team_season_id,app_team_id) SELECT ?,? WHERE ${guard}`).bind(team.season_id,team.id,token),
+    ];
+  }
+  async createTeam(command) {
+    const team=this.prepareTeam(command);
+    if (team.request_id) {
+      const previous=await this.db.prepare("SELECT id FROM app_teams WHERE request_id=?").bind(team.request_id).first();
       if (previous) return this.team(previous.id);
     }
-    const teamId=id(),seasonId=id();
+    await this.domainBatch((guard,token)=>this.teamCreationStatements(team,guard,token));
+    return this.team(team.id);
+  }
+  /** Trusted connection command: create, season, profile and source attach commit together. */
+  async createConnectedTeam({team,source,accountGeneration=null,profileBinding,precondition}) {
+    requireValue(team.request_id&&profileBinding?.team_id===team.id&&profileBinding.source_team_id===source.id&&typeof profileBinding.condition==="string"&&profileBinding.condition.length<=8000&&Array.isArray(profileBinding.condition_params)&&Array.isArray(profileBinding.statements)&&profileBinding.statements.length<=8&&profileBinding.statements.every(statement=>typeof statement.sql==="string"&&statement.sql.length<=12000&&Array.isArray(statement.params)),"Invalid prepared team connection.");
+    const attachmentId=await nativeCanonicalId('connection-attachment',team.id);
     await this.domainBatch((guard,token)=>[
-      this.db.prepare(`INSERT INTO app_teams SELECT ?,?,?,?,?,? WHERE ${guard}`).bind(teamId,name,timezone,seasonYear,requestId,stamp(),token),
-      this.db.prepare(`INSERT INTO team_seasons SELECT ?,?,?,?,?,?,?,1 WHERE ${guard}`).bind(seasonId,teamId,seasonYear,`${seasonYear}-06-01`,`${seasonYear+1}-06-01`,localMidnight(`${seasonYear}-06-01`,timezone),localMidnight(`${seasonYear+1}-06-01`,timezone),token),
-      this.db.prepare(`INSERT INTO team_read_state(app_team_id,pending) SELECT ?,1 WHERE ${guard}`).bind(teamId,token),
-      this.db.prepare(`INSERT INTO team_projection_state(team_season_id,app_team_id) SELECT ?,? WHERE ${guard}`).bind(seasonId,teamId,token),
-    ]);
-    return this.team(teamId);
+      ...this.teamCreationStatements(team,guard,token),
+      this.db.prepare(`INSERT INTO team_source_attachments(id,app_team_id,team_season_id,source_team_id,account_id) SELECT ?,?,?,?,? WHERE ${guard}`).bind(attachmentId,team.id,team.season_id,source.id,source.account_id,token),
+      // Profile statements can be unguarded only after this CHECK has established
+      // both the domain fence and the full prepared profile precondition.
+      this.db.prepare(`INSERT INTO feature_write_fences VALUES(?,CASE WHEN (${profileBinding.condition}) AND ${guard} THEN 1 ELSE 0 END)`).bind(token,...profileBinding.condition_params,token),
+      ...profileBinding.statements.map(statement=>this.db.prepare(statement.sql).bind(...statement.params)),
+      this.db.prepare('DELETE FROM feature_write_fences WHERE token=?').bind(token),
+    ],{sql:`NOT EXISTS(SELECT 1 FROM app_teams WHERE request_id=?) AND EXISTS(SELECT 1 FROM source_teams WHERE id=? AND account_id IS ? AND content_hash=? AND provenance='provider') AND (? IS NULL OR EXISTS(SELECT 1 FROM account_source_teams a JOIN provider_accounts p ON p.id=a.account_id WHERE a.account_id=? AND a.source_team_id=? AND p.active=1 AND p.generation=?)) AND (${precondition.sql})`,params:[team.request_id,source.id,source.account_id,source.content_hash,source.account_id,source.account_id,source.id,accountGeneration,...precondition.params]}).catch(error=>{if(String(error.message).includes('feature_revision_current'))throw fail('The team or source changed; retry the operation.','revision_conflict',409);throw error;});
+    return {...await this.db.prepare('SELECT * FROM team_source_attachments WHERE id=?').bind(attachmentId).first(),affectedTeams:[{app_team_id:team.id,team_season_id:team.season_id}]};
   }
   async ensureSeason(teamId,year) {
     const team=await this.team(teamId);year=Number(year);

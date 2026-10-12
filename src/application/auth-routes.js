@@ -120,6 +120,7 @@ export async function applicationAuthRoutes(request, services) {
 
   const matched = path === '/api/accounts' && method === 'GET'
     || path === '/api/accounts/teamsnap/config' && method === 'GET'
+    || path === '/api/accounts/trace/attempt' && method === 'GET'
     || ['/api/accounts/teamsnap/authorize', '/api/accounts/teamsnap/callback', '/api/accounts/trace/start', '/api/accounts/trace/verify', '/api/accounts/trace/cancel'].includes(path) && method === 'POST'
     || /^\/api\/accounts\/[^/]+$/.test(path) && method === 'DELETE';
   if (!matched) return null;
@@ -132,7 +133,9 @@ export async function applicationAuthRoutes(request, services) {
     return json({ accounts: rows.slice(0, 100).map((row) => accountPublic(row, security.now())), next_cursor: rows.length > 100 ? rows[99].id : null });
   }
   if (path === '/api/accounts/teamsnap/config')
-    return json(await security.teamSnapConfiguration(sessionToken));
+    return json(await security.teamSnapConfiguration(sessionToken, { origin: url.origin }));
+  if (path === '/api/accounts/trace/attempt')
+    return json(await security.traceAttemptStatus(sessionToken, url.searchParams.get('attempt')));
   if (path === '/api/accounts/teamsnap/authorize') {
     const body = await readAuthBody(request);
     return json(await security.beginTeamSnapOAuth(sessionToken, { origin: url.origin, clientId: body.client_id }));
@@ -147,7 +150,7 @@ export async function applicationAuthRoutes(request, services) {
     return json({ ok: true, account_id: accountId, authorization_state: 'disconnected' });
   }
 
-  async function saveAuthorization(provider, nativeId, name, credential, expiresAt = null) {
+  async function saveAuthorization(provider, nativeId, name, credential, expiresAt = null, traceClaim = null) {
     if (typeof enqueueDiscovery !== 'function') error('discovery_unconfigured', 'Background discovery is not configured.', 503);
     await security.requireOwnerSession(sessionToken);
     const existing = await domain.db.prepare('SELECT id FROM provider_accounts WHERE provider=? AND native_id=?').bind(provider, nativeId).first();
@@ -156,12 +159,22 @@ export async function applicationAuthRoutes(request, services) {
     const condition = sessionCondition(owner, security);
     condition.sql += ' AND NOT EXISTS(SELECT 1 FROM provider_accounts WHERE provider=? AND native_id=? AND id<>?)';
     condition.params.push(provider, nativeId, accountId);
-    const account = await domain.registerAccount({ provider, nativeId, name, accountId, precondition: condition,
+    const traceCommit = traceClaim && await security.prepareTraceAttemptCommit(sessionToken, traceClaim.attempt, traceClaim.claim_id);
+    if (traceCommit) { condition.sql += ' AND ' + traceCommit.sql; condition.params.push(...traceCommit.params); }
+    let account;
+    try { account = await domain.registerAccount({ provider, nativeId, name, accountId, precondition: condition,
       additionalStatements: (guard, token, id) => [domain.db.prepare(`INSERT INTO security_account_credentials
         SELECT id,generation,?,?,? FROM provider_accounts WHERE id=? AND ${guard}
         ON CONFLICT(account_id) DO UPDATE SET account_generation=excluded.account_generation,ciphertext=excluded.ciphertext,
-          expires_at=excluded.expires_at,updated_at=excluded.updated_at`).bind(ciphertext, expiresAt, security.now(), id, token)],
-    });
+          expires_at=excluded.expires_at,updated_at=excluded.updated_at`).bind(ciphertext, expiresAt, security.now(), id, token),
+        ...(traceCommit ? [traceCommit.consume(guard, token)] : [])],
+    }); } catch (failure) {
+      if (failure.code === 'revision_conflict') {
+        await security.requireOwnerSession(sessionToken);
+        if (traceClaim) await security.prepareTraceAttemptCommit(sessionToken, traceClaim.attempt, traceClaim.claim_id);
+      }
+      throw failure;
+    }
     await enqueueDiscovery(account);
     const safe = await domain.db.prepare(ACCOUNT_SELECT + ' WHERE a.id=?').bind(account.id).first();
     return { ok: true, account: accountPublic(safe, security.now()), discovery: { state: 'queued' } };
@@ -213,10 +226,10 @@ export async function applicationAuthRoutes(request, services) {
         error('trace_identity_invalid', 'Trace did not confirm the selected account.', 502);
       await tokenFor(transport, cookie, { native_id: claim.user_id });
       const teams = await traceTeams(transport, cookie);
-      await security.finishTraceAttempt(sessionToken, body.attempt, claim.claim_id, { success: true });
-      verified = true;
       const name = String(identity.name || [identity.first_name, identity.last_name].filter(Boolean).join(' ') || 'Trace account').slice(0, 200);
-      return json({ ...await saveAuthorization('trace', claim.user_id, name, cookie), verified_team_count: teams.length });
+      const connected = await saveAuthorization('trace', claim.user_id, name, cookie, null, { attempt: body.attempt, claim_id: claim.claim_id });
+      verified = true;
+      return json({ ...connected, verified_team_count: teams.length });
     } catch (failure) {
       if (!verified) {
         try { await security.finishTraceAttempt(sessionToken, body.attempt, claim.claim_id, {

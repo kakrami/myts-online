@@ -289,3 +289,48 @@ TeamSnap event uniform instructions remain intact, and the original owner kit
 list may match those names for display. Text instructions do not prove a color,
 home/away role or goalkeeper kit. Owner logo/kit reset restores these available
 source defaults, including an explicit unavailable state where no default exists.
+
+## 7.1.3 connection entry and recovery
+
+The connection flow reuses a stored, active, unexpired TeamSnap or Trace account
+before offering sign-in. Multiple accounts are named and paginated; using another
+account is explicit. This does not read another tab's provider cookies.
+Candidate teams retain source names, season labels and archived status. The
+confirmation defaults to the intended current myTS team/season, or creates a
+team named by the source. Destination/name/group edits are under Change.
+A consecutive source label such as 2026-2027 can prefill the season-start year;
+ambiguous labels ask one explicit question. Existing shared-club conflicts still
+require the owner to review affected teams and choose a record.
+
+GotSport has one name-or-public-team-link entry. Public links need no sign-in.
+Name searches progressively request the genuinely required U7–U19 age and
+Boys/Girls category; there is no NV, Boys or U10 default. Each request fetches one
+bounded page of the existing USA rankings search, with optional association and
+explicit pagination. Coverage is limited to the provider's published rankings.
+Unsupported event/schedule URL shapes are rejected inline with the query kept.
+GotSport Live identity remains derived from the existing verified bridge.
+
+TeamSnap's real app registration remains a prerequisite. The owner setup screen
+shows the exact HTTPS site /admin callback and links to the provider's registration
+instructions. The Client ID remains in security_connection_config, with a Change
+app setup repair path even when a bad ID was saved. No deployment variable,
+invented Client ID, automatic registration or unverified one-click flow is added.
+Optional token_type/expires_in callback fields may be absent; supplied values and
+read-only scope remain validated. Single-use, expiring, session-bound OAuth state
+and exact callback origin are retained. Real registration eligibility, consent and
+account entitlement remain live acceptance requirements.
+
+Trace retains email-plus-code sign-in, encrypted pending context, session binding,
+eight verification attempts and expiry. Dismissing a live sign-in requests server
+cancellation; failed cancellation is disclosed. Late replies cannot reopen a
+screen or authorize a redirect. Browser refresh can recover the opaque attempt
+through a same-owner-session status read. The account and encrypted credential
+commit consumes the attempt atomically, so a cancellation that wins prevents a
+late account authorization. A commit that already won is retained and can be
+reused; dismissing UI is not an account disconnect.
+
+Only an explicit owner sign_in_required 401 signs the owner out. A provider 401
+keeps saved myTS content and offers provider recovery. Discovery, queued import,
+active import, partial/restricted content and ready coverage have distinct wording.
+Source collection remains server-owned and continues independently of open tabs.
+Queue acceptance is never presented as completed import.

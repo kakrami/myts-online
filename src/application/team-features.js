@@ -33,8 +33,10 @@ export class TeamFeatures {
   async season(teamId,seasonId){await this.team(teamId);const season=await this.db.prepare('SELECT * FROM team_seasons WHERE app_team_id=? AND id=?').bind(teamId,seasonId).first();if(!season)throw invalid('This season is unavailable.','not_found',404);return season;}
   async preferences(){return await this.db.prepare('SELECT theme,revision FROM owner_preferences WHERE id=1').first()??{theme:'light',revision:0};}
   async saveTheme(theme,revision){this.owner();rev(revision);if(!['light','dark','soccer'].includes(theme))throw invalid('Choose a supported theme.');const result=await this.write('COALESCE((SELECT revision FROM owner_preferences WHERE id=1),0)=?',[revision],[this.db.prepare(`INSERT INTO owner_preferences VALUES(1,?,1) ON CONFLICT(id) DO UPDATE SET theme=excluded.theme,revision=owner_preferences.revision+1 RETURNING theme,revision`).bind(theme)]);return result[0].results[0];}
-  async ensureProfile(teamId,{kind='own',sourceTeamId=null,club_choice=null,revision=null,prepare=false}={}){
-    this.owner();const team=await this.team(teamId);if(!['own','followed'].includes(kind))throw invalid('Choose a supported team type.');
+  // An uncommitted team may be supplied only to prepare an atomic connection.
+  // The returned SQL still requires the real team row and all profile guards.
+  async ensureProfile(teamId,{kind='own',sourceTeamId=null,club_choice=null,revision=null,prepare=false}={},newTeam=null){
+    this.owner();if(newTeam&&(!prepare||newTeam.id!==teamId))throw invalid('Invalid prepared new team.');const team=newTeam??await this.team(teamId);if(!['own','followed'].includes(kind))throw invalid('Choose a supported team type.');
     const existing=await this.db.prepare('SELECT p.*,c.name AS club_name,c.external_key,b.logo,COALESCE(b.revision,0) AS logo_revision,(SELECT count(*) FROM team_profiles x WHERE x.club_id=p.club_id) AS club_teams FROM team_profiles p JOIN app_clubs c ON c.id=p.club_id LEFT JOIN club_branding b ON b.club_id=c.id WHERE p.app_team_id=?').bind(teamId).first();
     if(revision!=null){rev(revision);if(revision!==(existing?.revision??0))stale();}
     const source=sourceTeamId?await this.db.prepare(`SELECT t.provider,t.scope,t.provenance,t.club_key,t.account_id,t.evidence,p.active AS account_active,EXISTS(SELECT 1 FROM account_source_teams a WHERE a.account_id=t.account_id AND a.source_team_id=t.id) AS entitled FROM source_teams t LEFT JOIN provider_accounts p ON p.id=t.account_id WHERE t.id=?`).bind(sourceTeamId).first():null;

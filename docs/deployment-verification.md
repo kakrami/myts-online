@@ -127,3 +127,92 @@ The complete run used `node --test --test-concurrency=1 --test-reporter=tap test
 Seven failures are local Miniflare/Undici `fetch failed` transport exceptions: the owner HTTP lifecycle, assembled reports, owner batch-fault/retry, committed-response retry, concurrent rotation loser, concurrent initialization winner and native login/rotation lifecycle. The failing operations vary between runs and include logout and direct D1 bridge reads, not only password derivation. Two further failures are bounded background-settlement timeouts: the greater-than-128-season fan-out and assembled public-connection workflow. These remain unresolved baseline/local verification failures; they are not a clean full-suite pass or proof of an application defect. Both affected native harnesses construct Miniflare inline and do not consume wrangler.jsonc, and this follow-up does not change their runtime code.
 
 The same complete run passed ready-database owner initialization, existing-vault preservation, stored-password authority, concurrent initialization, schema isolation, native alarm processing, and the full public-import 50-query ceiling. Those passes do not erase the failures above. Hosted owner/CPU and real-provider/background acceptance remain pending; no production promotion is claimed by this ledger.
+
+## 7.1.3 provider connection simplification candidate
+
+This candidate starts from deployed/review commit
+f66c594cd48dba7f663a657ba34e4b45a6c302e3 (tree
+de444e9c790d9dd721afd4d392dd2e3d9a0bde59). Earlier 7.1.1/7.1.2 receipts above
+remain historical, not a claim about this candidate. Runtime files now intentionally
+differ for provider flows; wrangler.jsonc and the 30,000 ms CPU release guard are
+unchanged. Package/lock version markers and health are aligned at 7.1.3, with the
+same pinned Wrangler 4.149.0 and no dependency changes.
+
+The patch is bounded to the connection controller/presentation, account recovery,
+public search filters and metadata, and atomic new-team connection/recovery.
+TeamSnap still requires a real registered Client ID and exact callback; app setup
+and repair remain owner-managed in the existing config table. Trace still needs
+its actual email code and entitlements. No provider credentials, grants, account
+permissions, production rows, schema imports or deployment changes were made in
+this engineering pass.
+
+Schema fingerprint remains
+e52ac3c69e4cdf8d5b30a8c4587b9080a6220436b3b6d421d72a45781420b003:
+122 installed tables (121 application definitions plus setup_state), 40 indexes,
+98 triggers and 10 views. Preserve ready cursor 270, its existing completion
+timestamp, both databases, DB binding, ADMIN_KEY, SYNC and cron. No reset is part
+of deployment. The coordinating hosted 7.1.2 owner check succeeded with HTTP 200,
+1,478 ms CPU and 1,637 ms elapsed; owner/vault/session counts were 1/1/1 and the
+ready setup identity remained unchanged. That is prior-release live evidence,
+not provider or closed-browser acceptance for 7.1.3.
+
+### Final local receipts, 2026-10-12 UTC
+
+| Check | Result |
+|---|---|
+| Full serial suite | FAIL: 154/159 passed, 5 failed, 0 skipped/cancelled; 933.487 seconds |
+| Final real-DOM connection suite | PASS: 40/40, zero skips; actual createApp/features with stub HTTP and jsdom 26.1.0 |
+| Atomic connection and read-only receipt native suite | PASS: 13/13; actual D1 transactions/HTTP, maximum 38/48 statements |
+| Deterministic controller/discovery/provider recovery subset | PASS: 22/22; also independently repeated |
+| Added native provider recovery cases | PASS: 2/2; also included in full suite |
+| Source build | PASS: 140 required files, 28 web assets; Wrangler dry-run bundle 1099.96 KiB / 258.41 KiB gzip |
+| Required-only ZIP byte verification | PASS: 140 manifest entries, exact byte counts/SHA-256, no mismatches |
+| Extracted required-only package build | PASS: release check and Wrangler dry run; no publishing or native/browser acceptance implied |
+| Independent code review | No blocking finding through runtime checkpoint 52f44146f56c7e8e9feca5d8c0ea473918728cbe; final artifact audit recorded separately |
+| Actual Chromium/mobile/live providers/closed-browser hosted import | PENDING; cloud Chromium execution blocked before app startup by IPC restriction |
+
+Full command: `MYTS_JSDOM_MODULE=/tmp/myts-dom-harness/node_modules/jsdom/lib/api.js node --test --test-concurrency=1 --test-reporter=tap tests/*.test.js tests/*.test.mjs`.
+The full run contains the original 39 DOM cases. Its only later runtime delta was
+two pending-intent guards for alternate account/search entry points; the complete
+final 40-case DOM suite separately passed those guards and a new direct-entry
+assertion. Do not add overlapping focused counts to the full-suite total.
+No production timing or test timeout was increased to obtain a pass.
+
+Five full-suite failures remain visible:
+
+1. The existing greater-than-128-season fan-out did not settle within its bound.
+2. The installation/public-import 50-query workflow did not settle. It did not
+   report a query-ceiling assertion or a failed/blocked/retrying job before timeout.
+3. The assembled public connection/corrections/inclusion/share/removal workflow
+   did not finish its background wait.
+4. The assembled data ZIP export/staged-import test hit an Undici `fetch failed`
+   on its initial application HTTP request, before export/import acceptance.
+5. Native owner login/rotation hit an Undici `fetch failed` in a direct D1
+   credential read through ProxyClientBridge after the lifecycle operations.
+
+These are a failed complete run, not a clean acceptance pass and not proof of an
+environment-only cause. The changed atomic connection and provider recovery tests
+passed within this same run. All ready-owner initialization/atomic retry/rotation
+race checks preceding the direct-read failure also passed; prior hosted owner
+success is separate evidence and does not erase the local failure.
+
+An earlier focused application-sync regression passed 6/7. Its same fan-out test
+then passed alone without code/timing changes: 131 seasons, 126 inline projections
+and two scheduled recovery events, 41.4 seconds. The earlier timeout had no job
+error codes and already saved all 126 projections plus 100 analysis catalogs, with
+27 catalogs and one history job queued. This supports load-sensitive settling,
+without proving its sole cause. An earlier schema-isolation run passed one test
+and failed the second on a Miniflare/Undici socket closure; both schema tests
+subsequently passed in the full run. No further broad rerun was performed.
+
+Runtime fingerprint: `71af88f73363ab08f88a2d52d116ad82f703289f72956f50f8dcb830a10db00f`.
+Algorithm: SHA-256 of JSON.stringify of ordered `{path,sha256}` entries for the
+116 required worker.js/src/web files. Final packaging must match this fingerprint
+and the unchanged schema/config identities. Tests and local data are excluded
+from the required-only ZIP; they remain in the review repository.
+
+Release gates still required after approved deployment: health version 7.1.3,
+unchanged ready setup/database counts and identities, the simpler flow in the
+user's actual browser, real TeamSnap registration/consent and Trace code access,
+public GotSport discovery, and server import completion with every tab closed.
+Neither synthetic provider fixtures nor DOM tests establish those live gates.

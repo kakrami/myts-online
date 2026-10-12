@@ -5,6 +5,7 @@ import {FeatureReads} from '../read-model/feature-reads.js';
 import {CursorCodec} from '../read-model/cursor.js';
 import {invalid} from '../read-model/selection.js';
 import {ApplicationSyncService} from './sync-service.js';
+import {ConnectionService} from './connections.js';
 import {applicationAuthRoutes,readAuthBody} from './auth-routes.js';
 import {TeamFeatures} from './team-features.js';
 import {TeamCatalog} from './team-catalog.js';
@@ -25,7 +26,7 @@ import {identityRoutes} from './identity-routes.js';
 import {TeamLifecycleService} from './team-lifecycle.js';
 import {json,input,actor} from './http.js';
 
-const OWNER_ONLY=new Set(['/api/preferences','/api/inclusion','/api/inclusion/june','/api/inclusion/batch','/api/inclusion/choices','/api/sources/gotsport/search','/api/sources/gotsport/resolve','/api/attachments']);
+const OWNER_ONLY=new Set(['/api/connections','/api/preferences','/api/inclusion','/api/inclusion/june','/api/inclusion/batch','/api/inclusion/choices','/api/sources/gotsport/search','/api/sources/gotsport/resolve','/api/attachments']);
 const SHARED_METADATA=new Set(['/api/revisions','/api/status','/api/branding']);
 const decode=value=>{try{return decodeURIComponent(value);}catch{throw invalid('The resource is invalid.');}};
 const integer=(value,fallback,min=1,max=100)=>{const n=value==null?fallback:Number(value);if(!Number.isInteger(n)||n<min||n>max)throw invalid('Invalid page size.');return n;};
@@ -80,6 +81,8 @@ export async function applicationRoutes(request,env,{db,installation,extraRoutes
   if(path==='/api/teams'&&method==='GET')return json(await catalog.teams({limit:integer(selection.limit,50),cursor:selection.cursor??null,preferred_team_id:selection.preferred_team_id??null}));
   if(seasonCatalog&&method==='GET')return json(await catalog.seasons(decode(seasonCatalog[1]),{limit:integer(selection.limit,25),cursor:selection.cursor??null,preferred_season_id:selection.preferred_season_id??null}));
   if(teamLogo&&method==='GET')return json(await catalog.logo(decode(teamLogo[1])));
+  if(path==='/api/connections'&&method==='GET')return json(await new ConnectionService(db,{features,sync,owner:principal}).readReceipt(url.searchParams.get('request_id')));
+  if(path==='/api/connections'&&method==='POST')return json(await new ConnectionService(db,{features,sync,owner:principal,now:()=>security.now()}).create(await readAuthBody(request)),202);
   if(path==='/api/teams'&&method==='POST'){
     const body=await readAuthBody(request),team=await domain.createTeam({name:body.name,timezone:body.timezone,seasonYear:body.season_year,requestId:body.request_id});
     return json({team:{...team,seasons:[{id:team.season_id}]},season_id:team.season_id},201);
@@ -106,14 +109,14 @@ export async function applicationRoutes(request,env,{db,installation,extraRoutes
     return json({teams:items,items,total:result[0].results[0].total,next_cursor:rows.length>limit?await cursor.issue({selection:sel,revision:status.catalog_revision,scope,position:[items.at(-1).id]}):null,discovery:{state:pending?'queued':status.groups.some(g=>g.state==='blocked')?'blocked':status.groups.some(g=>g.state==='failed')?'failed':'ready',groups:status.groups}});
   }
   if(path==='/api/sources/gotsport/search'&&method==='GET'){
-    const result=await searchGotSport(new SourceTransport(env),{...selection,age:selection.age||10,page:selection.page||1});
+    const result=await searchGotSport(new SourceTransport(env),{...selection,page:selection.page||1});
     await domain.ingestSourcePage({records:result.records,fixtures:[]});
-    return json({teams:result.teams.map(t=>({id:sourceKey('gotsport',t.native_id),name:t.name,club:t.club,provider:'gotsport'})),total:result.total,page:result.page,pages:result.pages,next_page:result.nextPage});
+    return json({teams:result.teams.map(t=>({id:sourceKey('gotsport',t.native_id),name:t.name,club:t.club,age:t.age,gender:t.gender,region:t.region,season_label:t.season,official_url:(typeof t.details==='string'?JSON.parse(t.details):t.details)?.source_url,provider:'gotsport'})),total:result.total,page:result.page,pages:result.pages,next_page:result.nextPage});
   }
   if(path==='/api/sources/gotsport/resolve'&&method==='POST'){
     const body=await readAuthBody(request),result=await resolveGotSportPage(new SourceTransport(env),body.url);
     await domain.ingestSourcePage(result);
-    return json({teams:result.records.teams.map(t=>({id:sourceKey('gotsport',t.native_id),name:t.name,provider:'gotsport'}))});
+    return json({teams:result.records.teams.map(t=>({id:sourceKey('gotsport',t.native_id),name:t.name,season_label:t.season,provider:'gotsport'}))});
   }
   if(path==='/api/inclusion'){
     if(method==='GET')return json(await features.inclusion(selection.team_id,selection.team_season_id,{limit:integer(selection.limit,50),cursor:selection.cursor??null}));

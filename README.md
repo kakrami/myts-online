@@ -1,6 +1,6 @@
-# myTS 7.1.2
+# myTS 7.1.3
 
-This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.1.2**. This package is not a production deployment.
+This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.1.3**. This package is not a production deployment.
 
 The original compact mobile interface, team and season navigation, schedule, competitions, player and match details, bookmarks, source management, branding, corrections, matching, awards, four reports and private Coach workflows are retained. Their server records and background processing use the new architecture. Exact behavior and verification boundaries are documented in the included contracts and final review evidence.
 
@@ -21,7 +21,7 @@ Provider records are shared individually. App teams reference them through expli
 
 Trace Manage retains Tracking evidence: select a saved eligible game and observed tracks, then request a bounded fresh capture. It resumes on the server after the browser closes, and recent captures provide protected JSON downloads with explicit complete, partial or unavailable results. These diagnostic artifacts do not publish source statistics or replace approved identities.
 
-An owner password change revokes owner sessions and pending sign-ins while preserving provider credentials and active share links. TeamSnap Client ID is entered once inside its connection flow. Its callback is this site's `/admin`. Trace uses independent email-code attempts. Provider access may still require consent, an active entitlement or human verification; the app reports these conditions and preserves saved records.
+An owner password change revokes owner sessions and pending sign-ins while preserving provider credentials and active share links. Connected TeamSnap and Trace accounts are reused by name before sign-in is offered. TeamSnap requires a real registered app: the owner supplies its Client ID once inside app setup, with an explicit repair path. Its callback is this site's `/admin`; a saved ID is not proof that registration works. Trace uses independent email-code attempts. GotSport uses one public team name/link entry and asks for the age/category only when a name search needs them. Provider access may still require consent, an active entitlement or human verification; the app reports these conditions and preserves saved records.
 
 Viewer links use `/view/<token>` and one explicit team/category scope. Coach, credentials, accounts, diagnostics, raw observations and source data files remain owner-only. Viewers with the Reports category can export only that team's safe report projections.
 
@@ -32,7 +32,7 @@ npm ci
 npm run build
 ```
 
-Run native application/D1/Workers tests with `npm test`. The separate `npm run test:browser` suite requires Playwright and Chromium; its header documents `MYTS_PLAYWRIGHT_MODULE` and `MYTS_TEST_CHROMIUM` for existing installations. Browser dependencies are not production dependencies or part of the default native suite.
+Run native application/D1/Workers tests with `npm test`. The deterministic connection DOM suite also runs with a separately installed pinned jsdom 26.1.0; `tests/connection-ui.test.mjs` documents the temporary-install command and `MYTS_JSDOM_MODULE`. Without that module these DOM checks explicitly skip, so a native-only result must not be described as a DOM pass. The separate `npm run test:browser` suite requires Playwright and Chromium; its header documents `MYTS_PLAYWRIGHT_MODULE` and `MYTS_TEST_CHROMIUM` for existing installations. Browser dependencies are not production dependencies or part of the default native suite.
 
 The committed npm lock pins Wrangler **4.149.0**. `build` validates the release files and performs a deployment **dry run** using `wrangler.jsonc`; it does not publish. Use `npm run dev` for a local preview with a local bootstrap password configured for Wrangler. Local D1 is separate from remote D1.
 
@@ -43,7 +43,7 @@ Native Workerd/D1 and frontend checks against the required-only package are loca
 Maintainer packaging, after the release gates pass:
 
 ```sh
-node scripts/release-check.mjs --stage tmp/release-stage --zip tmp/myTS-7.1.2.zip
+node scripts/release-check.mjs --stage tmp/release-stage --zip tmp/myTS-7.1.3.zip
 ```
 
 The staging recipe follows the actual fresh Worker/browser import graph and copies required source, assets, pinned configuration, documentation and a SHA-256 manifest. It excludes old modules, dependency directories, provider credentials, local databases, tests, screenshots and temporary work. The verification ledger is required automatically; finalize it with the exact-package results before the release is packaged. Do not substitute a ZIP of the entire workspace.

@@ -354,10 +354,12 @@ export class SecurityStore {
     return { authorization_url: url.href, state, expires_at: now + OAUTH_MS, redirect_uri: redirect };
   }
 
-  async teamSnapConfiguration(ownerToken) {
+  async teamSnapConfiguration(ownerToken, { origin } = {}) {
     await this.requireOwnerSession(ownerToken);
     const row = await this.db.prepare(`SELECT client_id FROM security_connection_config WHERE provider='teamsnap'`).first();
-    return { client_id: row?.client_id ?? null, requires_client_id: !row };
+    // A saved Client ID is operator input, not proof of a registered provider app.
+    return { client_id: row?.client_id ?? null, requires_client_id: !row, client_id_status: row ? 'saved' : 'missing',
+      ...(origin === undefined ? {} : { redirect_uri: callbackOrigin(origin) + '/admin' }) };
   }
 
   async completeTeamSnapOAuth(ownerToken, returned, { origin } = {}) {
@@ -368,17 +370,26 @@ export class SecurityStore {
       .bind(await digest(returned.state), owner.session_id, site + '/admin', now, owner.session_id, now).first();
     if (!row) reject('oauth_state_invalid', 'TeamSnap sign-in could not be verified. Start a new connection.', 403);
     if (returned.error) {
+      if (['invalid_client', 'unauthorized_client', 'redirect_uri_mismatch', 'invalid_redirect_uri'].includes(returned.error))
+        reject('oauth_client_invalid', 'Check the saved TeamSnap Client ID and register this site’s /admin callback with TeamSnap, then try again.');
       const error = new SecurityError('oauth_provider_error', 'TeamSnap did not authorize the connection. Start a new connection.', 400);
       error.provider_error = typeof returned.error === 'string' && /^[a-z_]{1,60}$/.test(returned.error) ? returned.error : 'unknown_error';
       throw error;
     }
     if (typeof returned.access_token !== 'string' || !returned.access_token || returned.access_token.length > 16384)
       reject('oauth_token_missing', 'TeamSnap did not return an access token.');
-    if (returned.token_type !== undefined && !/^bearer$/i.test(returned.token_type))
+    // URLSearchParams.get() represents missing optional fields as null. Only
+    // null/undefined mean absent; provided values must retain strict validation.
+    if (returned.token_type != null && (typeof returned.token_type !== 'string' || !/^bearer$/i.test(returned.token_type)))
       reject('oauth_token_invalid', 'TeamSnap returned an unsupported token type.');
-    const seconds = returned.expires_in === undefined ? null : Number(returned.expires_in);
+    if (returned.expires_in != null && typeof returned.expires_in !== 'number' &&
+        !(typeof returned.expires_in === 'string' && /^\d{1,8}$/.test(returned.expires_in)))
+      reject('oauth_token_invalid', 'TeamSnap returned an invalid token expiry.');
+    const seconds = returned.expires_in == null ? null : Number(returned.expires_in);
     if (seconds !== null && (!Number.isSafeInteger(seconds) || seconds <= 0 || seconds > 365 * 86400))
       reject('oauth_token_invalid', 'TeamSnap returned an invalid token expiry.');
+    if (returned.scope != null && returned.scope !== 'read')
+      reject('oauth_scope_invalid', 'TeamSnap returned an unsupported authorization scope.');
     // Provider /me verification is required before the account writer stores this token.
     return { access_token: returned.access_token, client_id: row.client_id, expires_at: seconds === null ? null : now + seconds * 1000 };
   }
@@ -409,6 +420,32 @@ export class SecurityStore {
     if (!row) reject('trace_attempt_invalid', 'This Trace sign-in attempt expired, is in use, or is unavailable. Send a new code.', 410);
     const pending = JSON.parse(await this.decryptCredential('trace-attempt:' + hash, row.pending_ciphertext));
     return { claim_id: claim, ...pending };
+  }
+
+  async traceAttemptStatus(ownerToken, handle) {
+    const owner = await this.requireOwnerSession(ownerToken), now = this.now();
+    if (!opaque(handle)) reject('trace_attempt_invalid', 'This Trace sign-in attempt is unavailable. Send a new code.', 410);
+    const row = await this.db.prepare(`SELECT state,verification_count,lease_until,expires_at FROM security_trace_attempts
+      WHERE attempt_hash=? AND session_hash=? AND expires_at>? AND EXISTS(${ACTIVE_SESSION})`)
+      .bind(await digest(handle), owner.session_id, now, owner.session_id, now).first();
+    if (!row) reject('trace_attempt_invalid', 'This Trace sign-in attempt is unavailable. Send a new code.', 410);
+    const verifying = row.state === 'verifying' && row.lease_until > now;
+    const stage = verifying ? 'verifying' : row.state === 'failed' || row.verification_count >= 8 ? 'failed' : 'pending';
+    return { attempt: handle, stage, expires_at: row.expires_at, retry_at: verifying ? Math.min(row.lease_until, row.expires_at) : null };
+  }
+
+  /** The account writer checks and consumes this claim inside its credential transaction. */
+  async prepareTraceAttemptCommit(ownerToken, handle, claimId) {
+    const owner = await this.requireOwnerSession(ownerToken), now = this.now();
+    if (!opaque(handle) || typeof claimId !== 'string') reject('trace_attempt_invalid', 'This Trace sign-in attempt is unavailable.', 410);
+    const hash = await digest(handle);
+    const sql = `EXISTS(SELECT 1 FROM security_trace_attempts WHERE attempt_hash=? AND session_hash=? AND claim_id=?
+      AND state='verifying' AND lease_until>? AND expires_at>? AND EXISTS(${ACTIVE_SESSION}))`;
+    const params = [hash, owner.session_id, claimId, now, now, owner.session_id, now];
+    if (!(await this.db.prepare(`SELECT 1 AS allowed WHERE ${sql}`).bind(...params).first()))
+      reject('trace_attempt_invalid', 'This Trace sign-in attempt is unavailable. Send a new code.', 410);
+    return { sql, params, consume: (guard, token) => this.db.prepare(`DELETE FROM security_trace_attempts
+      WHERE attempt_hash=? AND session_hash=? AND claim_id=? AND ${guard}`).bind(hash, owner.session_id, claimId, token) };
   }
 
   async finishTraceAttempt(ownerToken, handle, claimId, { success, retryable = true } = {}) {

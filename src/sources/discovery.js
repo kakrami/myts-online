@@ -4,7 +4,8 @@ import { unique } from './http.js';
 import { collectSource } from './index.js';
 
 /** Provider-hosted public discovery. Selection and attachment belong to the app. */
-export async function searchGotSport(transport,{q='',state='',age=10,gender='m',page=1}={}) {
+export async function searchGotSport(transport,{q='',state='',age,gender,page=1}={}) {
+  requireValue(age!==undefined&&age!==null&&age!==''&&gender!==undefined&&gender!==null&&gender!=='','Choose an age group and team category to search GotSport rankings, or paste a public team link.','search_filters_required');
   q=text(q,100);state=text(state,8).toUpperCase();age=Number(age);page=Number(page);
   requireValue(Number.isInteger(age)&&age>=7&&age<=19&&['m','f'].includes(gender)&&Number.isInteger(page)&&page>=1&&page<=1000&&(!state||/^[A-Z]{2,3}$/.test(state)),'Invalid search filters.','invalid_input');
   const raw=await ranking(transport,'/team_ranking_data',{

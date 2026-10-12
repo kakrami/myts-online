@@ -22,12 +22,21 @@ test.before(async () => {
   modules['src/application/auth-routes.js'] = { type: 'esm', contents: await readFile('src/application/auth-routes.js', 'utf8') };
   modules['tests/auth-http-entry.js'] = { type: 'esm', contents: `
     import { applicationAuthRoutes } from '../src/application/auth-routes.js';
-    import { SecurityStore } from '../src/security/index.js';
+    import { SecurityStore, requestSession } from '../src/security/index.js';
     import { DomainRepository } from '../src/domain/repository.js';
     import { SourceTransport } from '../src/sources/http.js';
     export default { async fetch(request, env) {
+      const originalRequest = request.clone();
       const security = new SecurityStore(env.DB, { bootstrapPassword: '${PASSWORD}' });
       const domain = new DomainRepository(env.DB);
+      const registerAccount = domain.registerAccount.bind(domain);
+      domain.registerAccount = async options => {
+        if (options.provider === 'trace' && await env.TEST.get('mode') === 'cancel-trace-at-commit') {
+          const body = await originalRequest.json();
+          await security.cancelTraceAttempt(requestSession(request), body.attempt);
+        }
+        return registerAccount(options);
+      };
       try {
         return await applicationAuthRoutes(request, { security, domain,
           transportFactory: () => new SourceTransport({}, { fetch: async (url, options) => {
@@ -268,4 +277,43 @@ test('auth HTTP bodies and cross-origin writes are rejected before providers or 
   assert.equal((await req('/api/accounts/trace/start', { method: 'POST', raw: '{broken' })).body.error.code, 'json_invalid');
   assert.equal((await calls()).length, 0);
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM provider_accounts').first()).n, 0);
+});
+
+test('provider recovery HTTP repairs saved Client ID, accepts absent optional OAuth fields and resumes only its owner Trace session', async () => {
+  await owner();
+  const flow = await oauth();
+  assert.equal((await req('/api/accounts/teamsnap/callback', { method: 'POST', body: { state: flow.state, error: 'invalid_client' } })).body.error.code, 'oauth_client_invalid');
+  const config = good(await req('/api/accounts/teamsnap/config'));
+  assert.equal(config.client_id_status, 'saved');
+  assert.equal(config.redirect_uri, ORIGIN + '/admin');
+  const repair = good(await req('/api/accounts/teamsnap/authorize', { method: 'POST', body: { client_id: 'repaired-client' } }));
+  const connected = good(await req('/api/accounts/teamsnap/callback', { method: 'POST', body: {
+    state: repair.state, access_token: 'synthetic-teamsnap-token', token_type: null, expires_in: null,
+  } }));
+  assert.equal(connected.account.authorization_state, 'connected');
+  assert.equal(connected.account.expires_at, null);
+  const attempt = good(await req('/api/accounts/trace/start', { method: 'POST', body: { email: 'owner@example.com' } }));
+  const route = '/api/accounts/trace/attempt?attempt=' + attempt.attempt;
+  assert.deepEqual(good(await req(route)), { attempt: attempt.attempt, stage: 'pending', expires_at: attempt.expires_at, retry_at: null });
+  const originalCookie = cookie;
+  good(await req('/api/owner/login', { method: 'POST', body: { password: PASSWORD } }));
+  assert.equal((await req(route)).status, 410);
+  const otherCookie = cookie;
+  good(await req('/api/owner/logout', { method: 'POST', body: {} }));
+  assert.equal((await req(route, { headers: { cookie: otherCookie } })).body.error.code, 'sign_in_required');
+  cookie = originalCookie;
+  good(await req('/api/accounts/trace/verify', { method: 'POST', body: { attempt: attempt.attempt, code: '123456' } }));
+  assert.equal((await req(route)).status, 410);
+});
+
+test('native D1 cancellation after successful Trace claim precheck prevents late authorization commit', async () => {
+  await owner();
+  const attempt = good(await req('/api/accounts/trace/start', { method: 'POST', body: { email: 'owner@example.com' } }));
+  await signals.put('mode', 'cancel-trace-at-commit');
+  const result = await req('/api/accounts/trace/verify', { method: 'POST', body: { attempt: attempt.attempt, code: '123456' } });
+  assert.equal(result.status, 410, JSON.stringify(result.body));
+  assert.equal(result.body.error.code, 'trace_attempt_invalid');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM provider_accounts').first()).n, 0);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM security_account_credentials').first()).n, 0);
+  assert.equal((await queued()).length, 0);
 });
