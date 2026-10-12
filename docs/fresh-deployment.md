@@ -16,6 +16,12 @@ Retain the existing runtime **ADMIN_KEY** unchanged. It initializes the new inst
 
 The existing Durable Object namespace stays. Old alarms must wait for valid initialization; old cached status is excluded from the new installation. This release implements and tests both conditions.
 
+## Follow-up: awaited guard and disabled Preview URLs
+
+The initial approved commit b9e69bea028172d13f59e6dcedd8f7d6c329e495 was promoted to myts-v7, and Cloudflare reported build 4e72c129-f005-4c85-a6f6-4dd7b267cf6b successful. This follow-up changes deployment tooling/configuration only; it does not repeat fresh setup or replace either database.
+
+After this follow-up is approved, promote its exact review commit to myts-v7 through the same Git pipeline. Confirm the guard reports the actual empty/initializing/ready state, then confirm successful publication and disabled Preview/Version URLs. Keep the current DB UUID, ADMIN_KEY, SYNC and minute cron intact. Preview URL configuration is separate from disabled nonproduction branch builds. Preserve the current deployment reference for rollback of this follow-up; the older preparation table below describes the original cutover snapshot. Real provider and closed-browser acceptance remain separate.
+
 ## Preparation confirmed
 
 The earlier read-only handoff is a historical snapshot. The user's subsequent confirmation establishes the following completed preparation:
@@ -30,6 +36,7 @@ The earlier read-only handoff is a historical snapshot. The user's subsequent co
 | Build command | npm ci && npm run build |
 | Deploy command | npm run deploy |
 | Nonproduction builds | Disabled and verified after reload |
+| Preview/Version URLs | Explicit preview_urls:false in this follow-up configuration; confirm disabled after approved deployment |
 | Selected Builds token | Existing D1 Edit access; no permission expansion needed |
 | Pending builds | None visible during preparation; recheck at cutover |
 | Old active version | Dashboard short ID e089fe2c, Ready, 100% traffic |
@@ -44,7 +51,7 @@ Only the UUID in wrangler.jsonc is changed from the tested review runtime. Confi
 1. Review the exact configured commit identified in the accompanying release response. Approval is for publishing that commit to the existing myts-v7 Worker, with the fresh database and the data consequences above.
 2. Immediately before promotion, Dot should use the signed-in local Chrome session to confirm no queued/running builds, the existing DB still points to myts-v7-data, and the old version is still available for rollback. Record the old full version UUID from deployment details if exposed; e089fe2c is only the displayed short ID. Keep nonproduction builds disabled and production on myts-v7.
 3. After approval, Codex advances the myts-v7 Git branch to the exact configured review commit. That Git push triggers the existing build/deploy commands. Do not change the production branch setting to myts-review, edit the DB binding manually, or rotate ADMIN_KEY. **The Wrangler deployment publishes the new code and DB binding together.** Old code pointed at the empty new database can initialize the wrong schema.
-4. Dot should observe this build in Cloudflare. Require the log to report successful remote schema inspection, then successful deployment, and confirm its Git source is the approved configured commit. If the guard cannot read D1, sees unexpected tables, or deployment fails, stop and report the log; do not bypass it or reset either database. Keep the branch fixed during acceptance so another build cannot overwrite the cutover.
+4. Dot should observe this build in Cloudflare. Require the log to report successful remote schema inspection with an explicit state (empty, initializing or ready), then successful deployment, and confirm its Git source is the approved configured commit. If the guard cannot read D1, sees unexpected tables, or deployment fails, stop and report the log; do not bypass it or reset either database. Keep the branch fixed during acceptance so another build cannot overwrite the cutover.
 5. Confirm the deployed resources in the dashboard:
 
 | Resource | Required value |
@@ -58,7 +65,7 @@ Only the UUID in wrangler.jsonc is changed from the tested review runtime. Confi
 
 6. Open the website's /api/health and require version 7.1.1. Open /admin and initialize with the existing ADMIN_KEY. No schema import is needed. Perform real acceptance below before calling the rebuild complete.
 
-The deploy guard remains intact: it accepts empty storage or this release's matching initialized schema; it rejects the old ID, placeholder, foreign tables, wrong fingerprint, incomplete ready schema and unreadable remote metadata. Its local validator passes with the configured UUID; the actual remote guard runs during the approved Cloudflare build and is not claimed to have run from this environment.
+The guard now awaits remote inspection before reporting success or allowing publication. The deploy guard remains intact: it accepts empty storage or this release's matching initialized schema; it rejects the old ID, placeholder, foreign tables, wrong fingerprint, incomplete ready schema and unreadable remote metadata. Its local validator passes with the configured UUID; the actual remote guard runs during the approved Cloudflare build and is not claimed to have run from this environment.
 
 ## Real acceptance after deployment
 

@@ -40,5 +40,6 @@
   },
   "observability": {
     "enabled": true
-  }
+  },
+  "preview_urls": false
 }

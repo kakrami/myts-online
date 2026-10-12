@@ -30,8 +30,8 @@
     },
     {
       "path": "docs/deployment-verification.md",
-      "bytes": 6877,
-      "sha256": "4c76ea5b011180f1ed9429b952f4418541ffe8ee83d05ecb69cb04815abf0d80"
+      "bytes": 9222,
+      "sha256": "40e4c2d56d89e0aafaaac1bf5e1a3249fd6583013e59981c7107d4e5e8e1bee6"
     },
     {
       "path": "docs/domain-contract.md",
@@ -45,8 +45,8 @@
     },
     {
       "path": "docs/fresh-deployment.md",
-      "bytes": 9654,
-      "sha256": "554d44a2396f2e054edc1d36d3decdaf373168aea43086d38cd2ce2c448119d9"
+      "bytes": 10884,
+      "sha256": "bea0063dc6fdacd5caa75b275a191eeffa148f0d4c01a3b76f76b63f875541b8"
     },
     {
       "path": "docs/frontend-contract.md",
@@ -110,8 +110,8 @@
     },
     {
       "path": "scripts/release-check.mjs",
-      "bytes": 14457,
-      "sha256": "fec66315fbe951c7aee24c90cedd44ade9aa7e25cc1c18b3b1095899e3adddfe"
+      "bytes": 14614,
+      "sha256": "7ac2c236d16ed82c48d19db77b44d24f3ceaf10d18b869e768f209ecf6fc3452"
     },
     {
       "path": "src/analysis/native-facts.js",
@@ -635,8 +635,8 @@
     },
     {
       "path": "wrangler.jsonc",
-      "bytes": 838,
-      "sha256": "7ea0d908e347eae03f494c065c3a43a542f0583185547b2379327bdd2b899ffb"
+      "bytes": 863,
+      "sha256": "8f0bfd52abd69ced5acfa9e84d9da9404cd91e9ddd7dedb50607ddc08bfa53c8"
     }
   ]
 }
