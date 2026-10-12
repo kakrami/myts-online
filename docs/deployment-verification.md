@@ -1,3 +1,7 @@
+# myTS 7.2.1 TeamSnap collection repair
+
+See [the repair, exact scope and live recovery](teamsnap-pagination-repair.md). This code-only patch preserves the completed 7.2.0 schema, original setup timestamps, database and account/connection identities. Deployment alone does not retry permanent failed jobs; use the existing TeamSnap Manage → Update now after verifying version 7.2.1. The following 7.2.0 transition ledger is historical and remains applicable only when starting from the exact older 7.1.4 installation.
+
 # myTS 7.2.0 integrated release verification
 
 This candidate restores the original 6.20.133 product workflows on the rebuilt

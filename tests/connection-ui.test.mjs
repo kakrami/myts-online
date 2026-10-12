@@ -991,3 +991,10 @@ uiTest('Manage separates changed saved roster evidence from unassigned names and
     assert.match(ui.query('#accountBody [role="status"]').textContent,/Saved roster season evidence changed and needs review/);assert.doesNotMatch(ui.query('#accountBody [role="status"]').textContent,/Ready\./);
   });
 });
+
+
+uiTest('TeamSnap status distinguishes recent attendance scans from verified full history',async()=>{
+ await withUI({teams:[team()],resolve:call=>{
+  if(call.path==='/api/status')return {data:{summary:{total:1,ready:1},providers:[],jobs:{items:[{id:'attendance-job',provider:'teamsnap',component:'attendance',state:'ready',coverage:'partial',refresh_mode:'recent',last_complete_at:Date.parse('2026-10-12T20:00:00Z'),last_full_completed_at:Date.parse('2026-10-11T23:00:00Z')}],total:1}}};
+ }},async ui=>{await ui.app.action('status-open',{});await until(()=>ui.query('[data-history-refresh]'));const body=ui.query('#accountBody').textContent;assert.match(body,/All history checked:/);assert.match(body,/Latest scan covers recent and upcoming events/);assert.match(body,/past 30 days and next 90 days/);assert.match(body,/Older edits are checked when the scheduled full-history scan completes/);assert.match(body,/Last finished scan:/);assert.doesNotMatch(body,/All history checked: Never/);});
+});

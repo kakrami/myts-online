@@ -123,7 +123,7 @@ export async function collectApplicationJob({db,env,lease,args,checkpoint}, opti
     for (const affected of (built.affectedTeams || []).slice(0,Math.max(0,128-children.length))) children.push(projectionSpec(affected.app_team_id,affected.team_season_id));
     const authorityFence=sourceProof?[{sql:`INSERT INTO domain_team_preconditions(id,expected_input,actual_input) SELECT 1,1,CASE WHEN ${sourceProof.sql} THEN 1 ELSE 0 END WHERE $FENCE ON CONFLICT(id) DO UPDATE SET expected_input=excluded.expected_input,actual_input=excluded.actual_input`,params:sourceProof.params}]:[];
     return {statements:[...authorityFence,...built.statements],checkpoint:page.checkpoint,children,complete:page.complete,
-      coverage:lease.stage==='analysis' ? unavailableCoverage(page.coverage) || (page.complete?'complete':'partial') : page.complete?'complete':'partial',
+      coverage:lease.provider==='teamsnap' && ['events','attendance'].includes(lease.component) && page.checkpoint?.refresh?.protocol==='teamsnap-refresh-v1' ? page.coverage : lease.stage==='analysis' ? unavailableCoverage(page.coverage) || (page.complete?'complete':'partial') : page.complete?'complete':'partial',
       retrievedAt:successfulRetrieval(page.observations),observations:page.observations,rowsSaved:Object.values(page.records).reduce((count,rows)=>count+rows.length,0)+page.fixtures.length,publishContent:false};
   } catch (error) {
     const at = successfulRetrieval(transport.observations);

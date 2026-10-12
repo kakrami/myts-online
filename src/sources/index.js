@@ -44,5 +44,9 @@ export async function collectSource({provider,kind,scope,args={},cursor={},trans
   const rawCoverage=page.coverage;
   page.sourceCoverage=Array.isArray(rawCoverage)?rawCoverage:rawCoverage&&typeof rawCoverage==="object"?[{provider,scope,...rawCoverage,observed_at:page.retrievedAt||stamp()}]:[{provider,scope,kind,complete:page.complete,summary:typeof rawCoverage==="string"?rawCoverage:page.complete?"complete":"partial",observed_at:page.retrievedAt||stamp()}];
   page.coverage=typeof rawCoverage==="string"?rawCoverage:page.sourceCoverage.some((v)=>v.availability==="restricted")?"restricted":page.sourceCoverage.some((v)=>v.availability==="unpublished")?"unpublished":page.complete?"complete":"partial";
+  if(provider==='teamsnap'&&['events','attendance'].includes(kind)&&page.checkpoint?.refresh?.protocol==='teamsnap-refresh-v1') {
+    requireValue(['complete','partial'].includes(page.coverageState),'Invalid TeamSnap collection coverage.');
+    page.coverage=page.coverageState;
+  }
   return page;
 }

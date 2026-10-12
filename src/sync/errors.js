@@ -25,6 +25,7 @@ export function classifyFailure(error) {
     record_too_large: 'A source record exceeded its documented bound.',
     rate_limited: 'This source asked us to wait before retrying.',
     collector_timeout: 'This source did not respond in time.',
+    source_changing: 'This source changed during collection. Saved data is available; verification will retry shortly.',
     collector_failed: 'The source update failed. Saved data is available.',
   };
   return { code, kind, message: messages[code] || 'The source update failed. Saved data is available.',

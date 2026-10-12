@@ -58,7 +58,12 @@ async function applicationFixture() {
     else if(url.pathname==='/v3/events/search')rows=Array.from({length:151},(_,i)=>({id:String(4000+i),team_id:'321',name:updated&&i===150?'Updated game':'Game '+i,start_date:new Date(Date.UTC(2026,8,1)+i*3600000+(updated&&i===150?3600000:0)).toISOString(),is_game:true,home_or_away:'home',opponent_name:'Opponent '+i,points_for_team:updated&&i===150?4:2,points_for_opponent:1}));
     else if(['/v3/availabilities/search','/v3/locations/search','/v3/opponents/search'].includes(url.pathname))rows=[];
     else throw new Error('Unexpected source endpoint '+url.pathname);
-    return new MfResponse(JSON.stringify(collection(rows)),{status:200,headers:{'Content-Type':'application/json'}});
+    let value=collection(rows);
+    if(['/v3/events/search','/v3/availabilities/search'].includes(url.pathname)){
+      const size=Number(url.searchParams.get('page_size')||rows.length||25),page=Number(url.searchParams.get('page_number')||1),next=new URL(url);next.searchParams.set('page_number',String(page+1));
+      value=collection(rows.slice((page-1)*size,page*size));value.collection.page_info={total_items:rows.length,page_size:size,page_number:page};value.collection.links=page*size<rows.length?[{rel:'next',href:next.href}]:[];
+    }
+    return new MfResponse(JSON.stringify(value),{status:200,headers:{'Content-Type':'application/json'}});
   }}},exports:{SyncRuntime:{type:'durable-object',storage:'sqlite'}}}}]});
   try{await mf.ready;const db=await mf.getD1Database('DB','application-test');await initializeDomain(db);await installSecuritySchema(db);await installSyncSchema(db);await db.batch(ANALYSIS_SCHEMA.map(sql=>db.prepare(sql)));
   const repo=new DomainRepository(db),security=new SecurityStore(db,{bootstrapPassword:'isolated-native-test-password'});await security.initializeOwner('isolated-native-test-password');
@@ -80,11 +85,31 @@ test('native source discovery, explicit attachment, canonical publication and la
     const service=new ApplicationSyncService(h.db,{}),candidates=await service.candidates(h.account.id);assert.equal(candidates.length,21);
     const selected=candidates.find(row=>row.native_id==='321'),team=await h.repo.createTeam({name:'Canonical U10',seasonYear:2026});
     const attached=await h.action('/attach',{teamId:team.id,seasonId:team.season_id,sourceTeamId:selected.id,accountId:h.account.id});
+    // Bound first-traversal admission separately from verification/publication:
+    // verification deliberately yields to publication. Keep10s for each phase
+    // and20s total. This legacy seasonal path may republish growing prefixes.
+    const collectionStarted=Date.now();let sourceReceipt;
     await h.waitFor(async()=>{
+      const source=await h.db.prepare("SELECT state,checkpoint,rows_saved,pages_saved FROM sync_jobs WHERE provider='teamsnap' AND component='events'").first();
+      const count=await h.db.prepare("SELECT COUNT(*) AS count FROM source_events WHERE provider='teamsnap'").first();
+      const checkpoint=JSON.parse(source?.checkpoint||'{}'),receipt=checkpoint.previous||checkpoint.refresh?.full;
+      if(count.count!==151||receipt?.count!==151||receipt.total!==151)return false;
+      assert.deepEqual((await h.db.prepare("SELECT native_id FROM source_events WHERE provider='teamsnap' ORDER BY CAST(native_id AS INTEGER)").all()).results.map(row=>row.native_id),Array.from({length:151},(_,index)=>String(4000+index)));
+      sourceReceipt={pages:source.pages_saved,rows_saved:source.rows_saved,first_traversal_count:receipt.count,elapsed_ms:Date.now()-collectionStarted};return true;
+    });
+    const projectionStarted=Date.now(),projectionProgress=[];let lastProjectionProgress='',lastCommittedProgress='',lastAdvancedAt=projectionStarted,previousProjection=null;
+    try{await h.waitFor(async()=>{
       const state=await h.db.prepare('SELECT pending FROM team_read_state WHERE app_team_id=?').bind(team.id).first();
       const jobs=await h.db.prepare("SELECT COUNT(*) AS count FROM sync_jobs WHERE state NOT IN ('ready','disabled')").first();
-      const count=await h.db.prepare('SELECT COUNT(*) AS count FROM team_events WHERE app_team_id=?').bind(team.id).first();return state.pending===0&&jobs.count===0&&count.count===151;
-    });
+      const count=await h.db.prepare('SELECT COUNT(*) AS count FROM team_events WHERE app_team_id=?').bind(team.id).first();
+      const projection=await h.db.prepare("SELECT state,generation,pages_saved,checkpoint FROM sync_jobs WHERE provider='domain' AND component='projection'").first(),cursor=JSON.parse(projection?.checkpoint||'{}'),progress={state:projection?.state,generation:projection?.generation,pages_saved:projection?.pages_saved,phase:cursor.phase||null,cursor:cursor.cursor||null,published_events:count.count};
+      if(previousProjection){assert.ok(progress.pages_saved>=previousProjection.pages_saved,'committed projection pages must not decrease');assert.ok(progress.generation>=previousProjection.generation,'projection generations must not decrease');}previousProjection=progress;
+      const signature=JSON.stringify(progress);if(signature!==lastProjectionProgress){lastProjectionProgress=signature;if(projectionProgress.length<64)projectionProgress.push({elapsed_ms:Date.now()-projectionStarted,...progress});}
+      const committed=JSON.stringify({...progress,state:undefined});if(committed!==lastCommittedProgress){lastCommittedProgress=committed;lastAdvancedAt=Date.now();}
+      const settled=state.pending===0&&jobs.count===0&&count.count===151;assert.ok(settled||Date.now()-lastAdvancedAt<5000,'projection has made no committed-page, generation or cursor progress for5s');return settled;
+    });}finally{console.log(JSON.stringify({legacy_attachment_phases:{source:sourceReceipt,projection_elapsed_ms:Date.now()-projectionStarted,projection_progress:projectionProgress,source_requests:h.calls.length,claim:'bounded legacy projection drain; no linear-scaling claim'}}));}
+    assert.ok(Date.now()-collectionStarted<20000,'first traversal plus verification/publication must finish within20s');
+    const verified=await h.db.prepare("SELECT state,checkpoint,rows_saved,pages_saved FROM sync_jobs WHERE provider='teamsnap' AND component='events'").first(),fullReceipt=JSON.parse(verified.checkpoint);assert.equal(verified.state,'ready');assert.equal(fullReceipt.finished,true);assert.equal(fullReceipt.refresh.full.count,151);assert.equal(fullReceipt.refresh.full.total,151);assert.equal(verified.rows_saved,302,'both full traversals retain the exact151 native identities');
     const coordinator=new JobCoordinator(h.db),before=await coordinator.status(team.id);assert.ok(before.content_revision>0);assert.ok(before.total>=6);
     assert.equal((await h.db.prepare('SELECT COUNT(*) AS count FROM app_teams').first()).count,1);
     assert.equal((await h.db.prepare('SELECT COUNT(*) AS count FROM team_players WHERE app_team_id=?').bind(team.id).first()).count,1);

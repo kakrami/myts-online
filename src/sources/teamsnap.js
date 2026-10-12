@@ -1,5 +1,8 @@
 import { instant, key, native, parse, requireValue, stamp, teamRecord, text, job, localDate } from "./common.js";
 import { url, unique } from "./http.js";
+import { beginTeamSnapRefresh, finishTeamSnapRefresh, teamSnapRefreshCoverage } from "./teamsnap-refresh.js";
+import { teamSnapBatchLength } from "./teamsnap-batch.js";
+import { teamSnapPageRequest, teamSnapPageMetadata, restartTeamSnapPass, reduceTeamSnapPage, advanceTeamSnapPage } from "./teamsnap-pagination.js";
 
 const API = "https://api.teamsnap.com/v3/";
 const PAGE_SIZE = 150;
@@ -31,8 +34,27 @@ export function tsURL(value) {
   return u.href;
 }
 
+function catalogURL(value, accountNativeId) {
+  const u=new URL(tsURL(value));
+  requireValue(!u.hash&&new Set(u.searchParams.keys()).size===[...u.searchParams.keys()].length,"TeamSnap catalog has ambiguous scope.","contract_violation");
+  requireValue(!u.searchParams.has('user_id')||native(u.searchParams.get('user_id'))===native(accountNativeId),"TeamSnap catalog belongs to another account.","contract_violation");
+  // The bare collection is a schema/queries document, not a team data page.
+  // Its supported account-scoped search is already the primary discovery path.
+  if(u.pathname==='/v3/teams'&&!u.search) return url(API,'teams/search',{user_id:accountNativeId});
+  return u.href;
+}
+
 export async function ts(transport, value, credential) {
   return (await transport.get(tsURL(value), { headers: { Authorization: "Bearer " + credential, Accept: "application/vnd.collection+json, application/json" } })).value;
+}
+
+function emptyCatalogSearch(raw, endpoint, accountNativeId) {
+  if(!raw?.collection||raw.collection.items!==undefined||raw.collection.error||!raw.collection.href)return false;
+  if(new URL(tsURL(raw.collection.href)).pathname!=='/v3/teams/search')return false;
+  const expected=new URL(catalogURL(endpoint,accountNativeId)), actual=new URL(catalogURL(raw.collection.href,accountNativeId));
+  if(expected.pathname!=='/v3/teams/search'||actual.pathname!==expected.pathname||expected.searchParams.get('user_id')!==native(accountNativeId))return false;
+  expected.searchParams.sort();actual.searchParams.sort();
+  return actual.href===expected.href;
 }
 
 function nextPage(raw) {
@@ -94,6 +116,65 @@ function event(row, teamId, args, accountId) {
   };
 }
 
+function attendanceRecord(r, team, accountId) {
+  requireValue(native(r.event_id) && native(r.member_id), "TeamSnap attendance identity is incomplete.", "unsupported_response");
+  const nativeStatus = r.status_code ?? null;
+  const normalized = nativeStatus === null ? "NR" : nativeStatus === 0 || nativeStatus === "0" ? "No" : nativeStatus === 1 || nativeStatus === "1" ? "Yes" : nativeStatus === 2 || nativeStatus === "2" ? "Maybe" : "Unknown";
+  return { fixture_id: key("teamsnap", r.event_id), player_id: key("teamsnap", r.member_id), team_id: team, account_id: accountId,
+    status: nativeStatus === null ? "" : String(nativeStatus), native_status: nativeStatus, normalized_status: normalized,
+    evidence: { contract: "teamsnap-javascript-sdk/AVAILABILITIES", status_code: nativeStatus }, observed_at: stamp() };
+}
+
+async function collectPagedTeamSnap(context) {
+  const {j,args,account,teamId}=context,original=tsURL(args.url || url(API,RELS[j.kind]+"/search",{team_id:teamId}));
+  const prepared=await beginTeamSnapRefresh({kind:j.kind,teamId,accountId:account.id,authorizationGeneration:account.generation??0,endpoint:original,args,cursor:context.cursor});
+  const out=await collectPagedTeamSnapRows({...context,cursor:prepared.cursor,endpoint:prepared.endpoint});
+  const count=out.coverage[0]?.count??0;
+  out.coverage=[{provider:"teamsnap",account_id:account.id,scope:key("teamsnap",teamId),...teamSnapRefreshCoverage(prepared.refresh,{complete:out.complete,count})}];
+  out.coverageState=prepared.refresh.active.mode==='recent'?'partial':out.complete?'complete':'partial';
+  out.checkpoint=out.complete?finishTeamSnapRefresh(prepared.refresh,out.traversal):{...out.checkpoint,refresh:prepared.refresh};
+  delete out.traversal;
+  return out;
+}
+
+async function collectPagedTeamSnapRows({j,args,cursor,transport,credential,account,teamId,out,endpoint}) {
+  const team = key("teamsnap",teamId);
+  let state = teamSnapPageRequest(j.kind,teamId,endpoint,cursor);
+  if(state.retry_at > Date.now()) throw Object.assign(new Error("TeamSnap is changing; saved data remains available."),{code:"source_changing",retryAfterMs:state.retry_at-Date.now()});
+  let raw;
+  try { raw = await ts(transport,state.url,credential); }
+  catch(error) {
+    if(error.code!=="record_too_large") throw error;
+    out.complete=false;out.checkpoint=reduceTeamSnapPage(state);
+    out.coverage.push({provider:"teamsnap",account_id:account.id,kind:j.kind,scope:team,complete:false,count:0,observed_at:stamp()});
+    return out;
+  }
+  // Missing items is accepted only with explicit scoped empty-page evidence.
+  if(raw?.collection && raw.collection.items===undefined && raw.collection.page_info?.total_items===0 && !raw.collection.error) raw={...raw,collection:{...raw.collection,items:[]}};
+  const all=unique(collection(raw),r=>native(r.id)), pageDigest=await signature(all), metadata=teamSnapPageMetadata(raw,state,all.length);
+  if(metadata.changed){out.complete=false;out.checkpoint=restartTeamSnapPass(state);return out;}
+  const ids=all.map(r=>native(r.id)),idDigest=await signature([...ids].sort());
+  if(state.pages>0 && (ids.some(id=>(state.previous_ids||[]).includes(id)) || (ids.length&&(state.page_hashes||[]).includes(idDigest)))){
+    // Offset pagination may shift while the source changes. Never count a
+    // repeated/overlapping page as new data or let it certify completeness.
+    out.complete=false;out.checkpoint=restartTeamSnapPass(state);return out;
+  }
+  const changedPage=state.digest&&state.digest!==pageDigest;
+  if(changedPage){
+    state={...state,page_changes:(state.page_changes||0)+1};
+    if(state.page_changes>=3){out.complete=false;out.checkpoint={...restartTeamSnapPass(state),pass:1,retry_at:Date.now()+900000};return out;}
+  }
+  const offset=changedPage?0:state.offset;
+  requireValue(offset<=all.length,"Invalid TeamSnap page offset.","contract_violation");
+  const candidates=all.slice(offset).map(r=>{assertTeam(r,teamId);return j.kind==='events'?event(r,teamId,args,account.id):attendanceRecord(r,team,account.id);});
+  const consumed=teamSnapBatchLength(j.kind,candidates,{accountId:account.id,scanId:j.scan_id});
+  if(j.kind==='events')out.fixtures=candidates.slice(0,consumed);else out.records.attendance=candidates.slice(0,consumed);
+  Object.assign(out,await advanceTeamSnapPage(state,metadata,pageDigest,all.length,offset,consumed,ids,idDigest));
+  out.coverage.push({provider:"teamsnap",account_id:account.id,kind:j.kind,scope:team,complete:out.complete,
+    count:out.complete?state.count+all.length:state.count+offset+consumed,observed_at:stamp()});
+  return out;
+}
+
 export async function collectTeamSnap({ j, args = {}, cursor = {}, transport, credential, account }) {
   requireValue(account?.provider === "teamsnap" && account.id && native(account.native_id) && credential, "TeamSnap is disconnected.", "authentication_required");
   const out = { records: {}, fixtures: [], children: [], complete: true, checkpoint: { finished: true }, coverage: [], replacements: [] };
@@ -101,24 +182,28 @@ export async function collectTeamSnap({ j, args = {}, cursor = {}, transport, cr
     const raw = await ts(transport, "me", credential), me = collection(raw)[0];
     requireValue(native(me?.id) === native(account.native_id), "TeamSnap returned another account.", "account_access_lost");
     const links = [...new Set([url(API, "teams/search", { user_id: me.id }),
-      ...(raw.collection.links || []).filter((l) => TEAM_RELS.has(l.rel)).map((l) => tsURL(l.href)),
-      ...Object.entries(me.links || {}).filter(([rel]) => TEAM_RELS.has(rel)).map(([, href]) => tsURL(href))])];
+      ...(raw.collection.links || []).filter((l) => TEAM_RELS.has(l.rel)).map((l) => catalogURL(l.href,account.native_id)),
+      ...Object.entries(me.links || {}).filter(([rel]) => TEAM_RELS.has(rel)).map(([, href]) => catalogURL(href,account.native_id))])];
     return { ...out, complete: false, checkpoint: { url: links[0], remaining: links.slice(1), visited: [], offset: 0 } };
   }
   requireValue(j.kind === "catalog" || Object.hasOwn(RELS, j.kind), "Unsupported TeamSnap job.", "invalid_job");
   const teamId = j.kind === "catalog" ? null : native(args.team_id);
   requireValue(j.kind === "catalog" || teamId, "TeamSnap team identity is missing.", "contract_violation");
-  const endpoint = tsURL(cursor.url || args.url || url(API, RELS[j.kind] + "/search", { team_id: teamId }));
+  if(["events","attendance"].includes(j.kind)) return collectPagedTeamSnap({j,args,cursor,transport,credential,account,teamId,out});
+  const requested = tsURL(cursor.url || args.url || url(API, RELS[j.kind] + "/search", { team_id: teamId }));
+  const endpoint = j.kind==='catalog'?catalogURL(requested,account.native_id):requested;
   const endpointTeam = new URL(endpoint).searchParams.get("team_id");
   if (teamId && endpointTeam !== null) requireValue(native(endpointTeam) === teamId, "TeamSnap endpoint belongs to another team.", "contract_violation");
-  const raw = await ts(transport, endpoint, credential), all = unique(collection(raw), (r) => native(r.id)), digest = await signature(all);
+  let raw = await ts(transport, endpoint, credential);
+  if(j.kind==='catalog'&&emptyCatalogSearch(raw,endpoint,account.native_id))raw={...raw,collection:{...raw.collection,items:[]}};
+  const all = unique(collection(raw), (r) => native(r.id)), digest = await signature(all);
   const offset = cursor.digest && cursor.digest !== digest ? 0 : Number(cursor.offset || 0);
   requireValue(Number.isSafeInteger(offset) && offset >= 0 && offset <= all.length, "Invalid TeamSnap checkpoint.", "contract_violation");
   const rows = all.slice(offset, offset + (j.kind === "catalog" ? 20 : PAGE_SIZE)), next = nextPage(raw), moreRows = offset + rows.length < all.length;
   const visited = [...(cursor.visited || [])], pageMark = (await signature(endpoint)).slice(0, 16), nextMark = next ? (await signature(next)).slice(0, 16) : null;
   if (!moreRows) visited.push(pageMark);
   requireValue(visited.length <= 200 && (!nextMark || !visited.includes(nextMark)), "TeamSnap pagination repeated a page or exceeded its bound.", "unsupported_response");
-  const remaining = cursor.remaining || [], nextURL = moreRows ? endpoint : next || remaining[0];
+  const remaining = j.kind==='catalog'?[...new Set((cursor.remaining||[]).map(href=>catalogURL(href,account.native_id)))].filter(href=>href!==endpoint):cursor.remaining||[], nextURL = moreRows ? endpoint : next || remaining[0];
   out.complete = !nextURL;
   out.checkpoint = nextURL ? { url: nextURL, offset: moreRows ? offset + rows.length : 0, digest: moreRows ? digest : null,
     remaining: moreRows || next ? remaining : remaining.slice(1), visited } : { finished: true };
@@ -140,14 +225,7 @@ export async function collectTeamSnap({ j, args = {}, cursor = {}, transport, cr
         details: JSON.stringify({ position: text(r.position || r.position_name), active: r.is_active !== false, roster_start_date:text(r.roster_start_date)||null,roster_end_date:text(r.roster_end_date)||null }), observed_at: stamp() }));
       out.records.team_players = out.records.players.map((p) => ({ team_id: team, player_id: p.id, account_id: accountId, active: +(parse(p.details).active !== false), scan_id: j.scan_id }));
     } else if (j.kind === "events") out.fixtures = rows.map((r) => event(r, teamId, args, accountId));
-    else if (j.kind === "attendance") out.records.attendance = rows.map((r) => {
-      requireValue(native(r.event_id) && native(r.member_id), "TeamSnap attendance identity is incomplete.", "unsupported_response");
-      const nativeStatus = r.status_code ?? null;
-      const normalized = nativeStatus === null ? "NR" : nativeStatus === 0 || nativeStatus === "0" ? "No" : nativeStatus === 1 || nativeStatus === "1" ? "Yes" : nativeStatus === 2 || nativeStatus === "2" ? "Maybe" : "Unknown";
-      return { fixture_id: key("teamsnap", r.event_id), player_id: key("teamsnap", r.member_id), team_id: team, account_id: accountId,
-        status: nativeStatus === null ? "" : String(nativeStatus), native_status: nativeStatus, normalized_status: normalized,
-        evidence: { contract: "teamsnap-javascript-sdk/AVAILABILITIES", status_code: nativeStatus }, observed_at: stamp() };
-    });
+    else if (j.kind === "attendance") out.records.attendance = rows.map(r=>attendanceRecord(r,team,accountId));
     else out.records.references_data = rows.map((r) => ({ team_id: team, account_id: accountId, kind: j.kind, id: native(r.id),
       value: JSON.stringify({ name: text(r.name || r.label), address: text(r.address), city: text(r.city), state: text(r.state), zip: text(r.zip) }), observed_at: stamp() }));
   }

@@ -1,6 +1,8 @@
-# myTS 7.2.0
+# myTS 7.2.1
 
-This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.2.0**. This package is not a production deployment.
+This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.2.1**. This package is not a production deployment.
+
+The 7.2.1 TeamSnap collection repair adds bounded provider pages and database commits, resumable stable-traversal checks, and separate recent-window/full-history freshness. See [the exact repair and verification boundary](docs/teamsnap-pagination-repair.md). The deployed 7.2.0 schema and preserved data are unchanged.
 
 The original compact mobile interface, team and season navigation, schedule, competitions, player and match details, bookmarks, source management, branding, corrections, matching, awards, four reports and private Coach workflows are retained. Their server records and background processing use the new architecture. Exact behavior and verification boundaries are documented in the included contracts and final review evidence.
 
