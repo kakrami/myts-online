@@ -18,7 +18,9 @@ A field-minute correction is a selective quantity, not an instruction to discard
 
 The adapter supplies canonical dated own-team identities, proved track mapping and account/attachment generation scope. The pure resolver cannot authenticate those claims. Opponent, dummy, unresolved or ineligible observations never credit named players. A proved own goalkeeper role channel can consume anonymous capacity; it does not invent a person's identity or appearance. A unique explicit full-half keeper decision can explain that channel. Partial scalar roles have unknown timing.
 
-Intervals are clipped to actual half windows and merged per canonical person. Total union avoids duplicate source-track counting. Field and keeper overlap without a correction is a conflict. Unknown-role intervals retain observed total while unavailable field/GK quantities remain null. No evidence means unknown participation/minutes; explicit DNP means false/zero.
+Intervals are clipped to actual half windows and merged per canonical person. Total union avoids duplicate source-track counting. Field and keeper overlap without a correction is a conflict. Unknown-role intervals retain observed total while unavailable field/GK quantities remain null. No evidence means unknown participation/minutes; explicit DNP means false/zero, including all role and minute quantities and a false start without any video window. Same-priority contradictory positive quantities or explicit start remain errors. Higher-priority DNP suppresses lower-priority reported/observed quantities.
+
+Appearance, start, dated eligibility and an exclusive position/role alone provide no time quantity and cannot seed capacity estimates. A whole-match positive appearance or scalar quantity does not prove participation in each half. Unknown half facts remain unknown without an explicit half decision, a first-half start, or observed half evidence. Whole-match zero total implies zero role quantities by nonnegative conservation, without declaring DNP.
 
 Low-minute evidenced field participants may receive bounded equalizing capacity estimates, separately labelled and counted. Unknown people never fill capacity; short-handed games retain unallocated capacity. Estimates do not fabricate interval timing. Unknown format or absent actual windows cannot create a nominal 7v7 game or a 25-minute half. A known whole-match quantity with missing windows remains available while half/role accounting remains unavailable unless independently stated.
 
@@ -34,7 +36,9 @@ For a supported complete event:
 
 `assignedSeconds + unassignedGkSeconds + unallocatedSeconds = capacitySeconds`
 
-Named total minutes conserve field/GK time wherever both roles are resolved. Unresolved roles retain an explicit unknown quantity. Per-person, field, goalkeeper, aggregate and observed timeline bounds are checked. Conflicting hard corrections remain visible; they are not scaled or silently clamped. Semantic contradictions produce `publishable:false` and typed issues; ordinary incomplete evidence remains usable with explicit unknowns.
+Named total minutes conserve field/GK time wherever both roles are resolved. One field/GK scalar, including zero, does not set the unresolved opposite role or exact total to zero. Compatible exclusive role intent, a full actual-window role quantity, independent opposite-role evidence or independently resolved role quantities can close the sum. Known whole-match field plus GK quantities may sum without a clock; the sum asserts no timing.
+
+A partial known role remains a supported quantity floor in lowerBoundSeconds. assignedSeconds uses these floors when exact named totals are unresolved, and assignedIsLowerBound explicitly marks that case. Do not substitute floors for nullable minute facts or claim measured/complete quantities. Existing capacity estimates still retain their estimated classification. Unallocated means budget not assigned, not proof that unknown participants did not play. Unresolved roles retain an explicit unknown quantity. Per-person, field, goalkeeper, aggregate and observed timeline bounds are checked. Conflicting hard corrections remain visible; they are not scaled or silently clamped. Semantic contradictions produce `publishable:false` and typed issues; ordinary incomplete evidence remains usable with explicit unknowns.
 
 Bounds: 128 players, 2 actual half windows, 2,048 observations, 4,096 input intervals, 4,096 spatial-grid cells per spatial record. The interval/allocation/lineup helpers have additional bounded work guards.
 
@@ -43,3 +47,9 @@ Bounds: 128 players, 2 actual half windows, 2,048 observations, 4,096 input inte
 Run `node --test tests/parity/original-analysis.test.mjs tests/parity/shared-analysis-resolver.test.mjs`. The committed portable suites also execute without Node in the Functions V8 harness using the actual new ESM sources. The legacy source is QA-only.
 
 Pure arithmetic, precedence and invariant receipts do not establish native Worker performance, adapter publication fences, real provider behavior, background processing, browser correction gestures or the full 31-gate release. See the separate adapter handoff for those remaining integration receipts.
+
+## Correction 1.0.1
+
+Exact A–D regressions are in `tests/parity/resolver-quantity-regressions.js`, with independently registered Node tests. They cover no, one and both actual windows, DNP/start and same-priority quantity conflicts, positive appearance/start without time, explicit total zero, independent half proof, lower reported quantities, role-only partial quantities, clock-independent sums and eligibility/role bounds. No nominal window or measured zero is generated from missing proof.
+
+Eligibility, role bounds and conservation are validated independently of video availability. Existing whole/half position decisions also remain usable without a video clock. Missing-window whole quantities do not enable half capacity estimates. The algorithm version is 1.0.1 so adapters that include it in the input signature recalculate unchanged native input after this correction.

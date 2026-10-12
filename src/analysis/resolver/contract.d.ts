@@ -76,7 +76,9 @@ export interface HalfPlayerResult {
  appearance: ResolvedFact<boolean>; started: ResolvedFact<boolean>; position: ResolvedFact<string>;
  role: ResolvedFact<Role>; slot: ResolvedFact<number>; slotX: ResolvedFact<number>; slotY: ResolvedFact<number>;
  totalSeconds: ResolvedFact<number>; fieldSeconds: ResolvedFact<number>; gkSeconds: ResolvedFact<number>;
- observedSeconds: number; estimatedSeconds: number; unknownRoleSeconds: number;
+ observedSeconds: number; estimatedSeconds: number; unknownRoleSeconds: number | null;
+ /** Supported quantity floor; never a replacement for nullable effective total. */
+ lowerBoundSeconds: ResolvedFact<number>;
 }
 export interface PlayerResult {
  id: string; eligible: boolean;
@@ -89,7 +91,8 @@ export interface PlayerResult {
 }
 export interface AllocationPlayer {
  id: string; totalSeconds: number | null; fieldSeconds: number | null; gkSeconds: number | null;
- unknownRoleSeconds: number; observedSeconds: number; observedTotalSeconds: number;
+ lowerBoundSeconds: number | null;
+ unknownRoleSeconds: number | null; observedSeconds: number; observedTotalSeconds: number;
  observedFieldSeconds: number; observedGkSeconds: number; inferredSeconds: number; estimatedSeconds: number;
  state: string; provenance: Readonly<Record<string, unknown>>; constraintViolations: readonly Constraint[];
 }
@@ -97,6 +100,8 @@ export interface Constraint { code: string; [detail: string]: unknown; }
 export interface HalfAccounting {
  players: readonly AllocationPlayer[];
  capacitySeconds: number | null; assignedSeconds: number | null; unallocatedSeconds: number | null;
+ /** True if named accounting includes supported floors for unresolved totals. */
+ assignedIsLowerBound: boolean;
  unassignedGkSeconds: number | null; overCapacity: boolean; publishable: boolean; coverage: string;
  violations: readonly Constraint[]; [detail: string]: unknown;
 }
@@ -118,7 +123,7 @@ export interface ResolverOutput {
  readonly halfAccounting: Readonly<Partial<Record<HalfId, HalfAccounting>>>;
  readonly totals: Readonly<{
   capacitySeconds: number | null; assignedSeconds: number | null; unassignedGkSeconds: number | null;
-  unallocatedSeconds: number | null; overCapacity: boolean;
+  unallocatedSeconds: number | null; overCapacity: boolean; assignedIsLowerBound: boolean;
  }>;
  readonly unassigned: readonly {id:string;half:HalfId;sourceId:string;reason:string;observedSeconds:number}[];
  readonly issues: readonly (Constraint & {severity:'warning'|'error'})[];

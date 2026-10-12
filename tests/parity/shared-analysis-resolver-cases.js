@@ -188,7 +188,9 @@ export function runSharedResolverCases({resolveMatchAnalysis,assert}) {
  });
  check('manual positive quantity corrects reported DNP',()=>{
   const x=resolverFixture();x.players[1].reported={match:{appearance:false}};x.players[1].manual={match:{totalSeconds:1200}};
-  const r=resolveMatchAnalysis(x);assert.equal(row(r).appearance.value,true);assert.equal(row(r).minutes.value,20);assert.equal(r.publishable,true);
+  const r=resolveMatchAnalysis(x);assert.equal(row(r).appearance.value,true);assert.equal(row(r).minutes.value,20);assert.equal(r.publishable,true);assert.equal(row(r).started.value,true);
+  x.observations=x.observations.filter(o=>o.playerId!=='P2');x.players[1].manual={halves:{1:{totalSeconds:600},2:{totalSeconds:600}}};
+  const p=row(resolveMatchAnalysis(x));assert.equal(p.halves[1].appearance.value,true);assert.equal(p.halves[1].started.value,null);
  });
  check('half-only slots and match-only scored facts reject silent discard',()=>{
   const x=resolverFixture();x.players[1].manual={match:{slot:2}};assert.throws(()=>resolveMatchAnalysis(x));

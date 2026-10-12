@@ -7,13 +7,13 @@ export function allocateHalf(input={}) {
  const window=input.window,windowKnown=!!window&&Number.isFinite(window.start)&&Number.isFinite(window.end)&&window.end>window.start;
  const duration=windowKnown?window.end-window.start:null,format=input.format===7||input.format===9?input.format:null,violations=[];
  const issue=(code,details={})=>{const result={code,...details};violations.push(result);return result;};
- if(format&&duration!==null&&!Number.isFinite(format*duration))return{players:[],capacitySeconds:null,assignedSeconds:null,unallocatedSeconds:null,unassignedGkSeconds:null,overCapacity:true,publishable:false,coverage:'numeric_overflow_rejected',violations:[{code:'allocation_numeric_overflow'}]};
+ if(format&&duration!==null&&!Number.isFinite(format*duration))return{players:[],capacitySeconds:null,assignedSeconds:null,assignedIsLowerBound:true,unallocatedSeconds:null,unassignedGkSeconds:null,overCapacity:true,publishable:false,coverage:'numeric_overflow_rejected',violations:[{code:'allocation_numeric_overflow'}]};
  const rawPlayers=Array.isArray(input.players)?input.players:[],rawKeeper=Array.isArray(input.keeperSegments)?input.keeperSegments:[];
  const segmentCount=rawKeeper.length+rawPlayers.reduce((sum,p)=>sum+(Array.isArray(p.segments)?p.segments.length:0)+(Array.isArray(p.goalkeeperSegments)?p.goalkeeperSegments.length:0)+(Array.isArray(p.unknownRoleSegments)?p.unknownRoleSegments.length:0),0);
  if(rawPlayers.length>MAX_PLAYERS||segmentCount>MAX_SEGMENTS)return{players:[],capacitySeconds:format&&duration!==null?format*duration:null,assignedSeconds:null,unallocatedSeconds:null,unassignedGkSeconds:null,overCapacity:false,publishable:false,coverage:'bounded_input_rejected',violations:[{code:'allocation_input_limit',players:rawPlayers.length,segments:segmentCount}]};
  const bound=windowKnown?window:undefined,normalize=v=>normalizeSegments(Array.isArray(v)?v:[],bound),union=s=>normalize(s);
  const overlap=(a,b)=>{let seconds=0,i=0,j=0;while(i<a.length&&j<b.length){seconds+=Math.max(0,Math.min(a[i][1],b[j][1])-Math.max(a[i][0],b[j][0]));if(a[i][1]<=b[j][1])i++;else j++;}return seconds;};
- const scalar=(p,key,rowIssues)=>{const v=p[key];if(v==null)return null;if(hasSeconds(v))return v;rowIssues.push(issue('invalid_seconds',{playerId:p.id,field:key}));return null;};
+ const scalar=(p,key,rowIssues)=>{const v=p[key];if(v==null)return null;if(hasSeconds(v))return v===0?0:v;rowIssues.push(issue('invalid_seconds',{playerId:p.id,field:key}));return null;};
  const identities=new Set();
  const rows=rawPlayers.map(p=>{
   const rowIssues=[];if(typeof p.id!=='string'||!p.id||identities.has(p.id))rowIssues.push(issue('invalid_or_duplicate_player',{playerId:p.id??null}));identities.add(p.id);
@@ -24,30 +24,39 @@ export function allocateHalf(input={}) {
   let totalBasis=manual!==null?'manual':reported!==null?'reported':observed>0?'observed':null,gkBasis=manualGk!==null?'manual':reportedGk!==null?'reported':observedGk>0?'observed':null,fieldBasis=manualField!==null?'manual':reportedField!==null?'reported':observedField>0?'observed':null;
   const knownParticipant=p.appearance===true||observed>0||(totalHard??0)>0||(gkHard??0)>0||(fieldHard??0)>0||p.started===true;
   const selectedGk=gkHard??(explicitRole==='field'?0:observedGk),selectedField=fieldHard??(explicitRole==='goalkeeper'?0:observedField);
-  let total=totalHard!==null?totalHard:!knownParticipant?null:fieldHard!==null||gkHard!==null?selectedField+selectedGk+(fieldHard!==null&&gkHard!==null||explicitRole!==null?0:unknownRoleObserved):observed;
+  const hasQuantityEvidence=totalHard!==null||fieldHard!==null||gkHard!==null||observed>0;
+  const fieldRoleCloses=totalHard===null&&fieldHard!==null&&gkHard===null&&(explicitRole==='field'||duration!==null&&Math.abs(fieldHard-duration)<=EPSILON);
+  const keeperRoleCloses=totalHard===null&&gkHard!==null&&fieldHard===null&&(explicitRole==='goalkeeper'||duration!==null&&Math.abs(gkHard-duration)<=EPSILON);
+  const isolatedHardRole=totalHard===null&&!(fieldHard!==null&&gkHard!==null)&&(
+   fieldHard!==null&&gkHard===null&&(observedGk===0||unknownRoleObserved>EPSILON)&&!fieldRoleCloses
+   ||gkHard!==null&&fieldHard===null&&(observedField===0||unknownRoleObserved>EPSILON)&&!keeperRoleCloses);
+  let total=totalHard!==null?totalHard:!hasQuantityEvidence||isolatedHardRole?null:fieldRoleCloses?fieldHard:keeperRoleCloses?gkHard:fieldHard!==null||gkHard!==null?selectedField+selectedGk+(fieldHard!==null&&gkHard!==null?0:unknownRoleObserved):observed;
   if(total!==null&&!Number.isFinite(total)){rowIssues.push(issue('allocation_numeric_overflow',{playerId:p.id}));total=null;}
   if(p.appearance===false&&totalHard===null&&fieldHard===null&&gkHard===null)total=0;
   if(totalHard===null&&(fieldHard!==null||gkHard!==null))totalBasis=explicitRole==='field'&&fieldHard!==null&&gkHard===null?fieldBasis:explicitRole==='goalkeeper'&&gkHard!==null&&fieldHard===null?gkBasis:'mixedderived';
-  const hasRoleEvidence=field.length>0||keeper.length>0||fieldHard!==null||gkHard!==null||explicitRole!==null,completeRoleDecision=explicitRole!==null||(fieldHard!==null&&gkHard!==null)||(totalHard!==null&&(fieldHard!==null||gkHard!==null));
+  const hasRoleEvidence=field.length>0||keeper.length>0||fieldHard!==null||gkHard!==null||explicitRole!==null,completeRoleDecision=fieldRoleCloses||keeperRoleCloses||explicitRole!==null||(fieldHard!==null&&gkHard!==null)||(totalHard!==null&&(fieldHard!==null||gkHard!==null));
   let rolesUnknown=total!==null&&total>0&&(!hasRoleEvidence||(unknownRoleObserved>EPSILON&&!completeRoleDecision));
-  let gk=gkHard!==null?gkHard:total===null?null:totalHard!==null&&fieldHard!==null?total-fieldHard:explicitRole==='goalkeeper'?total:explicitRole==='field'?0:Math.min(observedGk,total);
-  let fieldSeconds=fieldHard!==null?fieldHard:total===null?null:gkHard!==null&&totalHard===null?selectedField:gk===null||gk>total+EPSILON?null:Math.max(0,total-gk);
+  let gk=gkHard!==null?gkHard:fieldRoleCloses?0:total===null?null:totalHard!==null&&fieldHard!==null?total-fieldHard:explicitRole==='goalkeeper'?total:explicitRole==='field'?0:Math.min(observedGk,total);
+  let fieldSeconds=fieldHard!==null?fieldHard:keeperRoleCloses?0:total===null?null:gkHard!==null&&totalHard===null?selectedField:gk===null||gk>total+EPSILON?null:Math.max(0,total-gk);
   if(gk!==null&&gk<0){rowIssues.push(issue('negative_derived_role',{playerId:p.id}));gk=null;}
   if(total===0&&fieldHard===null&&gkHard===null){gk=0;fieldSeconds=0;rolesUnknown=false;}
   if(totalHard!==null&&fieldHard!==null&&gkHard===null)gkBasis='mixedderived';
   if(totalHard!==null&&fieldHard===null&&hasRoleEvidence)fieldBasis='mixedderived';
   if(totalHard!==null&&gkHard===null&&gk!==null&&Math.abs(gk-observedGk)>EPSILON)gkBasis='mixedderived';
   if(explicitRole==='field'&&fieldHard===null)fieldBasis=totalBasis;if(explicitRole==='goalkeeper'&&gkHard===null)gkBasis=totalBasis;
-  const unknownRole=rolesUnknown?!hasRoleEvidence?total:Math.max(0,total-selectedField-selectedGk):0;
-  if(p.appearance===false&&(total??0)>0)rowIssues.push(issue('confirmed_dnp_positive_seconds',{playerId:p.id}));
-  if(p.eligible!==true&&(total??0)>0)rowIssues.push(issue('participation_outside_eligibility',{playerId:p.id}));
+  if(fieldRoleCloses)gkBasis='mixedderived';if(keeperRoleCloses)fieldBasis='mixedderived';
+  if(total===null)rolesUnknown=true;
+  const unknownRole=total===null?null:rolesUnknown?!hasRoleEvidence?total:Math.max(0,total-selectedField-selectedGk):0;
+  if(p.appearance===false&&((total??0)>0||(fieldSeconds??0)>0||(gk??0)>0))rowIssues.push(issue('confirmed_dnp_positive_seconds',{playerId:p.id}));
+  if(p.eligible!==true&&(p.appearance===true||p.started===true||(total??0)>0||(fieldSeconds??0)>0||(gk??0)>0))rowIssues.push(issue('participation_outside_eligibility',{playerId:p.id}));
   if(duration!==null&&((total??0)>duration+EPSILON||(gk??0)>duration+EPSILON||(fieldSeconds??0)>duration+EPSILON))rowIssues.push(issue('player_exceeds_window',{playerId:p.id,durationSeconds:duration}));
   if((gk??0)<0||(fieldSeconds??0)<0||(gk??0)>(total??Infinity)+EPSILON||(fieldSeconds??0)>(total??Infinity)+EPSILON)rowIssues.push(issue('role_exceeds_total',{playerId:p.id}));
   if(totalHard!==null&&fieldHard!==null&&gkHard!==null&&Math.abs(totalHard-fieldHard-gkHard)>EPSILON)rowIssues.push(issue('hard_role_total_conflict',{playerId:p.id}));
   if(explicitRole==='field'&&(gkHard??0)>0||explicitRole==='goalkeeper'&&(fieldHard??0)>0)rowIssues.push(issue('role_intent_quantity_conflict',{playerId:p.id}));
   if(totalHard===null&&fieldHard===null&&gkHard===null&&explicitRole===null&&overlap(field,keeper)>EPSILON)rowIssues.push(issue('overlapping_field_goalkeeper_roles',{playerId:p.id}));
-  const fieldCandidate=p.eligible===true&&p.appearance!==false&&knownParticipant&&totalHard===null&&fieldHard===null&&fieldSeconds!==null&&!rolesUnknown&&explicitRole!=='goalkeeper'&&(field.length>0||explicitRole==='field');
-  return{p,field,keeper,unknown,total,gk,fieldSeconds,observed,observedGk,observedField,unknownRole,rolesUnknown,totalHard,fieldHard,gkHard,totalBasis,fieldBasis,gkBasis,fieldCandidate,estimated:0,inferred:0,rowIssues};
+  const supportedLowerBound=total!==null?total:Math.max(selectedField+selectedGk,unknownRoleObserved),lowerBoundSeconds=Number.isFinite(supportedLowerBound)?supportedLowerBound:null;
+  const fieldCandidate=p.eligible===true&&p.appearance!==false&&knownParticipant&&hasQuantityEvidence&&total!==null&&p.allowEstimate!==false&&totalHard===null&&fieldHard===null&&fieldSeconds!==null&&!rolesUnknown&&explicitRole!=='goalkeeper'&&(field.length>0||explicitRole==='field');
+  return{p,field,keeper,unknown,total,lowerBoundSeconds,gk,fieldSeconds,observed,observedGk,observedField,unknownRole,rolesUnknown,totalHard,fieldHard,gkHard,totalBasis,fieldBasis,gkBasis,fieldCandidate,estimated:0,inferred:0,rowIssues};
  });
  const channel=normalize(rawKeeper),keeperCandidates=duration===null?[]:rows.filter(r=>r.p.eligible===true&&r.p.appearance!==false&&!r.field.length&&!r.unknown.length&&r.gkHard!==null&&Math.abs(r.gkHard-duration)<=EPSILON),channelOwner=keeperCandidates.length===1?keeperCandidates[0]:null;
  if(channelOwner&&channel.length){channelOwner.inferred=Math.max(0,intervalDuration(channel)-overlap(channel,channelOwner.keeper));channelOwner.keeper=union([...channelOwner.keeper,...channel]);}
@@ -63,7 +72,7 @@ export function allocateHalf(input={}) {
    if(keepers.length>1){issue('goalkeeper_timeline_capacity',{start,end,playerIds:keepers});break;}
   }
  }
- const fieldAssigned=()=>rows.reduce((sum,r)=>sum+(r.rolesUnknown&&r.fieldHard===null?r.observedField:r.fieldSeconds??0),0),gkAssigned=()=>rows.reduce((sum,r)=>sum+(r.rolesUnknown&&r.gkHard===null?r.observedGk:r.gk??0),0)+unassignedGk,assigned=()=>rows.reduce((sum,r)=>sum+(r.total??0),0),capacity=format&&duration!==null?format*duration:null;
+ const fieldAssigned=()=>rows.reduce((sum,r)=>sum+((r.rolesUnknown||r.total===null)&&r.fieldHard===null?r.observedField:r.fieldSeconds??0),0),gkAssigned=()=>rows.reduce((sum,r)=>sum+((r.rolesUnknown||r.total===null)&&r.gkHard===null?r.observedGk:r.gk??0),0)+unassignedGk,assigned=()=>rows.reduce((sum,r)=>sum+(r.total??r.lowerBoundSeconds??0),0),capacity=format&&duration!==null?format*duration:null;
  const finiteAccounting=Number.isFinite(fieldAssigned())&&Number.isFinite(gkAssigned())&&Number.isFinite(assigned());
  if(!finiteAccounting)issue('allocation_numeric_overflow');
  if(finiteAccounting&&duration!==null&&gkAssigned()>duration+EPSILON)issue('goalkeeper_capacity',{assignedSeconds:gkAssigned(),capacitySeconds:duration});
@@ -80,9 +89,9 @@ export function allocateHalf(input={}) {
  }
  const resultPlayers=rows.map(r=>{
   const state=r.rowIssues.length?'conflicting':r.total===null?'unknown':r.p.appearance===false&&r.total===0?'confirmed_dnp':r.estimated>EPSILON?'estimated':r.totalBasis==='manual'||r.fieldBasis==='manual'||r.gkBasis==='manual'?'manual':r.totalBasis==='reported'||r.fieldBasis==='reported'||r.gkBasis==='reported'?'reported':r.observed>0?windowKnown&&format?'observed':'provisional':r.p.started===true||r.p.appearance===true?'provisional':'unknown';
-  return{id:r.p.id,totalSeconds:r.total,fieldSeconds:r.rolesUnknown&&r.fieldHard===null?null:r.fieldSeconds,gkSeconds:r.rolesUnknown&&r.gkHard===null?null:r.gk,unknownRoleSeconds:r.unknownRole,observedSeconds:r.observed,observedTotalSeconds:r.observed,observedFieldSeconds:r.observedField,observedGkSeconds:r.observedGk,inferredSeconds:r.inferred,estimatedSeconds:r.estimated,state,
+  return{id:r.p.id,totalSeconds:r.total,lowerBoundSeconds:r.total??r.lowerBoundSeconds,fieldSeconds:r.rolesUnknown&&r.fieldHard===null?null:r.fieldSeconds,gkSeconds:r.rolesUnknown&&r.gkHard===null?null:r.gk,unknownRoleSeconds:r.unknownRole,observedSeconds:r.observed,observedTotalSeconds:r.observed,observedFieldSeconds:r.observedField,observedGkSeconds:r.observedGk,inferredSeconds:r.inferred,estimatedSeconds:r.estimated,state,
    provenance:{total:r.totalBasis??(r.gkBasis?'role_'+r.gkBasis:null),field:r.fieldBasis,goalkeeper:r.gkBasis,capacity:r.estimated>EPSILON?'bounded_field_capacity_estimate':null,sourceDiscrepancy:r.totalHard!==null&&Math.abs(r.totalHard-r.observed)>EPSILON?'selected_total_replaces_observed':null,roleDiscrepancy:r.gkHard===null&&r.gk!==null&&r.gk<r.observedGk-EPSILON?'observed_keeper_bounded_by_selected_total':null,roles:r.rolesUnknown?'partly_unknown':'resolved',window:windowKnown?'actual_half_window':'unknown',coverage:input.evidenceComplete===true?'complete_observations':'incomplete_observations',genericKeeper:r.inferred>EPSILON?'unique_explicit_full_half_keeper':null},constraintViolations:r.rowIssues};
  });
  const assignedSeconds=Number.isFinite(assigned())?assigned():null,overCapacity=capacity!==null&&(assignedSeconds===null||assignedSeconds+unassignedGk>capacity+EPSILON);
- return{players:resultPlayers,capacitySeconds:capacity,assignedSeconds,unallocatedSeconds:capacity===null||assignedSeconds===null?null:Math.max(0,capacity-assignedSeconds-unassignedGk),unassignedGkSeconds:unassignedGk,genericKeeperObservedSeconds,unmappedKeeperObservedSeconds:unmappedChannelSeconds,goalkeeperAccounting:'anonymous_quantity_bounded_by_selected_named_roles',overCapacity,publishable:violations.length===0,coverage:windowKnown&&format?input.evidenceComplete===true?'complete_observations':'incomplete_observations':'unknown_format_or_window',violations};
+ return{players:resultPlayers,capacitySeconds:capacity,assignedSeconds,assignedIsLowerBound:rows.some(r=>r.total===null),unallocatedSeconds:capacity===null||assignedSeconds===null?null:Math.max(0,capacity-assignedSeconds-unassignedGk),unassignedGkSeconds:unassignedGk,genericKeeperObservedSeconds,unmappedKeeperObservedSeconds:unmappedChannelSeconds,goalkeeperAccounting:'anonymous_quantity_bounded_by_selected_named_roles',overCapacity,publishable:violations.length===0,coverage:windowKnown&&format?input.evidenceComplete===true?'complete_observations':'incomplete_observations':'unknown_format_or_window',violations};
 }

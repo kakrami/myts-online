@@ -2,13 +2,13 @@ import { validateHalfWindows, normalizeSegments, intervalDuration } from './inte
 import { allocateHalf } from './allocation.js';
 import { normalizePosition, inferSpatialPosition, resolveLineup } from './lineup.js';
 
-export const RESOLVER_VERSION = '1.0.0';
+export const RESOLVER_VERSION = '1.0.1';
 const EPS = 1e-7;
 const own = (value, key) => value != null && Object.hasOwn(value, key) && value[key] != null;
 const cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 const number = (value, label) => {
  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new TypeError(label + ' must be finite and nonnegative');
- return value;
+ return value===0?0:value;
 };
 const identifier = (value, label) => {
  if (typeof value !== 'string' || !value.trim() || value.length > 256) throw new TypeError(label + ' must be a nonempty bounded string');
@@ -117,6 +117,7 @@ export function resolveMatchAnalysis(input) {
  }
  const expectedHalves = input.expectedHalves ?? 2;
  if (expectedHalves !== 1 && expectedHalves !== 2) throw new RangeError('expectedHalves must be 1 or 2');
+ const expectedHalfIds=expectedHalves===1?[1]:[1,2];
  const windows = validateHalfWindows(input.halves ?? []).map(w => {
   const result = {id:w.id,start:w.start,end:w.end,complete:w.complete === true};
   for (const key of ['clockOriginMs','reportedClockOriginSeconds']) if (own(w,key)) result[key] = w[key];
@@ -201,11 +202,11 @@ export function resolveMatchAnalysis(input) {
   const roster = players.map(p => {
    let appearance = pick(p,w.id,'appearance'); const started = pick(p,w.id,'started'), position = pick(p,w.id,'position'), role = pick(p,w.id,'role');
    const observed = p.observed[w.id], all = normalizeSegments([...observed.field,...observed.goalkeeper,...observed.unknown],w);
-   let a = appearance.value;
-   if (a == null && (intervalDuration(all)>0 || started.value===true || (pick(p,null,'totalSeconds').value ?? 0)>0)) a = true;
+   if(appearance.value===true&&appearance.provenance.basis==='match_decision') appearance=fact(null,'unknown','whole_participation_has_unasserted_half_timing');
+   const observedProof=intervalDuration(all)>0,openingProof=started.value===true;
+   let a=appearance.value;
+   if(a==null&&(observedProof||openingProof))a=true;
    let s = started.value;
-   if (s == null && a !== false && all.some(([start,end]) => start < w.start + 30 && end > w.start)) s = true;
-   if (s == null && (a === false || (w.complete && all.length>0))) s = false;
    const values = portions.get(p.id), scalars = {};
    for (const kind of ['manual','reported']) {
     const total = values[kind][w.id].totalSeconds, field = values[kind][w.id].fieldSeconds, gk = values[kind][w.id].gkSeconds;
@@ -213,25 +214,32 @@ export function resolveMatchAnalysis(input) {
     if (gk != null) scalars[kind+'GkSeconds'] = gk;
     if (field != null) scalars[kind+'FieldSeconds'] = field;
    }
+   const halfQuantityProof=['manual','reported'].some(kind=>['totalSeconds','fieldSeconds','gkSeconds'].some(key=>(p[kind].halves[w.id][key]??0)>0));
+   if(a==null&&halfQuantityProof)a=true;
    if (appearance.state === 'reported' && appearance.value === false && ((scalars.manualSeconds ?? 0)>0 || (scalars.manualGkSeconds ?? 0)>0 || (scalars.manualFieldSeconds ?? 0)>0)) {
-    appearance = fact(true,'manual','manual_quantity_overrides_reported_dnp'); a=true;
+    a=observedProof||openingProof||['totalSeconds','fieldSeconds','gkSeconds'].some(key=>(p.manual.halves[w.id][key]??0)>0)?true:null;
+    appearance=fact(a,a===true?'manual':'unknown','manual_quantity_overrides_reported_dnp',p.refs[w.id]);
    }
    // Explicit participation decisions outrank uncorrected observation evidence.
    if (appearance.value === false) {
     const kind = appearance.state;
     if (scalars[kind+'Seconds'] == null) scalars[kind+'Seconds'] = 0;
     if (scalars[kind+'GkSeconds'] == null) scalars[kind+'GkSeconds'] = 0;
+    if (scalars[kind+'FieldSeconds'] == null) scalars[kind+'FieldSeconds'] = 0;
    }
+   if (s == null && a !== false && all.some(([start,end]) => start < w.start + 30 && end > w.start)) s = true;
+   if (s == null && (a === false || (w.complete && all.length>0))) s = false;
    if (a === false && s === true) issue('dnp_started_conflict','error',{playerId:p.id,half:w.id});
    halfFacts[p.id] ??= {};
    halfFacts[p.id][w.id] = {
-    appearance: appearance.value == null ? fact(a,a==null?'unknown':'inferred',a===true?'evidenced_participation':'complete_nonparticipation',p.refs[w.id]) : appearance,
-    started: started.value == null ? fact(s,s==null?'unknown':'inferred',s===true?'observed_opening_window':'complete_late_or_dnp',p.refs[w.id]) : started,
+    appearance: appearance.value == null ? fact(a,a==null?'unknown':'inferred',a===true?'evidenced_half_participation':a===false?'confirmed_half_nonparticipation':'no_half_participation_proof',p.refs[w.id]) : appearance,
+    started: started.value==null?(a===false?fact(false,appearance.state,'confirmed_dnp_nonstarter',[],{participation:appearance}):fact(s,s==null?'unknown':'inferred',s===true?'observed_opening_window':s===false?'complete_late_participation':'no_half_start_proof',p.refs[w.id])):started,
     position, role,
     slot: pick(p,w.id,'slot'),slotX:pick(p,w.id,'slotX'),slotY:pick(p,w.id,'slotY')
    };
    return {id:p.id,eligible:p.eligible,appearance:a,started:s,position:position.value,role:role.value,
-    segments:observed.field,goalkeeperSegments:observed.goalkeeper,unknownRoleSegments:observed.unknown,...scalars};
+    segments:observed.field,goalkeeperSegments:observed.goalkeeper,unknownRoleSegments:observed.unknown,
+    allowEstimate:completeWindows||!['totalSeconds','fieldSeconds','gkSeconds'].some(key=>pick(p,null,key).value!=null),...scalars};
   });
   const result = allocateHalf({format:format.value,window:w,players:roster,keeperSegments:keeper[w.id],
    evidenceComplete:w.complete,estimateCapacity:input.estimateCapacity!==false});
@@ -241,7 +249,9 @@ export function resolveMatchAnalysis(input) {
  const rows = players.map(p => {
   const halves = {}, metric = key => {
    const values = windows.map(w => halfResults[w.id].players.find(r => r.id===p.id)?.[key] ?? null);
-   return completeWindows && values.every(v=>v!==null) ? values.reduce((n,v)=>n+v,0) : null;
+   const amount=completeWindows&&values.every(v=>v!==null)?values.reduce((n,v)=>n+v,0):null;
+   if(amount!=null&&!Number.isFinite(amount)){issue('allocation_numeric_overflow','error',{playerId:p.id,field:key});return null;}
+   return amount;
   };
   for (const w of windows) {
    const r = halfResults[w.id].players.find(row => row.id===p.id), h = halfFacts[p.id][w.id];
@@ -253,7 +263,9 @@ export function resolveMatchAnalysis(input) {
      {allocation:{...r.provenance},observedSeconds:r.observedSeconds,estimatedSeconds:role==='goalkeeper'?0:r.estimatedSeconds,halfTiming:'unasserted_for_scalars_and_estimates'});
    };
    halves[w.id] = {...h,totalSeconds:secondsFact(r.totalSeconds,'total'),fieldSeconds:secondsFact(r.fieldSeconds,'field'),
-    gkSeconds:secondsFact(r.gkSeconds,'goalkeeper'),observedSeconds:r.observedSeconds,estimatedSeconds:r.estimatedSeconds,unknownRoleSeconds:r.unknownRoleSeconds};
+    gkSeconds:secondsFact(r.gkSeconds,'goalkeeper'),
+    lowerBoundSeconds:fact(r.lowerBoundSeconds,r.totalSeconds==null?'inferred':secondsFact(r.totalSeconds,'total').state,'supported_quantity_lower_bound',p.refs[w.id],{exactTotal:r.totalSeconds!=null}),
+    observedSeconds:r.observedSeconds,estimatedSeconds:r.estimatedSeconds,unknownRoleSeconds:r.unknownRoleSeconds};
   }
   const aggregate = key => {
    const amount = metric(key);
@@ -265,35 +277,86 @@ export function resolveMatchAnalysis(input) {
   let totalSeconds = aggregate('totalSeconds'), fieldSeconds = aggregate('fieldSeconds'), gkSeconds = aggregate('gkSeconds');
   // Missing windows leave the match quantity usable, with half/role accounting
   // explicitly unavailable. A match correction never creates absent windows.
+  const derived=(value,parts,basis)=>{
+   if(!Number.isFinite(value)){issue('allocation_numeric_overflow','error',{playerId:p.id});value=null;}
+   const kinds=[...new Set(parts.map(part=>part.fact.state))],kind=kinds.length===1?kinds[0]:'mixed';
+   return fact(value,kind,basis,p.refs[1].concat(p.refs[2]),{parts:parts.map(part=>({field:part.field,value:part.fact.value,state:part.fact.state})),halfTiming:'unavailable_without_all_actual_windows'});
+  };
   if (!completeWindows) {
-   totalSeconds = pick(p,null,'totalSeconds'); fieldSeconds = pick(p,null,'fieldSeconds'); gkSeconds = pick(p,null,'gkSeconds');
-   if (totalSeconds.value != null && fieldSeconds.value != null && gkSeconds.value == null && fieldSeconds.value<=totalSeconds.value)
-    gkSeconds = fact(totalSeconds.value-fieldSeconds.value,totalSeconds.state,'explicit_total_minus_field');
-   if (totalSeconds.value != null && gkSeconds.value != null && fieldSeconds.value == null && gkSeconds.value<=totalSeconds.value)
-    fieldSeconds = fact(totalSeconds.value-gkSeconds.value,totalSeconds.state,'explicit_total_minus_keeper');
+   const quantity=key=>{
+    const global=pick(p,null,key);
+    const explicit=expectedHalfIds.map(half=>{
+     for(const kind of ['manual','reported']) {
+      if(own(p[kind].halves[half],key))return{half,kind,fact:fact(p[kind].halves[half][key],kind,'explicit_half_quantity')};
+      if(p[kind].halves[half].appearance===false)return{half,kind,fact:fact(0,kind,'explicit_half_dnp')};
+     }
+     return{half,kind:null,fact:fact(null)};
+    });
+    const manual=explicit.filter(part=>part.kind==='manual');
+    if(global.state==='manual') {
+     const fixed=manual.reduce((n,part)=>n+part.fact.value,0);
+     if(fixed>global.value+EPS || manual.length===expectedHalfIds.length&&Math.abs(fixed-global.value)>EPS)
+      issue('match_half_quantity_conflict','error',{playerId:p.id,kind:'manual',field:key,matchSeconds:global.value,halfSeconds:fixed});
+     return global;
+    }
+    if(explicit.every(part=>part.fact.value!=null)) {
+     const amount=explicit.reduce((n,part)=>n+part.fact.value,0),parts=explicit.map(part=>({field:'half_'+part.half,fact:part.fact}));
+     if(!manual.length&&global.state==='reported'&&Math.abs(global.value-amount)>EPS)
+      issue('match_half_quantity_conflict',expectedHalfIds.every(half=>pick(p,half,'appearance').state==='manual'&&pick(p,half,'appearance').value===false)?'warning':'error',{playerId:p.id,kind:'reported',field:key,matchSeconds:global.value,halfSeconds:amount});
+     return derived(amount,parts,'sum_explicit_halves_without_windows');
+    }
+    if(manual.length&&global.state==='reported') return fact(null,'unknown','partial_half_override_without_distribution');
+    return global;
+   };
+   totalSeconds=quantity('totalSeconds');fieldSeconds=quantity('fieldSeconds');gkSeconds=quantity('gkSeconds');
+   if(totalSeconds.value==null&&fieldSeconds.value!=null&&gkSeconds.value!=null)
+    totalSeconds=derived(fieldSeconds.value+gkSeconds.value,[{field:'field',fact:fieldSeconds},{field:'goalkeeper',fact:gkSeconds}],'explicit_field_plus_keeper');
+   if(totalSeconds.value!=null&&fieldSeconds.value!=null&&gkSeconds.value==null&&fieldSeconds.value<=totalSeconds.value)
+    gkSeconds=derived(totalSeconds.value-fieldSeconds.value,[{field:'total',fact:totalSeconds},{field:'field',fact:fieldSeconds}],'explicit_total_minus_field');
+   if(totalSeconds.value!=null&&gkSeconds.value!=null&&fieldSeconds.value==null&&gkSeconds.value<=totalSeconds.value)
+    fieldSeconds=derived(totalSeconds.value-gkSeconds.value,[{field:'total',fact:totalSeconds},{field:'goalkeeper',fact:gkSeconds}],'explicit_total_minus_keeper');
   }
-  if (totalSeconds.value != null && gkSeconds.value != null && gkSeconds.value>totalSeconds.value+EPS)
-   issue('match_goalkeeper_exceeds_total','error',{playerId:p.id});
-  if (totalSeconds.value != null && fieldSeconds.value != null && gkSeconds.value != null
-   && Math.abs(fieldSeconds.value+gkSeconds.value-totalSeconds.value)>EPS) issue('match_role_conservation','error',{playerId:p.id});
   let appearance = pick(p,null,'appearance');
-  const explicitHalfAppearance=windows.some(w=>own(p.manual.halves[w.id],'appearance') || own(p.reported.halves[w.id],'appearance'));
-  if (completeWindows && explicitHalfAppearance) {
-   const parts=windows.map(w=>({half:w.id,...halves[w.id].appearance})),values=parts.map(part=>part.value);
-   const value=values.some(v=>v===true)?true:values.every(v=>v===false)?false:null;
+  const explicitHalfAppearance=expectedHalfIds.some(half=>own(p.manual.halves[half],'appearance') || own(p.reported.halves[half],'appearance'));
+  if (explicitHalfAppearance) {
+   const parts=expectedHalfIds.map(half=>({half,...(halves[half]?.appearance??pick(p,half,'appearance'))})),values=parts.map(part=>part.value);
+   const value=values.some(v=>v===true)?true:values.every(v=>v===false)?false:appearance.value===true?true:null;
    const kinds=[...new Set(parts.map(part=>part.state))],kind=kinds.length===1?kinds[0]:'mixed';
-   appearance=fact(value,kind,'effective_half_appearance',p.refs[1].concat(p.refs[2]),{parts:parts.map(part=>({half:part.half,value:part.value,state:part.state}))});
+   const wholeOnlyPositive=value===true&&!values.some(v=>v===true)&&appearance.value===true;
+   appearance=fact(value,wholeOnlyPositive?appearance.state:kind,wholeOnlyPositive?'whole_participation_half_timing_unknown':'effective_half_appearance',p.refs[1].concat(p.refs[2]),{parts:parts.map(part=>({half:part.half,value:part.value,state:part.state}))});
   }
   if (appearance.value == null) {
    const halfAppearances = Object.values(halves).map(h=>h.appearance.value);
-   const any = halfAppearances.some(v=>v===true) || (totalSeconds.value ?? 0)>0;
+   const any = halfAppearances.some(v=>v===true) || [totalSeconds,fieldSeconds,gkSeconds].some(f=>(f.value??0)>0);
    const dnp = completeWindows && halfAppearances.every(v=>v===false);
-   appearance = fact(any?true:dnp?false:null,any||dnp?'inferred':'unknown',any?'evidenced_match_participation':'all_halves_dnp',p.refs[1].concat(p.refs[2]));
+   appearance = fact(any?true:dnp?false:null,any||dnp?'inferred':'unknown',any?'evidenced_match_participation':dnp?'all_halves_dnp':'no_match_participation_proof',p.refs[1].concat(p.refs[2]));
   }
-  if (appearance.state==='reported' && appearance.value===false && (totalSeconds.value ?? 0)>0
-   && (totalSeconds.state==='manual' || totalSeconds.state==='mixed')) appearance=fact(true,'manual','manual_quantity_overrides_reported_dnp');
+  const manualPositive=[totalSeconds,fieldSeconds,gkSeconds].some(f=>(f.value??0)>0&&(f.state==='manual'||f.state==='mixed'));
+  if (appearance.state==='reported' && appearance.value===false && manualPositive) appearance=fact(true,'manual','manual_quantity_overrides_reported_dnp');
+  if(!completeWindows&&appearance.value===false) {
+   const selected=appearance.state==='manual'?'manual':'reported',dnpZero=current=>{
+    const explicitSame=current.state===selected||(current.state==='mixed'&&current.provenance.parts?.some(part=>part.state===selected));
+    return explicitSame&&current.value!=null?current:fact(0,selected,'clock_independent_dnp');
+   };
+   totalSeconds=dnpZero(totalSeconds);fieldSeconds=dnpZero(fieldSeconds);gkSeconds=dnpZero(gkSeconds);
+  }
+  if(totalSeconds.value===0) {
+   if(fieldSeconds.value==null)fieldSeconds=fact(0,totalSeconds.state,'zero_total_implies_zero_field');
+   if(gkSeconds.value==null)gkSeconds=fact(0,totalSeconds.state,'zero_total_implies_zero_keeper');
+  }
+  if(totalSeconds.value!=null&&fieldSeconds.value!=null&&fieldSeconds.value>totalSeconds.value+EPS)
+   issue('match_field_exceeds_total','error',{playerId:p.id});
+  if(totalSeconds.value!=null&&gkSeconds.value!=null&&gkSeconds.value>totalSeconds.value+EPS)
+   issue('match_goalkeeper_exceeds_total','error',{playerId:p.id});
+  if(totalSeconds.value!=null&&fieldSeconds.value!=null&&gkSeconds.value!=null&&Math.abs(fieldSeconds.value+gkSeconds.value-totalSeconds.value)>EPS)
+   issue('match_role_conservation','error',{playerId:p.id});
   if (appearance.value===false && (totalSeconds.value ?? 0)>0) issue('match_dnp_positive_seconds','error',{playerId:p.id});
-  return {id:p.id,eligible:p.eligible,appearance,started:halves[1]?.started ?? pick(p,1,'started'),position:pick(p,null,'position'),
+  let effectiveStart=halves[1]?.started??pick(p,1,'started');
+  if(appearance.value===false&&effectiveStart.value==null)effectiveStart=fact(false,appearance.state,'confirmed_dnp_nonstarter');
+  if(appearance.value===false&&effectiveStart.value===true)issue('match_dnp_started_conflict','error',{playerId:p.id});
+  if(!p.eligible&&(appearance.value===true||effectiveStart.value===true||[totalSeconds,fieldSeconds,gkSeconds].some(f=>(f.value??0)>0)))
+   issue('participation_outside_eligibility','error',{playerId:p.id});
+  return {id:p.id,eligible:p.eligible,appearance,started:effectiveStart,position:pick(p,null,'position'),
    totalSeconds,fieldSeconds,gkSeconds,minutes:fact(totalSeconds.value==null?null:totalSeconds.value/60,totalSeconds.state,totalSeconds.provenance.basis,totalSeconds.provenance.sourceRefs,{seconds:totalSeconds}),
    fieldMinutes:fact(fieldSeconds.value==null?null:fieldSeconds.value/60,fieldSeconds.state,fieldSeconds.provenance.basis,fieldSeconds.provenance.sourceRefs,{seconds:fieldSeconds}),
    gkMinutes:fact(gkSeconds.value==null?null:gkSeconds.value/60,gkSeconds.state,gkSeconds.provenance.basis,gkSeconds.provenance.sourceRefs,{seconds:gkSeconds}),
@@ -320,13 +383,13 @@ export function resolveMatchAnalysis(input) {
   row.position = positionFor(row,null);
   for (const w of windows) row.halves[w.id].position = positionFor(row,w.id);
   const p = byId.get(row.id);
-  const explicitHalf = windows.some(w=>own(p.manual.halves[w.id],'position') || own(p.reported.halves[w.id],'position'));
+  const explicitHalf = expectedHalfIds.some(half=>own(p.manual.halves[half],'position') || own(p.reported.halves[half],'position'));
   if (explicitHalf) {
-   const parts = windows.map(w=>({half:w.id,...row.halves[w.id].position}));
+   const parts = expectedHalfIds.map(half=>({half,...(row.halves[half]?.position??pick(p,half,'position'))}));
    const values = parts.map(part=>part.value), kinds=[...new Set(parts.map(part=>part.state))];
    const groups = values.map(value=>normalizePosition(value)?.group);
-   const value = completeWindows && values.every(v=>v!=null) && values.every(v=>v===values[0]) ? values[0]
-    : completeWindows && groups.every(Boolean) && groups.every(v=>v===groups[0]) ? groups[0] : null;
+   const value = values.every(v=>v!=null) && values.every(v=>v===values[0]) ? values[0]
+    : groups.every(Boolean) && groups.every(v=>v===groups[0]) ? groups[0] : null;
    const kind=value!=null&&values.every(v=>v===values[0])&&kinds.length===1?kinds[0]:'mixed';
    row.position={value,state:kind,provenance:{kind,basis:'effective_half_positions',sourceRefs:[...new Set(p.refs[1].concat(p.refs[2]))].sort(cmp),
     parts:parts.map(part=>({half:part.half,value:part.value,state:part.state}))}};
@@ -348,7 +411,7 @@ export function resolveMatchAnalysis(input) {
  };
  const totals={capacitySeconds:sumKnown('capacitySeconds'),assignedSeconds:sumKnown('assignedSeconds'),
   unassignedGkSeconds:sumKnown('unassignedGkSeconds'),unallocatedSeconds:sumKnown('unallocatedSeconds'),
-  overCapacity:windows.some(w=>halfResults[w.id].overCapacity)};
+  overCapacity:windows.some(w=>halfResults[w.id].overCapacity),assignedIsLowerBound:!completeWindows||windows.some(w=>halfResults[w.id].assignedIsLowerBound)};
  for (const w of windows) for (const warning of lineups[w.id].warnings ?? []) issue(typeof warning==='string'?warning:warning.code,'warning',{half:w.id});
  issues.sort((a,b)=>cmp(JSON.stringify(a),JSON.stringify(b)));
  return freeze({version:RESOLVER_VERSION,context,format,durationSeconds,players:rows,lineups,halfAccounting:halfResults,totals,

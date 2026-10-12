@@ -1,6 +1,6 @@
 # Reserved adapter integration handoff
 
-This isolated batch owns NEW `src/analysis/resolver/*`, NEW resolver tests and NEW documentation only. It imports none of the reserved application files and makes no database/config/version/production changes. Apply the one resolver commit after the first thirteen-path parity handoff. Lifecycle integration need not overwrite its active checkout.
+This isolated batch owns NEW `src/analysis/resolver/*`, NEW resolver tests and NEW documentation only. It imports none of the reserved application files and makes no database/config/version/production changes. Apply the resolver base-to-head diff, or the initial resolver commit plus its isolated correction commit, after the first thirteen-path parity handoff. Lifecycle integration need not overwrite its active checkout.
 
 Known sources: original 6.20.133 `50e1be224806ff7e7c439d26e15fd0421e3f6f01`; pinned production `6326162d923aae5c2f2bfe109dfad6dc3b28d687` / deployed tree `e4128fe70f57304643add840921142690bc18741`; this batch base `a58fced0b04d4d361176a064874988de62bc2255`. The active local lifecycle candidate `3fbc36fe...` and later uncommitted bytes are not assumed identical to that base. Reconcile actual frozen interfaces before integration.
 
@@ -42,6 +42,10 @@ Root will not edit these reserved files. The lifecycle author owns the adapter p
 | mixed | Keep underlying per-half states. Any capacity estimate makes minute quality estimated; manual+reported without estimates is mixed evidence, not wholly manual. |
 | unknown | Map to pending/incomplete/unsupported based on actual component availability; never use zero. |
 | publishable:false | Preserve typed diagnostics as terminal human-review/blocked for the same input revision. Do not make impossible accounting the active published run or retry it forever. |
+
+Correction 1.0.1 distinguishes participation proof from quantity proof. Unknown minutes/roles remain null even when appearance/start is true and actual windows exist. DNP has zero total/field/GK quantities and false start independently of clocks; contradictory same-priority starts/quantities block publication. A whole quantity with missing windows does not establish any half's participation or quantity. Use only independent half decisions/observations for that proof.
+
+A single role scalar can be a partial quantity. Preserve nullable total/other-role facts, the separate lowerBoundSeconds and assignedIsLowerBound. When the flag is true, aggregate assignedSeconds includes supported quantity floors for unresolved named totals; do not store those floors as effective minutes or treat the aggregate as a complete measured sum. unknownRoleSeconds is nullable when its amount is unresolved. The same budget equation is retained, including anonymous keeper quantities. Respect algorithm version 1.0.1 in the publication input hash.
 
 Resolver output is not a database row. Store compact per-player dependencies/portions and capped diagnostics within current evidence-size limits; do not serialize the entire full-event graph into each 16 KB evidence column. Stage all changed rows and atomically switch the active run only after the lifecycle/account/source/season/input fence is checked inside the publication transaction. Bump read content revision only for a real publication. Include resolver algorithm version in the scoped input hash so unchanged provider data is recalculated after algorithm upgrades.
 
