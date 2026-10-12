@@ -1,3 +1,5 @@
+> Current release: the in-place 7.1.4 transition is governed by [schema-upgrade.md](schema-upgrade.md). Its automatic activation and compatible maintenance recovery supersede the historical fresh-cutover and old-binary rollback instructions below. Do not repeat empty-database preparation.
+
 # Existing myts-v7 Worker: clean rebuild deployment
 
 This release targets the existing **myts-v7** Worker and production branch. It needs no third Worker, new scheduler namespace, new URL or another Cloudflare sign-in. Corrected version: **7.1.2**.

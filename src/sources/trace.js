@@ -4,6 +4,7 @@ import * as Q from "./trace-contracts.js";
 
 export const APP = "https://go.traceup.com", TEAMS = "https://teams.traceup.com/webapp", GRAPH = APP + "/traceid-prod/graphql", LAPI = "https://lapi.traceup.com/traceid-prod/graphql";
 const RECORD_LIMIT = 60_000;
+const RADAR_FRAME_LIMIT = 60_000, RADAR_ACTOR_LIMIT = 128, RADAR_OBSERVATION_LIMIT = 600_000;
 
 export async function traceRequest(transport, endpoint, cookie = "", options = {}) {
   return transport.get(endpoint, { ...options, headers: { Accept: "application/json", Origin: APP, Referer: APP + "/", ...(cookie ? { Cookie: cookie } : {}), ...options.headers } }, options.maxBytes ? "radar" : "json");
@@ -103,11 +104,113 @@ function ownMembers(game, teamId, side) {
 }
 
 function clipsFor(game) {
-  return [1, 2].map((half) => game.moments.find((m) => m.type === "FullGameVideo" && Number(m.half) === half && (!m.camera?.name || !m.camera.name.startsWith("sf_")))).filter(Boolean).map((m) => {
+  return [1, 2].map((half) => {
+    const candidates = game.moments.filter((m) => m.type === "FullGameVideo" && Number(m.half) === half && !text(m.camera?.name).startsWith("sf_"));
+    return candidates.find((m) => m.camera?.name === "tracecam" || m.camera?.type === "Trace" || m.camera?.category === "camera") || candidates[0];
+  }).filter(Boolean).map((m) => {
+    if (m.game_id != null) requireValue(native(m.game_id) === native(game.game_id), "Trace full-half clip belongs to another game.", "contract_violation");
     const clip = { half: Number(m.half), game_clip_id: Number(m.game_clip_id), start: Number(m.start_time), duration: Number(m.duration || m.dynamic_duration) };
-    requireValue(native(clip.game_clip_id) && Number.isFinite(clip.start) && Number.isFinite(clip.duration) && clip.duration > 0, "Trace full-half timing is incomplete.", "unsupported_response");
+    requireValue(m.start_time !== null && m.start_time !== undefined && m.start_time !== "" && native(clip.game_clip_id) && Number.isFinite(clip.start) && clip.start >= 0 && Number.isFinite(clip.duration) && clip.duration > 0, "Trace full-half timing is incomplete.", "unsupported_response");
     return { source: m, clip };
   });
+}
+
+// Carry only exact native member IDs, never player names or position labels.
+// These are produced by the authenticated game collector, not accepted from
+// imported analysis summaries or from self-declared radar analysis properties.
+function nativeRoleScope(game, accountId) {
+  const home = native(game.home_team?.team_id), away = native(game.away_team?.team_id);
+  const scope = { account_id: accountId, game_id: native(game.game_id), home_team_id: home, away_team_id: away, home: [], away: [] };
+  for (const m of game.team_members) {
+    if (m.is_player !== true || !["home", "away"].includes(m.side)) continue;
+    const team = m.side === "home" ? home : away, gid = text(m.gid, 160);
+    // A side label and a GID pattern alone are not a provider team identity.
+    if (m.gid !== gid || native(m.team_id) !== team || !new RegExp("^" + m.side + "-(?:\\d+|goalkeeper)$").test(gid)) continue;
+    if (!scope[m.side].includes(gid)) scope[m.side].push(gid);
+  }
+  scope.home.sort(); scope.away.sort();
+  // Leave proof unknown rather than exceeding the scheduler's 8 KiB job bound.
+  return scope.home.length + scope.away.length <= 128 && bytes(scope) <= 5000 ? scope : null;
+}
+
+function roleProof(scope, args, accountId) {
+  if (!scope || scope.account_id !== accountId || scope.game_id !== native(args.game_id) || !native(scope.home_team_id) || !native(scope.away_team_id) || scope.home_team_id === scope.away_team_id || ![scope.home_team_id, scope.away_team_id].includes(native(args.team_id))) return [];
+  const roles = [];
+  for (const side of ["home", "away"]) {
+    if (!Array.isArray(scope[side]) || scope[side].length > 128) return [];
+    for (const gid of scope[side]) {
+      if (typeof gid !== "string" || gid.length > 160 || !new RegExp("^" + side + "-(?:\\d+|goalkeeper)$").test(gid)) return [];
+      roles.push({ gid, side, role: gid === side + "-goalkeeper" ? "goalkeeper" : "field", verified: true });
+    }
+  }
+  return roles.length <= 128 && new Set(roles.map((r) => r.gid)).size === roles.length ? roles : [];
+}
+
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b), mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function movingMedian(values) {
+  const result = new Float64Array(values.length), window = [];
+  let lo = 0, hi = 0;
+  const insert = (value) => { let i = 0; while (i < window.length && window[i] <= value) i++; window.splice(i, 0, value); };
+  for (let i = 0; i < values.length; i++) {
+    const nextLo = Math.max(0, i - 5), nextHi = Math.min(values.length, i + 6);
+    while (lo < nextLo) window.splice(window.indexOf(values[lo++]), 1);
+    while (hi < nextHi) insert(values[hi++]);
+    const mid = Math.floor(window.length / 2);
+    result[i] = window.length % 2 ? window[mid] : (window[mid - 1] + window[mid]) / 2;
+  }
+  return result;
+}
+
+// Original 6.20.133 TraceSourceTools algorithm, with bounded rolling reductions.
+// Radar time is centiseconds; Halo and play-window time is half-local seconds.
+// Caps reject the entire asset explicitly; no partial prefix becomes proof.
+function radarAnalysis(radar, args, accountId) {
+  const frames = radar.frm;
+  requireValue(frames.length <= RADAR_FRAME_LIMIT, "Trace radar exceeds its frame bound.", "record_too_large");
+  const counts = new Uint16Array(frames.length), balanced = new Uint16Array(frames.length);
+  const roles = roleProof(args.native_role_scope, args, accountId), known = new Map(roles.map((r) => [r.gid, r]));
+  let previous = -Infinity, observations = 0, allKnown = roles.length > 0;
+  for (let i = 0; i < frames.length; i++) {
+    const frame = frames[i];
+    requireValue(frame && typeof frame.t === "number" && Number.isFinite(frame.t) && frame.t >= 0 && frame.t >= previous && frame.a && typeof frame.a === "object" && !Array.isArray(frame.a), "Trace radar frame is invalid.", "unsupported_response");
+    previous = frame.t;
+    const ids = Object.keys(frame.a); observations += ids.length;
+    requireValue(ids.length <= RADAR_ACTOR_LIMIT && observations <= RADAR_OBSERVATION_LIMIT, "Trace radar exceeds its actor observation bound.", "record_too_large");
+    counts[i] = ids.length;
+    let home = 0, away = 0, keepers = 0;
+    for (const gid of ids) {
+      const role = known.get(gid);
+      if (!role) { allKnown = false; continue; }
+      if (role.side === "home") home++; else away++;
+      if (role.role === "goalkeeper") keepers++;
+    }
+    // Counts alone cannot establish equal team capacity or include a keeper.
+    if (home > 0 && home === away && keepers === 2) balanced[i] = home + away;
+  }
+  requireValue(frames.at(-1).t > frames[0].t, "Trace radar timing is invalid.", "unsupported_response");
+  const smooth = movingMedian(counts), a = Math.floor(smooth.length * .2), b = Math.max(Math.floor(smooth.length * .8), a + 1);
+  const baseline = median(smooth.subarray(a, b)), threshold = baseline - Math.max(3, baseline * .22);
+  let lo = 0, hi = 0, good = 0, first = null, last = null, balancedFrames = 0;
+  for (let i = 0; i < frames.length; i++) {
+    const nextLo = Math.max(0, i - 10), nextHi = Math.min(frames.length, i + 11);
+    while (lo < nextLo) good -= Number(smooth[lo++] >= threshold);
+    while (hi < nextHi) good += Number(smooth[hi++] >= threshold);
+    if (good / (hi - lo) >= .8) { first ??= i; last = i; }
+    if (i >= a && i < b && balanced[i] === baseline) balancedFrames++;
+  }
+  const start = frames[first ?? 0].t / 100, end = frames[last ?? (frames.length - 1)].t / 100, round = (n, p = 1000) => Math.round(n * p) / p;
+  const both = allKnown && baseline > 0 && balancedFrames / (b - a) >= .8;
+  // Preserve the legacy raw population scalar without a second frame traversal.
+  counts.sort();
+  return { population: counts[Math.floor(counts.length / 2)], analysis: {
+    play_window: baseline > 0 && end > start ? { start: round(start), end: round(end), duration: round(end - start), baseline_tracks: round(baseline, 100), threshold_tracks: round(threshold, 100), complete: true } : null,
+    both_sides_verified: both ? true : null, track_roles: roles,
+    basis: "native_radar_sustained_population", role_basis: roles.length ? "native_game_member_team_side_gid" : null,
+    population_basis: both ? "balanced_native_sides_with_goalkeepers" : null } };
 }
 
 function assetURL(value, base) {
@@ -116,14 +219,17 @@ function assetURL(value, base) {
   return u.href;
 }
 
-function derivedChildren(game, args, members, side) {
-  const teamId = native(args.team_id), fixtureId = key("trace", args.game_id), teamKey = key("trace", teamId), clips = clipsFor(game), children = [];
+function derivedChildren(game, args, members, side, accountId) {
+  const teamId = native(args.team_id), fixtureId = key("trace", args.game_id), teamKey = key("trace", teamId), clips = clipsFor(game), children = [], native_role_scope = nativeRoleScope(game, accountId);
   for (const { source, clip } of clips) {
-    if (source.dynamic_jfile) children.push(job("trace", "radar", fixtureId + ":" + teamKey + ":" + clip.half, { team_id: teamId, game_id: native(args.game_id), half: clip.half, url: assetURL(source.dynamic_jfile, source.base_path || game.base_path) }));
+    if (source.dynamic_jfile) children.push(job("trace", "radar", fixtureId + ":" + teamKey + ":" + clip.half, { team_id: teamId, game_id: native(args.game_id), half: clip.half, url: assetURL(source.dynamic_jfile, source.base_path || game.base_path), ...(native_role_scope ? { native_role_scope } : {}) }));
+    const seen = new Set();
     for (const member of members) {
       const gid = text(member.gid, 160);
-      if (!gid || member.user?.is_dummy === true || /^(?:tracer|dummy|unidentified)(?:\s|$)/i.test(display(member))) continue;
-      const pid = native(member.user_id || member.user?.user_id), playerId = pid ? key("trace", pid) : `track:${native(args.game_id)}:${teamId}:${gid}`;
+      if (!gid || seen.has(gid)) continue;
+      seen.add(gid);
+      // Anonymous native channels are evidence, never a guessed person.
+      const identified = player(member, null, teamId), playerId = identified ? identified.id : `track:${native(args.game_id)}:${teamId}:${gid}`;
       children.push(job("trace", "tracking", fixtureId + ":" + teamKey + ":" + gid + ":" + clip.half, { team_id: teamId, game_id: native(args.game_id), half: clip.half, gid, player_id: playerId, jersey: text(member.jersey_number, 20), name: display(member), clip }));
     }
   }
@@ -133,7 +239,11 @@ function derivedChildren(game, args, members, side) {
     const nativePlayers=new Map();for(const member of members){const p=player(member,null,teamId),gid=text(member.gid,160);if(p&&gid){if(!nativePlayers.has(p.id))nativePlayers.set(p.id,new Set());nativePlayers.get(p.id).add(gid);}}
     for(const [player_id,gids]of nativePlayers)children.push(job("trace", "analytics", fixtureId + ":" + teamKey + ":" + player_id + ":"+side+":" + period.id, { team_id: teamId, game_id: native(args.game_id), player_id, side, gids:[...gids], period }));
   }
-  return children.map((child)=>({...child,args:{...child.args,reported_date:text(game.full_date)},priority:datePriority(game.full_date)}));
+  return children.map((child) => {
+    const childArgs = { ...child.args, reported_date: text(game.full_date) };
+    if (childArgs.native_role_scope && bytes(childArgs) > 8192) delete childArgs.native_role_scope;
+    return { ...child, args: childArgs, priority: datePriority(game.full_date) };
+  });
 }
 
 function segments(ring) {
@@ -262,7 +372,7 @@ export async function collectTrace({ j, args = {}, cursor = {}, transport, crede
       return offset + page.length < game.moments.length ? continuing("moments", offset + page.length) : continuing("derived");
     }
     requireValue(stage === "derived", "Trace game checkpoint has an unknown stage.", "contract_violation");
-    const children = game.access?.allowed === false ? [] : derivedChildren(game, args, members, side);
+    const children = game.access?.allowed === false ? [] : derivedChildren(game, args, members, side, accountId);
     requireValue(offset <= children.length, "Trace child checkpoint exceeds its scope.", "contract_violation");
     out.children = children.slice(offset, offset + 100);
     if (offset + out.children.length < children.length) return continuing("derived", offset + out.children.length);
@@ -314,11 +424,13 @@ export async function collectTrace({ j, args = {}, cursor = {}, transport, crede
     return out;
   }
   if (j.kind === "radar") {
+    requireValue([1, 2].includes(args.half), "Trace radar half is invalid.", "contract_violation");
     const endpoint = assetURL(args.url), { value: radar } = await traceRequest(transport, endpoint, credential, { maxBytes: 8_000_000 });
-    requireValue(Array.isArray(radar.frm) && radar.frm.length > 1, "Trace radar is empty.", "unsupported_response");
-    const counts = radar.frm.map((f) => Object.keys(f.a || {}).length).sort((a, b) => a - b), start = Number(radar.frm[0].t) / 100, end = Number(radar.frm.at(-1).t) / 100;
+    requireValue(Array.isArray(radar?.frm) && radar.frm.length > 1, "Trace radar is empty.", "unsupported_response");
+    const { analysis, population } = radarAnalysis(radar, args, accountId);
+    const start = radar.frm[0].t / 100, end = radar.frm.at(-1).t / 100;
     requireValue(Number.isFinite(start) && Number.isFinite(end) && end > start, "Trace radar timing is invalid.", "unsupported_response");
-    out.records.trace_parts = [sourcePart("radar:" + args.half, { half: args.half, start, end, population: counts[Math.floor(counts.length / 2)], geometry: radar.setup?.field?.coordinates ?? null, samples: radar.frm.length })];
+    out.records.trace_parts = [sourcePart("radar:" + args.half, { half: args.half, start, end, population, geometry: radar.setup?.field?.coordinates ?? null, samples: radar.frm.length, analysis })];
     out.coverage.push(coverage("radar", fixtureId + ":" + teamKey + ":" + args.half, true, radar.frm.length));
     out.replacements.push({ kind: "trace_radar_parts", fixture_id: fixtureId, team_id: teamKey, account_id: accountId, half: args.half, valid_parts: ["radar:" + args.half] });
     return out;

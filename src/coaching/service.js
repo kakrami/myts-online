@@ -1,4 +1,10 @@
-const POSITIONS = /* @__PURE__ */ new Set(["GK", "LB", "CB", "RB", "LWB", "RWB", "LM", "CM", "RM", "CDM", "CAM", "LW", "RW", "LF", "RF", "ST", "CF"]);
+import {acceptedGameSeason} from '../domain/game-season-state.js';
+import {COACH_SLOTS,COACH_POSITIONS,starterSuggestion,substitutionRecommendations} from '../../web/app/coach-tactics.js';
+import {statisticalSelectionSQL} from '../read-model/inclusion.js';
+import {playerSeasonQuery} from '../analysis/reads.js';
+
+const POSITIONS = new Set([...COACH_POSITIONS,"LF","RF"]);
+const SLOTS = new Set([...COACH_SLOTS.map(s=>s.id),"LF","RF"]);
 const MAX_GAP = 12 * 36e5;
 const fail = (message, status = 400, code = "coach_invalid") => Object.assign(new Error(message), { status, code });
 const id = (value) => {
@@ -28,7 +34,7 @@ function validateProfile(value) {
   const positions = value.positions ?? {};
   if (!object(positions) || Object.keys(positions).length > 3 || Object.entries(positions).some(([p, n]) => !POSITIONS.has(p) || !Number.isInteger(n) || n < 1 || n > 5)) throw fail("Rate up to three positions from 1 to 5.");
   if (value.endurance != null && (!Number.isInteger(value.endurance) || value.endurance < 1 || value.endurance > 5)) throw fail("Rate endurance from 1 to 5.");
-  if (value.target_minutes != null) finite(value.target_minutes, 0, 180, "Choose target minutes from 0 to 180.");
+  if (value.target_minutes != null && (!Number.isInteger(value.target_minutes) || value.target_minutes < 0 || value.target_minutes > 180)) throw fail("Choose whole target minutes from 0 to 180.");
   return { positions: { ...positions }, endurance: value.endurance ?? null, target_minutes: value.target_minutes ?? null };
 }
 function scopeParams(scope) {
@@ -54,7 +60,7 @@ function advance(s, at) {
 function checkField(s, field) {
   if (!object(field)) throw fail("Choose a valid lineup.");
   const values = Object.values(field);
-  if (Object.keys(field).some((p) => !POSITIONS.has(p)) || values.some((p) => !s.players.some((r) => r.player_id === p && r.available)) || new Set(values).size !== values.length || values.length > s.format) throw fail("Use distinct available players in valid positions within the playing format.");
+  if (Object.keys(field).some((p) => !SLOTS.has(p)) || values.some((p) => !s.players.some((r) => r.player_id === p && r.available)) || new Set(values).size !== values.length || values.length > s.format) throw fail("Use distinct available players in valid positions within the playing format.");
 }
 function minutes(s, end) {
   const result = Object.fromEntries(s.players.map((p) => [p.player_id, 0]));
@@ -71,7 +77,7 @@ function changeField(s, next) {
 }
 function lateCorrection(s, a) {
   const valid = new Set(s.players.map((p) => p.player_id));
-  if (!["paused", "finished"].includes(s.phase) || !valid.has(a.out) || !valid.has(a.in) || a.out === a.in) throw fail("Pause or finish before correcting a substitution.");
+  if (!["paused", "halftime", "finished"].includes(s.phase) || !valid.has(a.out) || !valid.has(a.in) || a.out === a.in) throw fail("Pause or finish before correcting a substitution.");
   const start = Math.round(finite(a.at_minutes, 0, s.elapsed_ms / 6e4, "Choose a valid substitution time.") * 6e4);
   const end = start + Math.round(finite(a.duration, 1e-3, s.elapsed_ms / 6e4, "Choose a valid substitution duration.") * 6e4);
   if (end > s.elapsed_ms) throw fail("That correction extends beyond the recorded match clock.");
@@ -94,17 +100,21 @@ function lateCorrection(s, a) {
     s.stints.push({ ...t, id: uuid(), player_id: a.in, start_ms: from, end_ms: to });
     if (to < oldEnd) s.stints.push({ ...t, id: uuid(), start_ms: to, end_ms: oldEnd });
   }
+  // A missed substitution ending at the stopped clock also changes the
+  // current field, as in the original Coach workflow. Earlier interval-only
+  // repairs retain the current lineup.
+  if(end===s.elapsed_ms){const position=Object.keys(s.field).find(key=>s.field[key]===a.out);if(position){if(!s.players.some(p=>p.player_id===a.in&&p.available)||Object.values(s.field).includes(a.in))throw fail("Choose an available bench player for the missed substitution.");changeField(s,{...s.field,[position]:a.in});}}
   return { range_start_ms: start, range_end_ms: end };
 }
 function correction(s, a) {
-  if (!["paused", "finished"].includes(s.phase)) throw fail("Pause or finish before correcting the clock or minutes.");
+  if (!["paused", "halftime", "finished"].includes(s.phase)) throw fail("Pause or finish before correcting the clock or minutes.");
   if (a.elapsed_ms != null) {
     const next = Math.round(finite(a.elapsed_ms, 0, MAX_GAP, "Choose a valid corrected clock."));
     if (next < s.period_start_ms) throw fail("The corrected clock cannot move before the start of this half.");
     if (next < s.elapsed_ms) {
       s.stints = s.stints.filter((t) => t.start_ms < next).map((t) => ({ ...t, end_ms: Math.min(t.end_ms ?? s.elapsed_ms, next) }));
     } else if (next > s.elapsed_ms) {
-      if (Object.keys(s.field).length !== s.format || !s.field.GK) throw fail("A complete lineup is required to extend the recorded clock.");
+      checkField(s,s.field);
       for (const [position, player_id] of Object.entries(s.field)) s.stints.push({ id: uuid(), player_id, position, period: s.period, start_ms: s.elapsed_ms, end_ms: next });
     }
     s.elapsed_ms = next;
@@ -123,10 +133,15 @@ function correction(s, a) {
 }
 function applyCoachCommand(session, action, at = Date.now()) {
   if (!object(action) || typeof action.type !== "string") throw fail("Choose a Coach action.");
-  const s = clone(session), a = action, type = a.type;
+  const s = clone(session), a = {...action}, requestedType=a.type, type = ({finish:"end",next_half:"resume",sub:"substitute"})[a.type]??a.type;
   if (s.history.length >= 1e3) throw fail("The match timeline has reached its limit.", 409, "coach_history");
   let extra = {};
-  if (type === "availability") {
+  if(type === "configure") {
+    if(s.phase!=="setup")throw fail("Configure the game before starting the clock.",409,"coach_state");
+    if(![7,9].includes(a.format)||!Number.isInteger(a.half_minutes)||a.half_minutes<5||a.half_minutes>90)throw fail("Choose 7v7 or 9v9 and a half length from 5 to 90 minutes.");
+    if(Object.keys(s.field).length>a.format)throw fail("Remove starters before reducing the game format.");
+    s.format=a.format;s.half_minutes=a.half_minutes;
+  } else if (type === "availability") {
     if (!["setup", "paused", "halftime"].includes(s.phase) || !Array.isArray(a.players)) throw fail("Pause before changing availability.");
     const selected = new Set(a.players);
     if (selected.size !== a.players.length || a.players.some((p) => !s.players.some((r) => r.player_id === p))) throw fail("Choose distinct roster players.");
@@ -139,10 +154,11 @@ function applyCoachCommand(session, action, at = Date.now()) {
     if (!["setup", "paused", "halftime"].includes(s.phase)) throw fail("Pause before changing the lineup.");
     changeField(s, a.field);
   } else if (type === "start" || type === "resume") {
-    if (type === "start" ? s.phase !== "setup" : !["paused", "halftime"].includes(s.phase)) throw fail("That clock action is unavailable.", 409);
+    if (requestedType === "next_half" && s.phase !== "halftime" || (type === "start" ? s.phase !== "setup" : !["paused", "halftime"].includes(s.phase))) throw fail("That clock action is unavailable.", 409);
     if (s.clock_review) throw fail("Correct the interrupted clock before resuming.", 409, "clock_review");
     checkField(s, s.field);
-    if (Object.keys(s.field).length !== s.format || !s.field.GK) throw fail(`Place ${s.format} players including a goalkeeper before starting.`, 409);
+    if (Object.keys(s.field).length !== s.format) throw fail(`Place ${s.format} players before starting.`, 409);
+    if(s.phase==="halftime"){s.period=2;s.period_start_ms=s.elapsed_ms;}
     s.phase = "running";
     s.running_since = stamp(at);
     openField(s, s.elapsed_ms);
@@ -162,7 +178,7 @@ function applyCoachCommand(session, action, at = Date.now()) {
     changeField(s, { ...s.field, [position]: a.in });
     extra.position = position;
   } else if (type === "move") {
-    if (!["setup", "running", "paused", "halftime"].includes(s.phase) || !POSITIONS.has(a.position)) throw fail("Choose a valid position move.");
+    if (!["setup", "running", "paused", "halftime"].includes(s.phase) || !SLOTS.has(a.position)) throw fail("Choose a valid position move.");
     const old = Object.entries(s.field).find(([, p]) => p === a.player)?.[0];
     if (!old) throw fail("Choose an on-field player.");
     advance(s, at);
@@ -178,61 +194,56 @@ function applyCoachCommand(session, action, at = Date.now()) {
     s.running_since = null;
     if (type === "halftime") {
       s.phase = "halftime";
-      s.period = 2;
-      s.period_start_ms = s.elapsed_ms;
+
     } else s.phase = "finished";
   } else if (type === "correct") correction(s, a);
   else if (type === "late_substitute") extra = lateCorrection(s, a);
+  else if(type === "correct_sub"){if(!Object.values(s.field).includes(a.out)||Object.values(s.field).includes(a.in)||!s.players.some(p=>p.player_id===a.in&&p.available))throw fail("Choose an on-field player and available substitute.");const delta=finite(a.delta,1,3600000,"Choose a valid missed substitution duration.");if(!Number.isInteger(delta))throw fail("Choose whole milliseconds.");const base=minutes(s,s.elapsed_ms),out=s.players.find(p=>p.player_id===a.out),incoming=s.players.find(p=>p.player_id===a.in),outValue=out.minutes_override_ms,inValue=incoming.minutes_override_ms;if((outValue??base[a.out])<delta||(inValue??base[a.in])+delta>s.elapsed_ms)throw fail("The missed substitution exceeds the players’ recorded time.");out.minutes_override_ms=null;incoming.minutes_override_ms=null;extra=lateCorrection(s,{...a,at_minutes:(s.elapsed_ms-delta)/60000,duration:delta/60000});if(outValue!=null)out.minutes_override_ms=outValue-delta;if(inValue!=null)incoming.minutes_override_ms=inValue+delta;}
+  else if(type === "adjust_clock"){const delta=finite(a.delta,-900000,900000,"Adjust the clock by at most 15 minutes.");if(!Number.isInteger(delta))throw fail("Choose whole milliseconds.");const before=minutes(s,s.elapsed_ms),on=new Set(Object.values(s.field)),values=Object.fromEntries(s.players.map(p=>[p.player_id,((p.minutes_override_ms??before[p.player_id])+(on.has(p.player_id)?delta:0))/60000])),overridden=new Set(s.players.filter(p=>p.minutes_override_ms!=null).map(p=>p.player_id));correction(s,{elapsed_ms:s.elapsed_ms+delta,minutes:values});const after=minutes(s,s.elapsed_ms);for(const p of s.players)if(!overridden.has(p.player_id)&&p.minutes_override_ms===after[p.player_id])p.minutes_override_ms=null;}
+  else if(type === "adjust_minutes"){const delta=finite(a.delta,-3600000,3600000,"Adjust player minutes by at most 60 minutes."),p=s.players.find(p=>p.player_id===a.player);if(!Number.isInteger(delta)||!p)throw fail("Choose a roster player and whole milliseconds.");correction(s,{minutes:{[a.player]:((p.minutes_override_ms??minutes(s,s.elapsed_ms)[a.player])+delta)/60000}});}
   else throw fail("Unknown Coach action.");
   const detail = {};
+  if(type === "configure"){detail.format=s.format;detail.half_minutes=s.half_minutes;}
+  if(a.delta!=null)detail.delta=a.delta;
   if (type === "lineup") detail.field = s.field;
   if (type === "availability") detail.players = a.players;
   if (type === "correct") {
     if (a.elapsed_ms != null) detail.elapsed_ms = s.elapsed_ms;
     if (a.minutes != null) detail.minutes = a.minutes;
   }
-  s.history.push({ id: uuid(), sequence: s.history.length + 1, kind: type, period: s.period, match_ms: s.elapsed_ms, recorded_at: stamp(at), player_out: a.out ?? null, player_in: a.in ?? a.player ?? null, position: extra.position ?? a.position ?? null, range_start_ms: extra.range_start_ms ?? null, range_end_ms: extra.range_end_ms ?? null, detail });
+  s.history.push({ id: uuid(), sequence: s.history.length + 1, kind: requestedType, period: s.period, match_ms: s.elapsed_ms, recorded_at: stamp(at), player_out: a.out ?? null, player_in: a.in ?? a.player ?? null, position: extra.position ?? a.position ?? null, range_start_ms: extra.range_start_ms ?? null, range_end_ms: extra.range_end_ms ?? null, detail });
   return s;
 }
 function presentCoachSession(session, at = Date.now()) {
   if (!session) return null;
   const s = session, clock = liveClock(s, at), base = minutes(s, clock.elapsed), resolved = Object.fromEntries(s.players.map((p) => [p.player_id, p.minutes_override_ms ?? base[p.player_id]]));
   const history = s.history.map((h) => ({ ...h, type: h.kind, at: h.recorded_at, elapsed_ms: h.match_ms, label: h.kind.replaceAll("_", " "), clock_label: `${Math.floor(h.match_ms / 6e4)}:${String(Math.floor(h.match_ms / 1e3) % 60).padStart(2, "0")}` }));
-  return { revision: s.revision, format: s.format, half_minutes: s.half_minutes, phase: s.phase, period: s.period, elapsed_ms: s.elapsed_ms, live_elapsed_ms: clock.elapsed, period_elapsed_ms: clock.elapsed - s.period_start_ms, running_since: s.running_since, clock_review: Boolean(clock.review), unaccounted_ms: clock.unaccounted, clock: { elapsed_ms: s.elapsed_ms, running_since: s.running_since }, field: { ...s.field }, active: s.players.filter((p) => p.available).map((p) => p.player_id), minutes_ms: resolved, recorded_minutes_ms: base, minutes_capacity_ms: s.format * clock.elapsed, minutes_recorded_total_ms: Object.values(base).reduce((a, b) => a + b, 0), minutes_total_ms: Object.values(resolved).reduce((a, b) => a + b, 0), roster: s.players.map((p) => ({ id: p.player_id, name: p.name, jersey: p.jersey, available: Boolean(p.available), availability_source: p.availability_source, minutes: resolved[p.player_id] / 6e4, minutes_overridden: p.minutes_override_ms != null })), history, timeline: history };
+  return { sampled_at: at, period_start_ms: s.period_start_ms, revision: s.revision, format: s.format, half_minutes: s.half_minutes, phase: s.phase, period: s.period, elapsed_ms: s.elapsed_ms, live_elapsed_ms: clock.elapsed, period_elapsed_ms: clock.elapsed - s.period_start_ms, running_since: s.running_since, clock_review: Boolean(clock.review), unaccounted_ms: clock.unaccounted, clock: { elapsed_ms: s.elapsed_ms, running_since: s.running_since }, field: { ...s.field }, active: s.players.filter((p) => p.available).map((p) => p.player_id), minutes_ms: resolved, recorded_minutes_ms: base, minutes_capacity_ms: s.format * clock.elapsed, minutes_recorded_total_ms: Object.values(base).reduce((a, b) => a + b, 0), minutes_total_ms: Object.values(resolved).reduce((a, b) => a + b, 0), roster: s.players.map((p) => ({ id: p.player_id, name: p.name, jersey: p.jersey, available: Boolean(p.available), availability_source: p.availability_source, minutes: resolved[p.player_id] / 6e4, minutes_overridden: p.minutes_override_ms != null })), history, timeline: history };
 }
 function suggestCoachLineup(session, profiles = {}, hints = {}, at = Date.now()) {
-  const s = session, positions = s.format === 7 ? ["GK", "LB", "RB", "LM", "CM", "RM", "ST"] : ["GK", "LB", "CB", "RB", "LM", "CM", "RM", "LF", "RF"], current = presentCoachSession(s, at), remaining = s.players.filter((p) => p.available), field = {}, reasons = [];
-  if (remaining.length < s.format) throw fail(`At least ${s.format} available players are needed for a full suggestion.`);
-  for (const position of positions) {
-    const family = position === "GK" ? "GK" : ["LB", "CB", "RB", "LWB", "RWB"].includes(position) ? "DEF" : ["LM", "CM", "RM", "CDM", "CAM"].includes(position) ? "MID" : "FWD";
-    let pool = remaining;
-    if (position === "GK" && remaining.some((p) => profiles[p.player_id]?.positions?.GK)) pool = remaining.filter((p) => profiles[p.player_id]?.positions?.GK);
-    const chosen = pool.map((p) => {
-      const a = profiles[p.player_id] ?? {}, rating = a.positions?.[position] ?? 0, played = current.minutes_ms[p.player_id] / 6e4, target = a.target_minutes ?? s.format * s.half_minutes * 2 / s.players.filter((p2) => p2.available).length, hint = !rating && hints[p.player_id]?.position === family;
-      const deficit = target ? Math.max(-1, Math.min(1, (target - played) / target)) : played === 0 ? 0 : -1;
-      return { p, rating, played, target, hint, score: rating * 3 + deficit * 18 + (a.endurance ?? 0) + (hint ? 2 : 0) };
-    }).sort((a, b) => b.score - a.score || a.p.player_id.localeCompare(b.p.player_id))[0];
-    field[position] = chosen.p.player_id;
-    reasons.push({ player: chosen.p.player_id, position, rating: chosen.rating, recorded_minutes: chosen.played, target_minutes: chosen.target, hint_used: Boolean(chosen.hint), reason: `${chosen.rating ? `Coach position rating ${chosen.rating}/5` : chosen.hint ? "Past role hint" : "No position rating"} \xB7 ${Math.round(chosen.played)} recorded minutes \xB7 target ${Math.round(chosen.target)}` });
-    remaining.splice(remaining.indexOf(chosen.p), 1);
-  }
-  return { field, reasons, applied: false };
+  return starterSuggestion(presentCoachSession(session,at),profiles,hints);
+}
+function suggestCoachSubstitutions(session,profiles={},hints={},at=Date.now()){
+  return substitutionRecommendations(presentCoachSession(session,at),profiles,hints);
 }
 class CoachingService {
-  constructor(db, actor, { now = () => Date.now(), resolveAvailability, resolveRoleHints = async () => ({}) } = {}) {
+  constructor(db, actor, { now = () => Date.now(), resolveAvailability, resolveRoleHints } = {}) {
     this.db = db;
     this.actor = actor;
     this.now = now;
     this.resolveAvailability = resolveAvailability ?? ((scope) => this.attendanceAvailability(scope));
-    this.resolveRoleHints = resolveRoleHints;
+    this.resolveRoleHints = resolveRoleHints??(scope=>this.roleHints(scope));
   }
-  async writeTeam(teamId, statements) {
+  async writeTeam(teamId, statements, gameScope=null) {
     own(this.actor);
-    const token = uuid();
+    const token = uuid(), accepted=gameScope?acceptedGameSeason(teamId,gameScope.team_season_id,gameScope.event_id):{sql:'1',params:[]};
     try {
-      return (await this.db.batch([this.db.prepare("INSERT INTO coach_write_fences VALUES(?,CASE WHEN EXISTS(SELECT 1 FROM app_teams WHERE id=?) AND NOT EXISTS(SELECT 1 FROM team_lifecycle WHERE team_id=?) THEN 1 ELSE 0 END)").bind(token, teamId, teamId), ...statements, this.db.prepare("DELETE FROM coach_write_fences WHERE token=?").bind(token)])).slice(1, -1);
+      return (await this.db.batch([this.db.prepare(`INSERT INTO coach_write_fences VALUES(?,CASE WHEN EXISTS(SELECT 1 FROM app_teams WHERE id=?) AND NOT EXISTS(SELECT 1 FROM team_lifecycle WHERE team_id=?) AND (${accepted.sql}) THEN 1 ELSE 0 END)`).bind(token, teamId, teamId,...accepted.params), ...statements, this.db.prepare("DELETE FROM coach_write_fences WHERE token=?").bind(token)])).slice(1, -1);
     } catch (error) {
-      if (String(error.message).includes("coach_team_alive")) throw fail("This team was removed. Reload before editing.", 409, "team_removed");
+      if (String(error.message).includes("coach_team_alive")) {
+        if(gameScope&&!(await this.db.prepare(`SELECT ${accepted.sql} AS accepted`).bind(...accepted.params).first())?.accepted)throw fail("This match moved to another season. Reload before editing.",409,"revision_conflict");
+        throw fail("This team was removed. Reload before editing.", 409, "team_removed");
+      }
       throw error;
     }
   }
@@ -244,6 +255,19 @@ class CoachingService {
       result[player] = statuses.size === 1 ? [...statuses][0] : "unresolved";
     }
     return result;
+  }
+  async roleHints(scope) {
+    own(this.actor);
+    const season=await this.db.prepare("SELECT include_june FROM team_seasons WHERE app_team_id=? AND id=?").bind(scope.team_id,scope.team_season_id).first();
+    const selection={...scope,mode:'season',period:'all',type:'all',search:'',include_june:!!season?.include_june,timezone:'UTC'};
+    const summary=playerSeasonQuery(selection),selected=statisticalSelectionSQL(selection);
+    const rows=await this.db.batch([
+      this.db.prepare(`SELECT p.id,p.position,json_extract(o.fields,'$.position') AS assigned_position FROM (${summary.sql}) p LEFT JOIN analysis_overrides o ON o.app_team_id=? AND o.team_season_id=? AND o.kind='player_season' AND o.event_id='' AND o.player_id=p.id`).bind(...summary.params,scope.team_id,scope.team_season_id),
+      this.db.prepare(`WITH recent AS(SELECT p.player_id,p.minutes,ROW_NUMBER() OVER(PARTITION BY p.player_id ORDER BY COALESCE(e.local_day,substr(e.starts_at,1,10)) DESC,e.event_id DESC) AS rank FROM effective_player_matches p JOIN team_events e ON e.app_team_id=p.app_team_id AND e.team_season_id=p.team_season_id AND e.event_id=p.event_id JOIN match_analysis a ON a.app_team_id=p.app_team_id AND a.team_season_id=p.team_season_id AND a.event_id=p.event_id JOIN source_events source ON source.id=a.source_event_id AND source.provider='trace' WHERE p.app_team_id=? AND p.team_season_id=? AND ${selected} AND e.status IN('FINAL','COMPLETED') AND p.minutes>0) SELECT player_id,minutes FROM recent WHERE rank<=5 ORDER BY player_id,rank DESC`).bind(scope.team_id,scope.team_season_id)
+    ]);
+    const hints=Object.fromEntries(rows[0].results.map(p=>[p.id,{assigned_position:p.assigned_position??null,resolved_position:p.position??null,recent_trace_minutes:[]}]));
+    for(const p of rows[1].results)if(hints[p.player_id])hints[p.player_id].recent_trace_minutes.push(p.minutes);
+    return hints;
   }
   async canonicalId(kind, value) {
     own(this.actor);
@@ -260,7 +284,8 @@ class CoachingService {
     if (!season) throw fail("That team season is unavailable.", 404, "selection_invalid");
     if (event) {
       scope.event_id = await this.canonicalId("event", scope.event_id);
-      const row = await this.db.prepare("SELECT * FROM team_events WHERE app_team_id=? AND team_season_id=? AND event_id=?").bind(...scopeParams(scope)).first();
+      const accepted=acceptedGameSeason(scope.team_id,scope.team_season_id,scope.event_id);
+      const row = await this.db.prepare(`SELECT * FROM team_events WHERE app_team_id=? AND team_season_id=? AND event_id=? AND (${accepted.sql})`).bind(...scopeParams(scope),...accepted.params).first();
       if (!row) throw fail("That match is unavailable.", 404, "event_not_found");
       if (row.type !== "game" || row.conditional) throw fail("Coach requires a confirmed game.", 409, "coach_unavailable");
     }
@@ -307,7 +332,7 @@ class CoachingService {
     const row = candidates[0];
     if (!row) return null;
     const key = [scope.team_id, scope.team_season_id, row.event_id], result = await this.db.batch([
-      this.db.prepare("SELECT * FROM coach_session_players WHERE app_team_id=? AND team_season_id=? AND event_id=? ORDER BY player_id").bind(...key),
+      this.db.prepare("SELECT * FROM coach_session_players WHERE app_team_id=? AND team_season_id=? AND event_id=? ORDER BY name COLLATE NOCASE,player_id").bind(...key),
       this.db.prepare("SELECT position,player_id FROM coach_lineup WHERE app_team_id=? AND team_season_id=? AND event_id=?").bind(...key),
       this.db.prepare("SELECT id,player_id,position,period,start_ms,end_ms FROM coach_stints WHERE app_team_id=? AND team_season_id=? AND event_id=? ORDER BY start_ms,id").bind(...key),
       this.db.prepare("SELECT * FROM coach_timeline WHERE app_team_id=? AND team_season_id=? AND event_id=? ORDER BY sequence").bind(...key)
@@ -328,7 +353,9 @@ class CoachingService {
       identity_conflict = error.conflict;
     }
     const attendance = await this.resolveAvailability(scope), roster = (await this.db.prepare("SELECT player_id AS id,name,jersey FROM team_players WHERE app_team_id=? AND team_season_id=? ORDER BY name COLLATE NOCASE,player_id").bind(scope.team_id, scope.team_season_id).all()).results.map((p) => ({ ...p, available: attendance[p.id] !== "no", availability_source: attendance[p.id] ? `attendance:${attendance[p.id]}` : "attendance:unknown" }));
-    return { owner: true, event_id: scope.event_id, session: presentCoachSession(session, this.now()), roster, profiles: await this.profiles(scope), ...identity_conflict ? { identity_conflict } : {} };
+    const formatRow=await this.db.prepare("SELECT format FROM match_analysis WHERE app_team_id=? AND team_season_id=? AND event_id=?").bind(...scopeParams(scope)).first();
+    const profiles=await this.profiles(scope),role_hints=await this.resolveRoleHints(scope),at=this.now(),values=Object.fromEntries(Object.entries(profiles).filter(([,p])=>!p.conflict).map(([key,p])=>[key,p.value]));
+    return { owner: true, event_id: scope.event_id, format: [7,9].includes(formatRow?.format)?formatRow.format:7, session: presentCoachSession(session, at), roster, profiles, role_hints, recommendations: session?suggestCoachSubstitutions(session,values,role_hints,at):[], ...identity_conflict ? { identity_conflict } : {} };
   }
   async command(scope, action, expectedRevision) {
     scope = { ...scope };
@@ -338,9 +365,9 @@ class CoachingService {
     const r = revision(expectedRevision), existing = await this.load(scope), at = this.now();
     if (action?.type === "create") {
       if (existing || r !== 0) throw fail("A Coach plan already exists. Reload it.", 409, "revision_conflict");
-      const format = Number(action.format ?? 9), half = Number(action.half_minutes ?? 25);
-      if (![7, 9].includes(format) || !Number.isInteger(half) || half < 5 || half > 60) throw fail("Choose 7v7 or 9v9 and a half length from 5 to 60 minutes.");
-      const roster = (await this.db.prepare("SELECT player_id,name,jersey FROM team_players WHERE app_team_id=? AND team_season_id=? ORDER BY player_id").bind(scope.team_id, scope.team_season_id).all()).results;
+      const format = Number(action.format ?? 7), half = Number(action.half_minutes ?? 25);
+      if (![7, 9].includes(format) || !Number.isInteger(half) || half < 5 || half > 90) throw fail("Choose 7v7 or 9v9 and a half length from 5 to 90 minutes.");
+      const roster = (await this.db.prepare("SELECT player_id,name,jersey FROM team_players WHERE app_team_id=? AND team_season_id=? ORDER BY name COLLATE NOCASE,player_id").bind(scope.team_id, scope.team_season_id).all()).results;
       if (!roster.length || roster.length > 100) throw fail("A Coach plan needs a roster of 1 to 100 players.");
       const attendance = await this.resolveAvailability(scope);
       const next2 = { format, half_minutes: half, phase: "setup", period: 1, elapsed_ms: 0, period_start_ms: 0, running_since: null, clock_review: false, field: {}, players: roster.map((p) => ({ ...p, available: attendance[p.player_id] !== "no", availability_source: attendance[p.player_id] ? `attendance:${attendance[p.player_id]}` : "attendance:unknown", minutes_override_ms: null })), stints: [], history: [] };
@@ -365,10 +392,10 @@ class CoachingService {
     }
     return expected;
   }
-  async resolutionBatch(statements, teamId) {
+  async resolutionBatch(statements, teamId, gameScope=null) {
     own(this.actor);
     try {
-      return await this.writeTeam(teamId, statements);
+      return await this.writeTeam(teamId, statements,gameScope);
     } catch (error) {
       if (String(error.message).includes("expected_count=actual_count") || String(error.message).includes("expected_matches=actual_matches")) throw fail("These private records changed on another device. Reload before choosing.", 409, "revision_conflict");
       throw error;
@@ -397,7 +424,7 @@ class CoachingService {
     const guard = "EXISTS(SELECT 1 FROM coach_resolution_preconditions WHERE id=?)", statements = [first];
     for (const table of ["coach_stints", "coach_lineup", "coach_session_players", "coach_timeline", "coach_sessions"]) statements.push(this.db.prepare(`DELETE FROM ${table} WHERE app_team_id=? AND team_season_id=? AND event_id IN(SELECT input_id FROM canonical_event_ids WHERE canonical_id=?) AND event_id<>? AND ${guard}`).bind(...key, keep, token));
     statements.push(this.db.prepare(`UPDATE coach_sessions SET revision=revision+1,updated_at=?,write_token=? WHERE app_team_id=? AND team_season_id=? AND event_id=? AND ${guard}`).bind(stamp(this.now()), token, scope.team_id, scope.team_season_id, keep, token), this.db.prepare("DELETE FROM coach_resolution_preconditions WHERE id=?").bind(token));
-    await this.resolutionBatch(statements, scope.team_id);
+    await this.resolutionBatch(statements, scope.team_id,scope);
     return { session: (await this.read(scope)).session };
   }
   async resolveSessionPlayerIdentity(scope, choice, expectedRevision) {
@@ -414,7 +441,7 @@ class CoachingService {
     statements.push(this.db.prepare(`UPDATE coach_stints SET end_ms=? WHERE app_team_id=? AND team_season_id=? AND event_id=? AND end_ms IS NULL AND ${guard}`).bind(elapsed, ...key, ...guardParams));
     for (const table of ["coach_stints", "coach_lineup", "coach_session_players"]) statements.push(this.db.prepare(`DELETE FROM ${table} WHERE app_team_id=? AND team_season_id=? AND event_id=? AND player_id IN(SELECT value FROM json_each(?)) AND ${guard}`).bind(...key, stable(removed), ...guardParams));
     statements.push(this.db.prepare(`INSERT INTO coach_timeline SELECT ?,?,?,?,COALESCE(max(sequence),0)+1,'resolve_player_identity',?,?,?,NULL,?,NULL,NULL,NULL,? FROM coach_timeline WHERE app_team_id=? AND team_season_id=? AND event_id=? AND ${guard} HAVING ${guard}`).bind(uuid(), ...key, session.period, elapsed, stamp(at), keep, stable({ retained_player_id: keep, discarded_player_ids: removed }), ...key, ...guardParams, ...guardParams));
-    const result = await this.writeTeam(scope.team_id, statements);
+    const result = await this.writeTeam(scope.team_id, statements,scope);
     if (result[0].meta.changes !== 1) throw fail("The Coach plan changed on another device.", 409, "revision_conflict");
     return { session: (await this.read(scope)).session };
   }
@@ -430,7 +457,7 @@ class CoachingService {
     if (changed.length) statements.push(this.db.prepare(`INSERT INTO coach_stints SELECT json_extract(value,'$.id'),?,?,?,json_extract(value,'$.player_id'),json_extract(value,'$.position'),json_extract(value,'$.period'),json_extract(value,'$.start_ms'),json_extract(value,'$.end_ms') FROM json_each(?) WHERE ${guard} ON CONFLICT(id) DO UPDATE SET player_id=excluded.player_id,position=excluded.position,period=excluded.period,start_ms=excluded.start_ms,end_ms=excluded.end_ms`).bind(...key, stable(changed.map((p) => ({ ...p, player_id: stored[p.player_id] }))), ...guardParams));
     const added = next.history.slice(old?.history.length ?? 0);
     if (added.length) statements.push(this.db.prepare(`INSERT INTO coach_timeline SELECT json_extract(value,'$.id'),?,?,?,json_extract(value,'$.sequence'),json_extract(value,'$.kind'),json_extract(value,'$.period'),json_extract(value,'$.match_ms'),json_extract(value,'$.recorded_at'),json_extract(value,'$.player_out'),json_extract(value,'$.player_in'),json_extract(value,'$.position'),json_extract(value,'$.range_start_ms'),json_extract(value,'$.range_end_ms'),json_extract(value,'$.detail') FROM json_each(?) WHERE ${guard}`).bind(...key, stable(added.map((p) => ({ ...p, player_out: stored[p.player_out] ?? p.player_out, player_in: stored[p.player_in] ?? p.player_in }))), ...guardParams));
-    const result = await this.writeTeam(scope.team_id, statements);
+    const result = await this.writeTeam(scope.team_id, statements,scope);
     if (result[0].meta.changes !== 1) throw fail("The Coach plan changed on another device. Reload before editing.", 409, "revision_conflict");
   }
 }
@@ -439,5 +466,6 @@ export {
   applyCoachCommand,
   presentCoachSession,
   suggestCoachLineup,
+  suggestCoachSubstitutions,
   validateProfile
 };

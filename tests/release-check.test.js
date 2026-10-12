@@ -8,8 +8,10 @@ test.before(async()=>{config=parseJSONC(await readFile('wrangler.jsonc','utf8'))
 test('configured release permits its fresh target but deployment rejects placeholders, old resources and incomplete bindings',()=>{
  assert.doesNotThrow(()=>validateConfiguration(config));assert.doesNotThrow(()=>validateConfiguration(config,{deployment:true}));
  const placeholder={...config,d1_databases:[{...config.d1_databases[0],database_id:'00000000-0000-0000-0000-000000000000'}]};assert.doesNotThrow(()=>validateConfiguration(placeholder));assert.throws(()=>validateConfiguration(placeholder,{deployment:true}),/placeholder/);
- const configured={...config,d1_databases:[{...config.d1_databases[0],database_id:'11111111-1111-4111-8111-111111111111'}]};assert.doesNotThrow(()=>validateConfiguration(configured,{deployment:true}));
+ const configured={...config,d1_databases:[{...config.d1_databases[0],database_id:'60f77502-33d4-41d6-80d4-1c5577ebba76'}]};assert.doesNotThrow(()=>validateConfiguration(configured,{deployment:true}));assert.throws(()=>validateConfiguration({...configured,d1_databases:[{...configured.d1_databases[0],database_id:'11111111-1111-4111-8111-111111111111'}]},{deployment:true}),/must preserve database/);
  assert.throws(()=>validateConfiguration({...configured,d1_databases:[{...configured.d1_databases[0],database_id:'c3585493-4ad5-44f2-9484-816a615ee633'}]},{deployment:true}),/previous application/);
+ for(const mode of ['normal','maintenance'])assert.doesNotThrow(()=>validateConfiguration({...configured,vars:{MYTS_UPGRADE_MODE:mode}},{deployment:true}));
+ assert.throws(()=>validateConfiguration({...configured,vars:{MYTS_UPGRADE_MODE:'resume-anything'}},{deployment:true}),/MYTS_UPGRADE_MODE/);
  assert.throws(()=>validateConfiguration({...configured,preview_urls:undefined}),/Preview URLs/);assert.throws(()=>validateConfiguration({...configured,preview_urls:true}),/Preview URLs/);
  assert.throws(()=>validateConfiguration({...configured,migrations:[]}),/without migrations/);assert.throws(()=>validateConfiguration({...configured,exports:{}}),/SQLite/);assert.throws(()=>validateConfiguration({...configured,name:'myts-review'}),/myts-v7/);
 });
@@ -26,9 +28,28 @@ test('required-only graph excludes the old application and credentials are rejec
  for(const old of ['worker.review.js','src/auth.js','src/jobs.js','src/providers/trace.js','web/index.html','node_modules','tests/harness.js'])assert.ok(!files.includes(old));
  assert.throws(()=>scanSecretText('sample.json','{"ADMIN_KEY":"'+'x'.repeat(40)+'"}'),/Potential embedded credential/);assert.doesNotThrow(()=>scanSecretText('safe.json','{"ADMIN_KEY":""}'));
 });
-test('deployment fingerprint matches actual native initialization and rejects foreign remote database shape',async()=>{
- const h=await freshHarness();try{await h.initialize();const identity=await schemaIdentity(),setup=await h.db.prepare('SELECT schema_fingerprint,state FROM setup_state WHERE id=1').first(),domain=await h.db.prepare('SELECT schema_version FROM domain_installation WHERE id=1').first(),names=(await h.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all()).results.map(row=>row.name);assert.ok(identity.tables.has('catalog_state'));assert.ok(identity.tables.has('team_catalog_state'));assert.equal(setup.schema_fingerprint,identity.fingerprint);assert.equal(validateRemoteDatabase(names,setup,domain,identity).state,'ready');assert.equal(validateRemoteDatabase([],null,null,identity).state,'empty');assert.throws(()=>validateRemoteDatabase([...names,'old_application'],setup,domain,identity),/another build/);assert.throws(()=>validateRemoteDatabase(names,{...setup,schema_fingerprint:'different'},domain,identity),/another build/);assert.throws(()=>validateRemoteDatabase(names,setup,null,identity),/incomplete/);assert.throws(()=>validateRemoteDatabase(names.filter(name=>name!=='security_owner'),setup,domain,identity),/incomplete/);assert.equal(validateRemoteDatabase(['setup_state'],{...setup,state:'initializing'},null,identity).state,'initializing');}finally{await h.dispose();}
+test('deployment fingerprint matches native initialization but production rejects fresh-origin and foreign state',async()=>{
+ const h=await freshHarness();try{
+  await h.initialize();const identity=await schemaIdentity(),setup=await h.db.prepare('SELECT * FROM setup_state WHERE id=1').first(),domain=await h.db.prepare('SELECT schema_version FROM domain_installation WHERE id=1').first(),objects=(await h.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'").all()).results,names=objects.filter(row=>row.type==='table').map(row=>row.name),journal=await h.db.prepare('SELECT * FROM installation_upgrade WHERE id=1').first(),details={objects,journal};
+  assert.ok(identity.tables.has('catalog_state'));assert.ok(identity.tables.has('team_catalog_state'));assert.equal(setup.schema_fingerprint,identity.fingerprint);
+  assert.throws(()=>validateRemoteDatabase(names,setup,domain,identity),/Physical schema metadata/);
+  assert.throws(()=>validateRemoteDatabase(names,setup,domain,identity,details),/preserved 7.1.4 transition/);
+  assert.equal(validateRemoteDatabase([],null,null,identity,{objects:[]}).state,'empty');
+  assert.throws(()=>validateRemoteDatabase([...names,'old_application'],setup,domain,identity,details),/another build/);
+  assert.throws(()=>validateRemoteDatabase(names,{...setup,schema_fingerprint:'different'},domain,identity,details),/another build/);
+  assert.throws(()=>validateRemoteDatabase(names,setup,null,identity,details),/incomplete/);
+  assert.throws(()=>validateRemoteDatabase(names.filter(name=>name!=='security_owner'),setup,domain,identity,details),/incomplete/);
+  assert.throws(()=>validateRemoteDatabase(['setup_state'],{...setup,state:'initializing'},null,identity,details),/fully ready/);
+ }finally{await h.dispose();}
 });
 test('required-only staging includes pinned npm install inputs and a full SHA-256 manifest',async()=>{
  const stage='tmp/install-check-'+crypto.randomUUID(),files=await requiredFiles(),manifest=await stageRelease(stage,files);assert.equal(manifest.files.length,files.length);assert.ok(manifest.files.every(file=>/^[a-f0-9]{64}$/.test(file.sha256)));assert.ok(manifest.files.some(file=>file.path==='package-lock.json'));assert.equal(JSON.parse(await readFile(stage+'/package-lock.json','utf8')).packages['node_modules/wrangler'].version,'4.149.0');
+});
+
+
+test('production target admission requires completed preserved-origin transition, not a fresh initialization',async()=>{
+ const identity=await schemaIdentity(),names=identity.objects.filter(row=>row.type==='table').map(row=>row.name),setup={schema_fingerprint:identity.fingerprint,next_index:identity.schema.length,state:'ready',started_at:'original-start',completed_at:'original-complete'},journal={epoch:'team-connections-v1',from_fingerprint:'e52ac3c69e4cdf8d5b30a8c4587b9080a6220436b3b6d421d72a45781420b003',to_fingerprint:identity.fingerprint,plan_hash:identity.planHash,phase:'complete',writer_mode:null,permit_guard:null,original_cursor:270,original_started_at:setup.started_at,original_completed_at:setup.completed_at};
+ assert.equal(validateRemoteDatabase(names,setup,{schema_version:1},identity,{objects:identity.objects,journal}).state,'ready');
+ assert.throws(()=>validateRemoteDatabase(names,setup,{schema_version:1},identity,{objects:identity.objects,journal:{...journal,from_fingerprint:null,plan_hash:'fresh'}}),/preserved 7.1.4 transition/);
+ assert.throws(()=>validateRemoteDatabase(names,{...setup,state:'initializing'},{schema_version:1},identity,{objects:identity.objects,journal}),/fully ready/);
 });

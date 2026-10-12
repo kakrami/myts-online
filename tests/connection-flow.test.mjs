@@ -1,6 +1,7 @@
 import test from 'node:test';
+import {RevisionRefresh} from '../web/app/transport.js';
 import assert from 'node:assert/strict';
-import {ConnectionFlow,sourceSeasonYear,ownerSessionExpired,discoveryMessage,importPhase} from '../web/app/connection-flow.js';
+import {ConnectionFlow,ownerSessionExpired,discoveryMessage,importPhase} from '../web/app/connection-flow.js';
 const memory=()=>{const values=new Map();return {getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k),values};};
 test('dismiss, newer flow and clear invalidate pending UI transitions',()=>{
  const flow=new ConnectionFlow();const first=flow.begin('trace');assert.ok(flow.current(first));flow.dismiss();assert.ok(!flow.current(first));const resumed=flow.resume();assert.ok(flow.current(resumed));assert.ok(!flow.current(first));flow.begin('teamsnap');assert.ok(!flow.current(resumed));flow.clear();assert.equal(flow.value,null);
@@ -18,8 +19,8 @@ test('stored command bodies and source metadata cannot persist authentication ma
 test('provider 401 keeps the owner signed in; only explicit owner-session expiry signs out',()=>{
  assert.equal(ownerSessionExpired({status:401,code:'authentication_required'}),false);assert.equal(ownerSessionExpired({status:401,code:'provider_authorization_expired'}),false);assert.equal(ownerSessionExpired({status:401,code:'sign_in_required'}),true);assert.equal(ownerSessionExpired({status:403,code:'sign_in_required'}),false);
 });
-test('only an unambiguous consecutive source season label derives a year',()=>{
- assert.equal(sourceSeasonYear({season_label:'2026-2027'}),2026);assert.equal(sourceSeasonYear({season_label:'2025/26'}),2025);for(const season_label of ['2026','Fall','2026-2028','Spring 2026',null])assert.equal(sourceSeasonYear({season_label}),null);
+test('a yearless existing-team command retains its nullable navigation season after refresh',()=>{
+ const storage=memory(),flow=new ConnectionFlow({storage});flow.begin('trace',{teamId:'team',seasonId:null});const pending=flow.pending('/api/connections',{team_id:'team',source_team_id:'source',account_id:'account'},{teamId:'team',seasonId:null});const restored=new ConnectionFlow({storage});assert.deepEqual(restored.value.pending,pending);assert.equal(restored.value.pending.seasonId,null);assert.equal(Object.hasOwn(restored.value.pending.body,'season_id'),false);
 });
 test('discovery distinguishes pending, blocked, failed and no-access results',()=>{
  assert.match(discoveryMessage({discovery:{state:'queued'}}),/Finding/);assert.match(discoveryMessage({discovery:{state:'blocked'}}),/Reconnect/);assert.match(discoveryMessage({discovery:{state:'failed'}}),/Saved teams/);assert.match(discoveryMessage({total:0,discovery:{state:'ready'}}),/team access/);
@@ -27,4 +28,11 @@ test('discovery distinguishes pending, blocked, failed and no-access results',()
 
 test('import phases distinguish queue acceptance, active work, partial coverage and ready',()=>{
  assert.match(importPhase([{state:'queued',coverage:'none'}]),/queued/);assert.match(importPhase([{state:'running',coverage:'partial'}]),/Importing/);assert.match(importPhase([{state:'ready',coverage:'complete'}]),/Ready/);assert.match(importPhase([{state:'blocked',coverage:'restricted'}]),/attention/);assert.match(importPhase([{state:'ready',coverage:'unpublished'}]),/not published/);assert.doesNotMatch(importPhase([]),/Ready/);
+});
+
+
+test('a delayed revision callback cannot seed the baseline of a newer selected team',async()=>{
+ let revision=1,release;const gate=new Promise(resolve=>release=resolve),coordinator={read:async(key,path)=>({data:{revision:path==='/new'?9:revision},discarded:false}),invalidate(){}};
+ const refresh=new RevisionRefresh(coordinator,()=>gate,error=>{throw error;});
+ try{await refresh.start('/old');revision=2;const old=refresh.check();await new Promise(resolve=>setImmediate(resolve));await refresh.start('/new');assert.equal(refresh.previous,'9');release();await old;assert.equal(refresh.previous,'9');}finally{refresh.stop();}
 });

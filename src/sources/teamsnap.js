@@ -125,7 +125,7 @@ export async function collectTeamSnap({ j, args = {}, cursor = {}, transport, cr
   const accountId = account.id, team = teamId ? key("teamsnap", teamId) : null;
   if (j.kind === "catalog") {
     out.records.teams = rows.map((r) => ({ ...teamRecord("teamsnap", r.id, r.name || r.team_name,
-      { timezone: text(r.time_zone || r.timezone) || null, links: r.links, source_url: r.href, catalog_scan_id: j.scan_id, account_owned: true },
+      { timezone: text(r.time_zone || r.timezone) || null, season_start_date: text(r.season_start_date) || null, season_end_date: text(r.season_end_date) || null, links: r.links, source_url: r.href, catalog_scan_id: j.scan_id, account_owned: true },
       { season: text(r.season_name || r.season_label || r.season), archived: +(r.is_archived === true || r.is_retired === true) }), account_id: accountId }));
     for (const r of rows) for (const kind of Object.keys(RELS)) {
       const rel = RELS[kind], link = r.links?.[rel] || url(API, rel + "/search", { team_id: r.id });
@@ -137,7 +137,7 @@ export async function collectTeamSnap({ j, args = {}, cursor = {}, transport, cr
       out.records.players = rows.filter((r) => r.is_non_player !== true && r.is_player !== false && !["coach", "manager", "owner"].includes(String(r.member_type || r.type).toLowerCase())).map((r) => ({
         id: key("teamsnap", r.id), provider: "teamsnap", native_id: native(r.id), account_id: accountId,
         name: text([r.first_name, r.last_name].filter(Boolean).join(" ") || r.name || r.label), jersey: text(r.jersey_number ?? r.jersey ?? r.number, 20),
-        details: JSON.stringify({ position: text(r.position || r.position_name), active: r.is_active !== false }), observed_at: stamp() }));
+        details: JSON.stringify({ position: text(r.position || r.position_name), active: r.is_active !== false, roster_start_date:text(r.roster_start_date)||null,roster_end_date:text(r.roster_end_date)||null }), observed_at: stamp() }));
       out.records.team_players = out.records.players.map((p) => ({ team_id: team, player_id: p.id, account_id: accountId, active: +(parse(p.details).active !== false), scan_id: j.scan_id }));
     } else if (j.kind === "events") out.fixtures = rows.map((r) => event(r, teamId, args, accountId));
     else if (j.kind === "attendance") out.records.attendance = rows.map((r) => {

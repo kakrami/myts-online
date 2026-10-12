@@ -13,7 +13,7 @@ export function createSyncRuntime(collector, options = {}) {
       if(!options.inspectInstallation)return {state:'ready',identity:null};
       try{return await options.inspectInstallation({db,env:this.env});}
       catch(error){
-        if(!['fresh_database_required','installation_incomplete'].includes(error.code))throw error;
+        if(!['fresh_database_required','installation_incomplete','installation_schema_mismatch','installation_integrity','installation_mode_invalid'].includes(error.code))throw error;
         return {state:'blocked',error:{code:error.code,kind:'blocked',message:'The database does not match this application installation.'}};
       }
     }
@@ -36,8 +36,10 @@ export function createSyncRuntime(collector, options = {}) {
       const task = async () => {
         const installation=await this.installation();
         if(installation.state!=='ready'){
+          if(['upgrade_required','upgrading'].includes(installation.state)&&options.advanceInstallation){await this.ctx.storage.setAlarm(Date.now()+(options.alarmDelayMs??500));return {queued:true,...this.installationStatus(installation)};}
           await this.ctx.storage.deleteAlarm();return {queued:false,...this.installationStatus(installation)};
         }
+        if(options.recoverConnections)await this.ctx.storage.put('connection_recovery_pending',true);
         const sequence = (await this.ctx.storage.get('wake_sequence') || 0) + 1;
         await this.ctx.storage.put('wake_sequence',sequence);
         const at = Date.now() + (options.alarmDelayMs ?? 500);
@@ -81,7 +83,8 @@ export function createSyncRuntime(collector, options = {}) {
       return this.running;
     }
     async run() {
-      const started = Date.now(), db = new BudgetDB(this.env.DB,options.statementLimit ?? 48);
+      const started = Date.now(), rawDb = new BudgetDB(this.env.DB,options.statementLimit ?? 48);
+      let db=rawDb;
       let installation;
       try {
         const wakeSequence = await this.ctx.storage.get('wake_sequence') || 0;
@@ -89,17 +92,48 @@ export function createSyncRuntime(collector, options = {}) {
         // Existing namespace alarms survive deployment. They must not query or
         // modify a fresh, partial, or foreign schema before owner setup finishes.
         if(installation.state!=='ready'){
+          if(['upgrade_required','upgrading'].includes(installation.state)&&options.advanceInstallation){
+            const progress=await options.advanceInstallation({db:rawDb,env:this.env});
+            await this.ctx.storage.put('last_run',{state:'upgrading',setup_state:progress.state,started_at:started,finished_at:Date.now(),statements:rawDb.used});
+            await this.scheduleAfterRun(Date.now()+(options.alarmDelayMs??500),wakeSequence);
+            return this.installationStatus(progress);
+          }
           await this.scheduleAfterRun(null,wakeSequence);return this.installationStatus(installation);
         }
+        if(options.wrapDatabase)db=options.wrapDatabase(rawDb,{installation,env:this.env});
         const coordinator = new JobCoordinator(db,options);
+        if(options.recoverConnections&&await this.ctx.storage.get('connection_recovery_pending')){
+          const recovery=await options.recoverConnections({db,env:this.env});
+          await this.ctx.storage.put('connection_recovery_pending',!!recovery.more||!!recovery.deferred);
+          await this.ctx.storage.put('last_run',{state:'recovering_connections',...recovery,started_at:started,finished_at:Date.now(),statements:db.used});
+          await this.scheduleAfterRun(Date.now()+(options.alarmDelayMs??500),wakeSequence);
+          return;
+        }
         // Persist recovery before external work. An interrupted invocation cannot
         // strand a running lease until somebody opens the browser.
         await this.arm(started + (options.leaseMs ?? 45000) + (options.alarmDelayMs ?? 500));
-        const result = await coordinator.runOne(collector,{env:this.env});
+        const result = await coordinator.runOne(async context=>{
+          // Record the obligation before any imported source page can commit.
+          // A restarted alarm can recover it even if the final commit's reply
+          // or subsequent storage promotion was interrupted.
+          if(options.recoverConnections&&context.lease.provider==='reports'&&context.lease.component==='data-import')await this.ctx.storage.put('data_import_recovery_pending',true);
+          return collector(context);
+        },{env:this.env});
         // A page may legitimately use the whole invocation. It has already
         // saved its checkpoint: schedule another bounded invocation rather
         // than turn the due-queue read into a fictitious source failure.
-        const next = db.remaining ? await coordinator.nextWake() : Date.now()+(options.alarmDelayMs ?? 500);
+        const importTerminal=result.provider==='reports'&&result.component==='data-import'&&['ready','failed','blocked','retrying'].includes(result.state);
+        const importIdle=result.state==='idle'&&!!options.recoverConnections&&await this.ctx.storage.get('data_import_recovery_pending');
+        // Intermediate import pages stay coalesced. Explicit owner wakes and
+        // provider/projection commits still request their immediate recovery.
+        const recover=!!options.recoverConnections&&(importTerminal||importIdle||result.committed&&(['gotsport','live','teamsnap','trace'].includes(result.provider)||result.provider==='domain'&&result.component==='projection'));
+        if(recover){
+          await this.ctx.storage.put('connection_recovery_pending',true);
+          // Never clear the deferred obligation before its replacement is
+          // durable. Recovery consumes all dirty roots, including other imports.
+          if(importTerminal||importIdle)await this.ctx.storage.put('data_import_recovery_pending',false);
+        }
+        const next = recover?Date.now()+(options.alarmDelayMs??500):db.remaining?await coordinator.nextWake():Date.now()+(options.alarmDelayMs??500);
         await this.ctx.storage.put('last_run',{...result,...(options.inspectInstallation?{installation_id:installation.identity}:{}),started_at:started,finished_at:Date.now(),statements:db.used,rows_read:db.rowsRead,rows_written:db.rowsWritten});
         await this.scheduleAfterRun(next,wakeSequence);
       } catch (error) {

@@ -9,13 +9,13 @@ function failure(response){assert.equal(response.status,503,JSON.stringify(respo
 test('ready schema with no owner initializes under a simulated hosted PBKDF2 cap without changing installation identity',async()=>{
   const h=await ownerHarness();try{
     const probe=await h.request('/__cap-probe');assert.deepEqual(probe.data,{rejected:true,error_class:'NotSupportedError'});const callsBefore=(await h.diagnostics()).data;
-    const before=await h.snapshot();assert.equal(before.setup.state,'ready');assert.equal(before.setup.next_index,270);assert.equal(before.objects.filter(o=>o.type==='table').length,122);
+    const before=await h.snapshot();assert.equal(before.setup.state,'ready');assert.equal(before.setup.next_index,h.schemaLength);assert.equal(before.objects.filter(o=>o.type==='table').length,h.tableCount);
     assert.deepEqual(await h.counts(),{owner:0,vault:0,sessions:0});
     const pending=await h.request('/api/bootstrap');assert.equal(pending.status,200);assert.equal(pending.data.setup.state,'ready');assert.equal(pending.data.setup.owner_ready,false);
     const initialized=await h.initialize();assert.equal(initialized.status,200,JSON.stringify(initialized.data));assert.ok(initialized.cookie);
     assert.deepEqual(await h.counts(),{owner:1,vault:1,sessions:1});assert.deepEqual(await h.snapshot(),before);
     assertVerifier((await h.credentials()).owner,PASSWORD);
-    const diagnostic=(await h.diagnostics()).data;assert.equal(diagnostic.deriveCalls,callsBefore.deriveCalls);assert.equal(diagnostic.pbkdfCalls,callsBefore.pbkdfCalls);assert.deepEqual(diagnostic.ownerBatches,[['security_installation','security_owner','security_sessions']]);
+    const diagnostic=(await h.diagnostics()).data;assert.equal(diagnostic.deriveCalls,callsBefore.deriveCalls);assert.equal(diagnostic.pbkdfCalls,callsBefore.pbkdfCalls);assert.deepEqual(diagnostic.ownerBatches,[['security_installation','security_owner','security_sessions']]);assert.deepEqual(diagnostic.ownerPermitCounts,[2]);
     const bootstrap=await h.request('/api/bootstrap');assert.equal(bootstrap.data.setup.owner_ready,true);assert.equal(bootstrap.data.session.role,'owner');
   }finally{await h.dispose();}
 });

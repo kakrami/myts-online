@@ -9,10 +9,14 @@ export const activeTeamPredicate=alias=>`NOT EXISTS(SELECT 1 FROM team_lifecycle
 const need=(value,message)=>{if(!value)throw new SyncError('invalid_job',message,{kind:'permanent'});return value;};
 const stale=()=>Object.assign(new SyncError('stale_revision','This team changed. Reload it before removing it.',{kind:'permanent'}),{status:409});
 const plan=[
+  ['public_history_jobs','demand_id IN(SELECT id FROM public_history_demands WHERE app_team_id=?)',100],
+  ['public_history_demands','app_team_id=?',20],
   ['tracking_capture_parts','capture_id IN(SELECT id FROM tracking_captures WHERE app_team_id=?)',64],
   ['tracking_captures','app_team_id=?',20],
   ['tracking_capture_choices','plan_id IN(SELECT id FROM tracking_capture_plans WHERE app_team_id=?)',100],
   ['tracking_capture_plans','app_team_id=?',20],
+  ['team_source_connections','app_team_id=?',50],
+  ['team_event_season_resolutions','app_team_id=?',100],
   ['team_source_attachments','app_team_id=?',100],
   ['security_viewer_tokens','team_id=?',100],
   ['coach_stints','app_team_id=?',100],['coach_lineup','app_team_id=?',100],['coach_timeline','app_team_id=?',100],

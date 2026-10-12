@@ -4,6 +4,8 @@ import {freshHarness,TEST_PASSWORD} from './fresh-harness.js';
 import {DomainRepository,sourceKey} from '../src/domain/repository.js';
 import {readSourceArchive} from '../web/app/data-files.js';
 import {VERSION} from '../src/application/version.js';
+import {SCHEMA,SEED} from '../src/application/installation-schema.js';
+import {FreshInstallation} from '../src/application/fresh-install.js';
 test('fresh Worker initializes through bounded resumable HTTP steps and signs in once',async()=>{
   const h=await freshHarness();
   try{
@@ -11,8 +13,9 @@ test('fresh Worker initializes through bounded resumable HTTP steps and signs in
     const bootstrap=await h.request('/api/bootstrap');assert.equal(bootstrap.status,200);assert.equal(bootstrap.data.version,VERSION);assert.equal(bootstrap.data.setup.state,'empty');
     const wrong=await h.request('/api/owner/initialize',{method:'POST',body:{password:'incorrect'}});assert.equal(wrong.status,401);
     assert.equal((await h.db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='setup_state'").first()).n,0);
+    const schemaPages=Math.ceil(SCHEMA.length/new FreshInstallation(null,{schema:SCHEMA,seed:SEED}).batchSize);
     let result,steps=0;
-    do{result=await h.request('/api/owner/initialize',{method:'POST',body:{password:TEST_PASSWORD}});assert.ok([200,202].includes(result.status),JSON.stringify(result.data));steps++;assert.ok(steps<15);}while(result.data.continue);
+    do{result=await h.request('/api/owner/initialize',{method:'POST',body:{password:TEST_PASSWORD}});assert.ok([200,202].includes(result.status),JSON.stringify(result.data));steps++;assert.ok(steps<=schemaPages+1,'Schema pages plus one separate owner-commit request must finish setup.');}while(result.data.continue);
     assert.ok(steps>1);assert.ok(result.headers.get('set-cookie').includes('HttpOnly'));
     assert.equal((await h.request('/api/bootstrap')).data.session.role,'owner');
     const created=await h.request('/api/teams',{method:'POST',body:{name:'Fresh review team',timezone:'America/Los_Angeles',season_year:2026,request_id:crypto.randomUUID()}});assert.equal(created.status,201,JSON.stringify(created.data));
@@ -35,7 +38,8 @@ test('assembled reports prepare all four types and real binary exports through n
     }
     const closedAt=Date.now();
     // No application or browser request drives capture during this interval.
-    await h.waitFor(async()=>{const row=await h.db.prepare("SELECT COUNT(*) n FROM report_snapshots WHERE state='ready'").first();return row.n===4;});
+    await h.waitFor(async()=>{const rows=(await h.db.prepare("SELECT type,state,error_code FROM report_snapshots").all()).results;assert.ok(rows.every(r=>r.state!=='failed'),JSON.stringify(rows));return rows.length===4&&rows.every(r=>r.state==='ready');});
+    const ready=(await h.db.prepare("SELECT type,total,captured,selection FROM report_snapshots").all()).results;for(const row of ready){assert.equal(row.total,row.type==='season'?6:0);assert.equal(row.captured,row.total);assert.equal(JSON.parse(row.selection).report_initial_publication,undefined);}
     const captures=(await h.db.prepare("SELECT state,last_saved_at,last_complete_at FROM sync_jobs WHERE provider='reports' AND component='capture'").all()).results;
     assert.equal(captures.length,4);assert.ok(captures.every(j=>j.state==='ready'&&j.last_saved_at>=closedAt&&j.last_complete_at>=closedAt));
     const q=new URLSearchParams(selection);for(const id of ids){const preview=await h.request('/api/reports?'+q+'&snapshot_id='+id);assert.equal(preview.status,200,JSON.stringify(preview.data));assert.equal(preview.data.data.state,'ready');}
@@ -90,20 +94,42 @@ test('public connection, shared publication, corrections, inclusion, viewer scop
 test('assembled current-release data ZIP exports and staged imports resume on native alarms',async()=>{
   const h=await freshHarness();try{
     await h.initialize();const created=await h.request('/api/teams',{method:'POST',body:{name:'Dataset workflow',timezone:'UTC',season_year:2026}});assert.equal(created.status,201);
-    const selection={team_id:created.data.team.id,team_season_id:created.data.season_id},domain=new DomainRepository(h.db);
+    const selection={team_id:created.data.team.id},domain=new DomainRepository(h.db);
+    const resolved=await h.request('/api/sources/gotsport/resolve',{method:'POST',body:{url:'https://rankings.gotsport.com/teams/212707/upcoming-games'}});assert.equal(resolved.status,200,JSON.stringify(resolved.data));
+    const source=resolved.data.teams.find(team=>team.id===sourceKey('gotsport','212707'));assert.ok(source,'ordinary discovery must supply the authorized native team');
     const observed='2026-10-10T12:00:00Z',fixtures=Array.from({length:17},(_,i)=>({provider:'gotsport',id:'gotsport:'+String(31000+i),native_id:String(31000+i),home_id:'gotsport:212707',away_id:null,competition_id:null,division_id:null,starts_at:'2026-09-01T17:00:00Z',local_day:null,type:'game',status:'FINAL',conditional:0,home_score:2,away_score:1,payload:JSON.stringify({home_name:'Dataset team',away_name:'Opponent '+i}),observed_at:observed}));
-    await domain.ingestSourcePage({records:{teams:[{provider:'gotsport',id:'gotsport:212707',native_id:'212707',name:'Dataset team',details:'{}',observed_at:observed}]},fixtures});
-    await domain.attachTeam({teamId:selection.team_id,seasonId:selection.team_season_id,sourceTeamId:sourceKey('gotsport','212707')});
-    const exported=await h.request('/api/data/exports',{method:'POST',body:{...selection,kind:'dataset'}});assert.equal(exported.status,202,JSON.stringify(exported.data));
+    const connectionCommand={request_id:crypto.randomUUID(),team_id:selection.team_id,source_team_id:source.id};
+    const connected=await h.request('/api/connections',{method:'POST',body:connectionCommand});assert.equal(connected.status,202,JSON.stringify(connected.data));assert.equal(connected.data.connection.scope_mode,'observed_history');
+    const settled=async()=>{
+      const failed=(await h.db.prepare("SELECT component,last_error_code,last_error_message FROM sync_jobs WHERE state IN('failed','blocked','retrying')").all()).results;if(failed.length)throw new Error(JSON.stringify(failed));
+      const state=await h.db.prepare('SELECT pending FROM team_read_state WHERE app_team_id=?').bind(selection.team_id).first(),roots=await h.db.prepare('SELECT COUNT(*) n FROM team_source_connections WHERE app_team_id=? AND active=1 AND input_revision>reconciled_revision').bind(selection.team_id).first(),jobs=await h.db.prepare("SELECT COUNT(*) n FROM sync_jobs WHERE state IN('queued','running')").first();return state.pending===0&&roots.n===0&&jobs.n===0;
+    };
+    // Let ordinary provider discovery finish before adding the explicit saved
+    // history fixture, so its baseline is not interleaved with continuing discovery.
+    await h.waitFor(settled,{timeout:120000});
+    await domain.ingestSourcePage({fixtures});
+    // An ordinary retry reuses the typed root and wakes the newly saved history.
+    // It neither fabricates authority nor refreshes unchanged provider jobs.
+    const replayed=await h.request('/api/connections',{method:'POST',body:connectionCommand});assert.equal(replayed.status,202,JSON.stringify(replayed.data));assert.equal(replayed.data.connection_id,connected.data.connection_id);
+    const identity=await h.db.prepare('SELECT (SELECT COUNT(*) FROM app_teams) teams,(SELECT COUNT(*) FROM team_source_connections WHERE app_team_id=?) roots,(SELECT COUNT(*) FROM connection_command_receipts WHERE request_id=?) receipts').bind(selection.team_id,connectionCommand.request_id).first();assert.deepEqual(identity,{teams:1,roots:1,receipts:1},'the same owner request must reuse one team, root and receipt');
+    await h.waitFor(settled,{timeout:120000});
+    const ids=async(sql,...params)=>(await h.db.prepare(sql).bind(...params).all()).results.map(row=>row.id),seedIds=fixtures.map(row=>sourceKey('gotsport',row.native_id));
+    const baseline={source:await ids('SELECT id FROM source_events ORDER BY id'),canonical:await ids('SELECT id FROM events ORDER BY id'),published:await ids('SELECT event_id AS id FROM team_events WHERE app_team_id=? ORDER BY event_id',selection.team_id),owned:await ids('SELECT source_event_id AS id FROM source_event_teams WHERE source_team_id=? ORDER BY source_event_id',source.id)};
+    const retained=(before,after,label)=>{assert.ok(after.length>=before.length,label+' count must not shrink');const found=new Set(after);for(const id of before)assert.ok(found.has(id),label+' lost '+id);};
+    retained(seedIds,baseline.source,'seeded source graph');assert.ok(baseline.published.length>=17);
+    const exported=await h.request('/api/data/exports',{method:'POST',body:{...selection,kind:'dataset'}});assert.equal(exported.status,202,JSON.stringify(exported.data));assert.equal(exported.data.scope_kind,'connected_history');assert.equal(exported.data.team_season_id,null);
     const closedAt=Date.now();await h.waitFor(async()=>{const row=await h.db.prepare('SELECT state,error_code FROM data_file_exports WHERE id=?').bind(exported.data.id).first();if(row.state==='failed')throw new Error(JSON.stringify(row));return row.state==='ready';});
     const job=await h.db.prepare("SELECT state,last_saved_at,last_complete_at FROM sync_jobs WHERE component='data-export'").first();assert.equal(job.state,'ready');assert.ok(job.last_saved_at>=closedAt&&job.last_complete_at>=closedAt);
-    const download=await h.request('/api/data/exports/'+exported.data.id+'/download',{binary:true});assert.equal(download.status,200);const archive=await readSourceArchive(new Blob([download.data]));let count=0;for(const segment of archive.manifest.segments)if(segment.section.startsWith('source_events@'))count+=(await archive.segment(segment)).rows.length;assert.equal(count,17);
+    const download=await h.request('/api/data/exports/'+exported.data.id+'/download',{binary:true});assert.equal(download.status,200);const archive=await readSourceArchive(new Blob([download.data]));assert.equal(archive.manifest.format_version,'7.2');assert.equal(archive.manifest.scope.scope_kind,'connected_history');
+    const archiveEvents=[];for(const segment of archive.manifest.segments)if(segment.section.startsWith('source_events@'))archiveEvents.push(...(await archive.segment(segment)).rows.map(row=>row.id));assert.equal(new Set(archiveEvents).size,archiveEvents.length);retained(seedIds,archiveEvents,'exported seeds');retained(baseline.owned,archiveEvents,'exported connected history');
     const imported=await h.request('/api/data/imports',{method:'POST',body:{...selection,manifest:archive.manifest}});assert.equal(imported.status,201,JSON.stringify(imported.data));const before=(await domain.state()).source_revision;
     for(const segment of archive.manifest.segments){const uploaded=await h.request('/api/data/imports/'+imported.data.id+'/segments/'+segment.ordinal,{method:'PUT',body:await archive.segment(segment)});assert.equal(uploaded.status,200,JSON.stringify(uploaded.data));}
     assert.equal((await domain.state()).source_revision,before);const committed=await h.request('/api/data/imports/'+imported.data.id+'/commit',{method:'POST',body:{}});assert.equal(committed.status,202,JSON.stringify(committed.data));
-    await h.waitFor(async()=>{const row=await h.db.prepare('SELECT state FROM data_file_imports WHERE id=?').bind(imported.data.id).first(),failed=(await h.db.prepare("SELECT component,last_error_code,last_error_message FROM sync_jobs WHERE state IN('failed','blocked')").all()).results;if(failed.length)throw new Error(JSON.stringify(failed));const state=await h.db.prepare('SELECT pending FROM team_read_state WHERE app_team_id=?').bind(selection.team_id).first();return row.state==='ready'&&state.pending===0;});
-    assert.equal((await h.db.prepare('SELECT COUNT(*) n FROM team_events WHERE app_team_id=?').bind(selection.team_id).first()).n,17);
-    console.log(JSON.stringify({assembled_data_files:'PASS',browser_open:false,manual_runner_requests:0,rows:17,validated_segments:archive.manifest.segments.length,source_writes_before_commit:0}));
+    await h.waitFor(async()=>{const row=await h.db.prepare('SELECT state FROM data_file_imports WHERE id=?').bind(imported.data.id).first();return await settled()&&row.state==='ready';},{timeout:120000});
+    const after={source:await ids('SELECT id FROM source_events ORDER BY id'),canonical:await ids('SELECT id FROM events ORDER BY id'),published:await ids('SELECT event_id AS id FROM team_events WHERE app_team_id=? ORDER BY event_id',selection.team_id)};for(const kind of ['source','canonical','published'])retained(baseline[kind],after[kind],kind+' baseline');
+    const savedSeeds=await h.db.prepare("SELECT COUNT(DISTINCT e.id) n FROM source_events e JOIN event_source_links l ON l.source_event_id=e.id JOIN team_events t ON t.event_id=l.event_id AND t.app_team_id=? WHERE e.id IN(SELECT value FROM json_each(?)) AND e.home_score=2 AND e.away_score=1").bind(selection.team_id,JSON.stringify(seedIds)).first();assert.equal(savedSeeds.n,17,'all seventeen original observations remain published with their scores');
+    const reopened=await h.request('/api/data/imports?team_id='+selection.team_id);assert.equal(reopened.status,200);const complete=reopened.data.items.find(item=>item.id===imported.data.id);assert.equal(complete?.state,'ready');assert.equal(complete.validated,archive.manifest.segments.length);assert.equal(complete.applied,archive.manifest.segments.length);
+    console.log(JSON.stringify({assembled_data_files:'PASS',scope_kind:'connected_history',browser_open:false,manual_runner_requests:0,seeded_rows:17,exported_rows:archiveEvents.length,baseline_source:baseline.source.length,baseline_canonical:baseline.canonical.length,baseline_published:baseline.published.length,after_source:after.source.length,after_canonical:after.canonical.length,after_published:after.published.length,validated_segments:archive.manifest.segments.length,source_writes_before_commit:0}));
   }finally{await h.dispose();}
 });
 test('assembled owner Coach conserves minutes through explicit clock corrections and rejects viewer access',async()=>{

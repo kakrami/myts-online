@@ -1,5 +1,6 @@
 // Fresh installation only. The domain schema owns provider_accounts, app_teams,
 // and team_read_state; source records and credentials never live in this engine.
+import {PUBLIC_HISTORY_SCHEMA} from '../application/public-history-schema.js';
 export const SYNC_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS team_lifecycle(team_id TEXT PRIMARY KEY,state TEXT NOT NULL CHECK(state IN('deleting','deleted')),requested_at TEXT NOT NULL,deleted_at TEXT)`,
   `CREATE TABLE sync_jobs (
@@ -76,6 +77,7 @@ export const SYNC_SCHEMA = [
     job_id TEXT PRIMARY KEY REFERENCES sync_jobs(id) ON DELETE CASCADE,
     commit_token TEXT NOT NULL
   )`,
+  ...PUBLIC_HISTORY_SCHEMA,
 ];
 export async function installSyncSchema(db) {
   await db.batch(SYNC_SCHEMA.map(sql => db.prepare(sql)));

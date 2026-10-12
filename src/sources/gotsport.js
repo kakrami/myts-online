@@ -522,11 +522,12 @@ export async function collectGotSport({ j, args = {}, cursor = {}, transport: t 
         ? [
             {
               team_id: key("gotsport", id),
-              division_id: "gotsport:bracket:" + m.bracket_id,
+              division_id: key("gotsport", m.schedule_id),
               registration_id: reg,
               evidence: JSON.stringify({
                 event_id: String(m.event_id),
                 schedule_id: String(m.schedule_id),
+                bracket_id: String(m.bracket_id),
               }),
               observed_at: stamp(),
             },
@@ -536,7 +537,7 @@ export async function collectGotSport({ j, args = {}, cursor = {}, transport: t 
     records.memberships=[...new Map(records.memberships.map((m)=>[m.team_id+":"+m.division_id+":"+m.registration_id,m])).values()];
     for (const event of records.competitions) {
       const memberships=records.memberships.filter((m)=>String(parse(m.evidence).event_id)===event.native_id);
-      const bracketIds=[...new Set(memberships.map((m)=>m.division_id.split(":").at(-1)))].sort();
+      const bracketIds=[...new Set(memberships.map((m)=>parse(m.evidence).bracket_id))].sort();
       children.push(
         job("gotsport", "event", event.native_id+":"+bracketIds.join(","), {
           event_id: event.native_id,

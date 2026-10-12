@@ -7,8 +7,8 @@ function snapshot(flow){
   if(!flow||!PROVIDERS.has(flow.provider))return null;
   const pending=flow.pending&&(flow.pending.path==='/api/connections'||/^\/api\/teams\/[A-Za-z0-9%_-]+\/attachments$/.test(flow.pending.path))?flow.pending:null;
   return {
-    ...pick(flow,['id','provider','stage','accountId','accountName','attempt','attemptExpires','requestId']),
-    destination:pick(flow.destination,['teamId','seasonId']),
+    ...pick(flow,['id','provider','stage','intent','accountId','accountName','attempt','attemptExpires','requestId']),
+    destination:pick(flow.destination,['teamId','teamName','seasonId']),
     source:flow.source?pick(flow.source,sourceKeys):null,
     draft:pick(flow.draft,draftKeys),
     // This is an owner command intent, never an authentication response. Do not
@@ -16,8 +16,10 @@ function snapshot(flow){
     pending:pending?{
       path:pending.path,
       requestId:flow.pending.requestId,
-      body:{...pick(flow.pending.body,['request_id','source_team_id','account_id','season_id','kind']),
-        ...(flow.pending.body?.new_team?{new_team:pick(flow.pending.body.new_team,['name','timezone','season_year','kind'])}:{})},
+      body:{...pick(flow.pending.body,['request_id','source_team_id','account_id','team_id','season_id','kind','revision','connection_generation']),
+        ...(flow.pending.body?.scope?{scope:{...pick(flow.pending.body.scope,['mode']),...(Array.isArray(flow.pending.body.scope.season_ids)?{season_ids:[...flow.pending.body.scope.season_ids]}:{})}}:{}),
+        ...(flow.pending.body?.club_choice?{club_choice:pick(flow.pending.body.club_choice,['kind','keep','profile_revision','current_logo_revision','source_logo_revision','current_club_team_count','source_club_team_count'])}:{}),
+        ...(flow.pending.body?.new_team?{new_team:pick(flow.pending.body.new_team,['name','timezone','timezone_source','season_year','kind'])}:{})},
       ...pick(flow.pending,['teamId','seasonId']),
     }:null,
   };
@@ -32,7 +34,7 @@ export class ConnectionFlow {
   begin(provider,destination={}){
     if(!PROVIDERS.has(provider))throw new TypeError('Unknown provider.');
     this.version++;this.active=true;
-    this.value={id:this.uuid(),provider,stage:'accounts',destination:{...destination},draft:{},source:null,pending:null};
+    this.value={id:this.uuid(),provider,stage:'accounts',intent:destination.teamId?'existing':'add',destination:{...destination},draft:{},source:null,pending:null};
     this.save();return this.ticket();
   }
   resume(){if(!this.value)return null;this.version++;this.active=true;return this.ticket();}
@@ -49,14 +51,6 @@ export class ConnectionFlow {
     if(path==='/api/connections')pending.body.request_id=requestId;
     this.update({stage:'connecting',requestId,pending});return pending;
   }
-}
-
-export function sourceSeasonYear(source){
-  const label=String(source?.season_label??'').trim();
-  const match=label.match(/^(20\d{2})\s*[-/]\s*(20\d{2}|\d{2})$/);
-  if(!match)return null;
-  const start=Number(match[1]),end=Number(match[2].length===2?'20'+match[2]:match[2]);
-  return start>=2000&&start<=2100&&end===start+1?start:null;
 }
 
 export function ownerSessionExpired(error){return error?.status===401&&error?.code==='sign_in_required';}

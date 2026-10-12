@@ -4,7 +4,7 @@ const template = "<a class=\"skip-link\" href=\"#root\">Skip to content</a><div 
 
 export function renderShell(model = {}) {
   const version = e(model.version ?? ""), oldViews = {matches:"schedule",tournaments:"competitions",favorites:"bookmarks"};
-  return replaceIcons(template).replace(/<span class="version js-version"><\/span>/g, `<span class="version js-version">${version}</span>`).replace(/data-view="([a-z]+)"/g, (_,value) => `data-action="nav" data-view="${oldViews[value] ?? value}"`).replace('id="loginForm"','id="loginForm" data-form="owner-login"').replace('id="adminKey"','id="adminKey" name="key"');
+  return replaceIcons(template).replace(/<span class="version js-version"><\/span>/g, `<span class="version js-version">${version}</span>`).replace(/data-view="([a-z]+)"/g, (_,value) => `data-action="nav" data-view="${oldViews[value] ?? value}"`).replace('<form id="loginForm"', '<div id="maintenanceStatus" class="source-note hidden" role="status" aria-live="polite"><p id="maintenanceLabel"></p><progress id="maintenanceProgress" max="100" value="0" aria-label="Update progress"></progress></div><form id="loginForm"').replace('id="loginForm"','id="loginForm" data-form="owner-login"').replace('id="adminKey"','id="adminKey" name="key"');
 }
 export function applyTheme(theme = "light", root = document.documentElement) {
   const value = ["light","dark","soccer"].includes(theme) ? theme : theme === "green" ? "soccer" : "light";
@@ -20,14 +20,17 @@ export function updateShell(host, model = {}) {
   host.querySelector("#loginScreen")?.classList.toggle("hidden",dashboard);
   host.querySelectorAll(".js-version").forEach(node => node.textContent = model.version ?? "");
   const form=host.querySelector("#loginForm");
-  form?.classList.toggle("hidden",!model.owner_login);
+  form?.classList.toggle("hidden",!model.owner_login||!!model.maintenance);
+  host.querySelector('#maintenanceStatus')?.classList.toggle('hidden',!model.maintenance);
+  const maintenanceLabel=host.querySelector('#maintenanceLabel');if(maintenanceLabel)maintenanceLabel.textContent=model.maintenance?`${model.maintenance.label} · ${model.maintenance.progress}%`:'';
+  const maintenanceProgress=host.querySelector('#maintenanceProgress');if(maintenanceProgress)maintenanceProgress.value=model.maintenance?.progress??0;
   const loginButton=host.querySelector('#loginButton');if(loginButton)loginButton.innerHTML=replaceIcons('<i class="bi bi-shield-lock"></i>')+(model.needs_initialization?'Initialize & sign in':'Sign in');
-  const password=host.querySelector("#adminKey");if(password)password.autocomplete=model.needs_initialization?"new-password":"current-password";
+  const password=host.querySelector("#adminKey");if(password){password.autocomplete=model.needs_initialization?"new-password":"current-password";password.disabled=!!model.maintenance;if(model.maintenance)password.value="";}
   const title=host.querySelector("#loginTitle"); if(title) title.textContent=model.login_title ?? (model.owner_login ? "Owner console" : "Private dashboard");
   const intro=host.querySelector("#loginText"); if(intro) intro.textContent=model.login_help ?? (model.owner_login ? "Enter the owner key to manage the dashboard." : "Use the private viewer link provided by the team owner.");
   const error=host.querySelector("#loginError"); if(error) {error.textContent=model.login_error ?? "";error.classList.toggle("hidden",!model.login_error);}
-  const team=host.querySelector("#teamPicker"); if(team) team.outerHTML=pickerHTML("teamPicker","Team",model.teams ?? [],model.selected_team_id,{action:"team-select",extraActions:[...(model.team_catalog?.has_previous?[{action:"teams-previous",label:"Previous team choices"}]:[]),...(model.team_catalog?.next_cursor?[{action:"teams-more",label:"More teams",data:{cursor:model.team_catalog.next_cursor}}]:[])]});
-  const season=host.querySelector("#seasonPicker"); if(season) season.outerHTML=pickerHTML("seasonPicker","Season",model.seasons ?? [],model.selected_season_id,{action:"season-select",extraAction:model.owner===false?null:{action:"included-games",label:"Included games"},extraActions:[...(model.season_catalog?.has_previous?[{action:"seasons-previous",label:"Previous seasons"}]:[]),...(model.season_catalog?.next_cursor?[{action:"seasons-more",label:"Older seasons",data:{cursor:model.season_catalog.next_cursor}}]:[])]});
+  const team=host.querySelector("#teamPicker"); if(team) team.outerHTML=pickerHTML("teamPicker","Team",model.teams ?? [],model.selected_team_id,{action:"team-select",extraActions:[...(model.owner?[{action:'add-team',label:'Add team'}]:[]),...(model.team_catalog?.has_previous?[{action:"teams-previous",label:"Previous team choices"}]:[]),...(model.team_catalog?.next_cursor?[{action:"teams-more",label:"More teams",data:{cursor:model.team_catalog.next_cursor}}]:[])]});
+  const season=host.querySelector("#seasonPicker"); if(season) season.outerHTML=pickerHTML("seasonPicker",model.season_pending?"Choose season":"Season",model.seasons ?? [],model.selected_season_id,{action:"season-select",extraAction:model.owner===false||!model.selected_season_id?null:{action:"included-games",label:"Included games"},extraActions:[...(model.season_catalog?.has_previous?[{action:"seasons-previous",label:"Previous seasons"}]:[]),...(model.season_catalog?.next_cursor?[{action:"seasons-more",label:"Older seasons",data:{cursor:model.season_catalog.next_cursor}}]:[])]});
   host.querySelector("#teamSearchBtn")?.classList.toggle("hidden",model.owner===false);
   host.querySelector("#nav")?.classList.toggle("hidden",Array.isArray(model.allowed_views)&&model.allowed_views.length===0);
   host.querySelectorAll(".nav-btn").forEach(node=>{node.classList.toggle("hidden",Array.isArray(model.allowed_views)&&!model.allowed_views.includes(node.dataset.view));const active=node.dataset.view===model.active_view;node.classList.toggle("active",active);if(active)node.setAttribute("aria-current","page");else node.removeAttribute("aria-current");});
@@ -41,6 +44,7 @@ export function bindShell(host, callbacks = {}) {
   const emit=(action,data,event)=>handlers.onAction?.(action,data,event);
   const closePickers=except=>host.querySelectorAll(".app-select").forEach(picker=>{if(picker!==except){picker.querySelector(".app-select-menu")?.classList.add("hidden");picker.querySelector(".app-select-trigger")?.setAttribute("aria-expanded","false");}});
   const click=event=>{
+    handlers.onInteraction?.("click",event);
     const node=event.target.closest("[data-action],[data-close],#accountBtn,#teamSearchBtn,#entityBack,#entityClose,#confirmCancel,#confirmAction");
     if(!node || !host.contains(node)) {closePickers();return;}
     if(node.disabled||node.getAttribute("aria-disabled")==="true")return;
@@ -60,8 +64,10 @@ export function bindShell(host, callbacks = {}) {
     if(event.key==="Escape"){closePickers();emit("back",{},event);return;}
     const option=event.target.closest('.app-select-menu [role="option"]');
     if(option && ["ArrowDown","ArrowUp","Home","End"].includes(event.key)) {event.preventDefault();const buttons=[...option.closest(".app-select-menu").querySelectorAll('[role="option"]')],i=buttons.indexOf(option),next=event.key==="Home" ? 0 : event.key==="End" ? buttons.length-1 : (i+(event.key==="ArrowDown"?1:-1)+buttons.length)%buttons.length;buttons[next]?.focus();return;}
+    handlers.onInteraction?.("keydown",event);
     const row=event.target.closest('tr[data-action]');if(row && event.key==="Enter"){event.preventDefault();emit(row.dataset.action,{...row.dataset},event);}
   },{signal:signal.signal});
+  host.addEventListener("toggle",event=>handlers.onInteraction?.("toggle",event),{signal:signal.signal,capture:true});
   for(const name of ["dragstart","dragover","drop","dragend","pointerdown","pointerup","pointercancel"]) host.addEventListener(name,event=>handlers.onInteraction?.(name,event),{signal:signal.signal});
   return ()=>signal.abort();
 }

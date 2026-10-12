@@ -34,7 +34,7 @@ export function eventMapSVG(group, { kind = "events", title = "Event locations" 
   const items = group?.items ?? group?.points;
   if (!Array.isArray(items) || items.length > 500) return empty("Map unavailable for this selection.");
   if (!items.length) return empty("No events recorded.");
-  const half = ["box","shots"].includes(kind), height = half ? 230 : 210;
+  const half = ["box","box_touches","shots"].includes(kind), height = half ? 230 : 210;
   const valid = p => typeof p.x === "number" && typeof p.y === "number" && Number.isFinite(p.x) && Number.isFinite(p.y) && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1;
   const points = items.filter(valid), marks = points.map(p => {
     const x = 2+p.x*306,y = 2+p.y*(height-4), dest = p.destination;

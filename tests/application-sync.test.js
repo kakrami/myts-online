@@ -12,20 +12,26 @@ import {ApplicationSyncService,collectApplicationJob} from '../src/application/s
 import {BudgetDB} from '../src/sync/budget.js';
 import {SyncError} from '../src/sync/errors.js';
 import {ANALYSIS_SCHEMA} from '../src/analysis/schema.js';
+import {NativeTrackService} from '../src/analysis/tracks.js';
 
 const collection=rows=>({collection:{items:rows.map(row=>({data:Object.entries(row).map(([name,value])=>({name,value}))})),links:[]}});
 async function applicationFixture() {
   const root=path.resolve('.'),modules={},calls=[];let updated=false;
-  for(const directory of ['domain','security','sync','sources','analysis','application'])for(const file of await readdir(`src/${directory}`,{recursive:true}))if(file.endsWith('.js')) {
+  for(const directory of ['domain','security','sync','sources','analysis','application','read-model'])for(const file of await readdir(`src/${directory}`,{recursive:true}))if(file.endsWith('.js')) {
     const name=`src/${directory}/${file}`;modules[name]={type:'esm',contents:await readFile(name,'utf8')};
   }
   modules['application-test-worker.js']={type:'esm',contents:`
     import {ApplicationSyncService,createApplicationRuntime} from './src/application/sync-service.js';
     import {BudgetDB} from './src/sync/budget.js';
-    export const SyncRuntime=createApplicationRuntime({runtimeOptions:{alarmDelayMs:2,pageDelayMs:2,leaseMs:3000,retryBaseMs:10,runtimeRetryMs:20}});
+    const BaseRuntime=createApplicationRuntime({runtimeOptions:{alarmDelayMs:2,pageDelayMs:2,leaseMs:3000,retryBaseMs:10,runtimeRetryMs:20}});
+    export class SyncRuntime extends BaseRuntime {
+      async run(){try{return await super.run();}finally{const last=await this.ctx.storage.get('last_run');if(Number.isFinite(last?.statements)){const receipt=await this.ctx.storage.get('fixture_budget')||{count:0,max:0,projection_admissions:0,violations:[]};receipt.count++;receipt.max=Math.max(receipt.max,last.statements);receipt.projection_admissions+=last.projectionsQueued||0;if(last.statements>48||last.state==='error')receipt.violations.push({statements:last.statements,state:last.state,error:last.error});await this.ctx.storage.put('fixture_budget',receipt);}}}
+      async fetch(request){if(new URL(request.url).pathname==='/fixture-budget')return Response.json(await this.ctx.storage.get('fixture_budget')||{count:0,max:0,projection_admissions:0,violations:[]});return super.fetch(request);}
+    }
     export default {scheduled(controller,env,ctx){const db=new BudgetDB(env.DB,48);db.reserve(6);ctx.waitUntil(new ApplicationSyncService(db,env).recoverDemand());},async fetch(request,env){
       const db=new BudgetDB(env.DB,48);db.reserve(6);const service=new ApplicationSyncService(db,env),path=new URL(request.url).pathname;
       try {
+        if(path==='/fixture-budget')return env.SYNC.get(env.SYNC.idFromName('scheduler')).fetch('https://sync/fixture-budget');
         if(path==='/recover')return Response.json(await service.recoverDemand());
         if(path==='/discovery')return Response.json(await service.enqueueDiscovery((await request.json()).accountId));
         if(path==='/attach')return Response.json(await service.attachSelected(await request.json()));
@@ -34,7 +40,7 @@ async function applicationFixture() {
       }catch(error){return Response.json({error:error.code||'failure',message:error.message},{status:500});}
     }};
   `};
-  const mf=new Miniflare({telemetry:{enabled:false},logRequests:false,workers:[{config:{name:'application-test',compatibilityDate:'2026-09-09',manifest:{mainModule:'application-test-worker.js',modulesRoot:root,modules},env:{DB:{type:'d1',id:'application-sync-test'},SYNC:{type:'durable-object',worker:'application-test',exportName:'SyncRuntime'},PROVIDER_FETCH:{type:'fetcher',handler:async request=>{
+  const mf=new Miniflare({cf:false,telemetry:{enabled:false},logRequests:false,workers:[{config:{name:'application-test',compatibilityDate:'2026-09-09',manifest:{mainModule:'application-test-worker.js',modulesRoot:root,modules},env:{DB:{type:'d1',id:'application-sync-test'},SYNC:{type:'durable-object',worker:'application-test',exportName:'SyncRuntime'},PROVIDER_FETCH:{type:'fetcher',handler:async request=>{
     const url=new URL(request.url);calls.push(url.pathname+url.search);
     if(url.hostname==='system.gotsport.com') {
       let value;
@@ -54,12 +60,13 @@ async function applicationFixture() {
     else throw new Error('Unexpected source endpoint '+url.pathname);
     return new MfResponse(JSON.stringify(collection(rows)),{status:200,headers:{'Content-Type':'application/json'}});
   }}},exports:{SyncRuntime:{type:'durable-object',storage:'sqlite'}}}}]});
-  await mf.ready;const db=await mf.getD1Database('DB','application-test');await initializeDomain(db);await installSecuritySchema(db);await installSyncSchema(db);await db.batch(ANALYSIS_SCHEMA.map(sql=>db.prepare(sql)));
+  try{await mf.ready;const db=await mf.getD1Database('DB','application-test');await initializeDomain(db);await installSecuritySchema(db);await installSyncSchema(db);await db.batch(ANALYSIS_SCHEMA.map(sql=>db.prepare(sql)));
   const repo=new DomainRepository(db),security=new SecurityStore(db,{bootstrapPassword:'isolated-native-test-password'});await security.initializeOwner('isolated-native-test-password');
   const account=await repo.registerAccount({provider:'teamsnap',nativeId:'99',name:'Native fixture account'});await security.storeAccountCredential(account.id,'synthetic-teamsnap-token',{generation:account.generation});
   async function action(path,body) {const response=await mf.dispatchFetch('http://localhost'+path,{method:'POST',body:JSON.stringify(body)});const result=await response.json();assert.equal(response.status,200,JSON.stringify(result));return result;}
   async function waitFor(check,timeoutMs=10000) {const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){if(await check())return;const errors=(await db.prepare("SELECT component,scope,state,last_error_code,last_error_message FROM sync_jobs WHERE state IN ('failed','blocked','retrying')").all()).results;if(errors.length)throw new Error(JSON.stringify(errors));await new Promise(resolve=>setTimeout(resolve,20));}throw new Error('Native application alarms did not settle: '+JSON.stringify({jobs:(await db.prepare('SELECT component,state,generation,checkpoint,args,last_error_code FROM sync_jobs').all()).results,source:(await db.prepare("SELECT home_score FROM source_events WHERE native_id='4150'").all()).results,canonical:(await db.prepare("SELECT goals_for FROM team_events WHERE event_id IN(SELECT event_id FROM event_source_links WHERE source_event_id IN(SELECT id FROM source_events WHERE native_id='4150'))").all()).results}));}
-  return {mf,db,repo,security,account,calls,action,waitFor,update:()=>{updated=true;},dispose:()=>mf.dispose()};
+  return {mf,db,repo,security,account,calls,action,waitFor,budget:async()=>(await mf.dispatchFetch('http://localhost/fixture-budget')).json(),update:()=>{updated=true;},dispose:()=>mf.dispose()};
+  }catch(error){await mf.dispose().catch(()=>{});throw error;}
 }
 
 test('native source discovery, explicit attachment, canonical publication and later updates run without a browser',async()=>{
@@ -93,7 +100,7 @@ test('native source discovery, explicit attachment, canonical publication and la
   }finally{await h.dispose();}
 });
 
-test('bounded recovery closes account authorization and projection enqueue crash windows',async()=>{
+test('native scheduled recovery closes missed-wake account and projection crash windows',async()=>{
   const h=await applicationFixture();try{
     const team=await h.repo.createTeam({name:'Recovery team',seasonYear:2026});
     // Authorization and a domain mutation committed, then the request died before enqueue.
@@ -102,7 +109,8 @@ test('bounded recovery closes account authorization and projection enqueue crash
       h.db.prepare('UPDATE team_read_state SET pending=1 WHERE app_team_id=?').bind(team.id),
     ]);
     assert.equal((await h.db.prepare('SELECT COUNT(*) AS count FROM sync_jobs').first()).count,0);
-    const recovered=await h.action('/recover',{});assert.equal(recovered.accountsQueued,1);assert.equal(recovered.projectionsQueued,1);
+    const worker=await h.mf.getWorker('application-test');
+    assert.equal((await worker.scheduled({cron:'* * * * *',scheduledTime:Date.now()})).outcome,'ok');
     await h.waitFor(async()=>{
       const state=await h.db.prepare('SELECT pending FROM team_read_state WHERE app_team_id=?').bind(team.id).first();
       const jobs=await h.db.prepare("SELECT COUNT(*) AS count FROM sync_jobs WHERE state NOT IN ('ready','disabled')").first();
@@ -111,7 +119,10 @@ test('bounded recovery closes account authorization and projection enqueue crash
     assert.equal((await h.db.prepare('SELECT COUNT(*) AS count FROM source_teams').first()).count,21);
     assert.equal((await h.db.prepare('SELECT COUNT(*) AS count FROM source_events').first()).count,0);
     assert.equal((await h.db.prepare('SELECT COUNT(*) AS count FROM app_teams').first()).count,1,'recovery discovery cannot make visible teams');
-    const again=await h.action('/recover',{});assert.equal(again.accountsQueued,0);assert.equal(again.projectionsQueued,0);
+    const saved=(await h.db.prepare('SELECT id,generation,pages_saved FROM sync_jobs ORDER BY id').all()).results;
+    assert.equal((await worker.scheduled({cron:'* * * * *',scheduledTime:Date.now()})).outcome,'ok');
+    await h.waitFor(async()=>!(await h.db.prepare("SELECT COUNT(*) count FROM sync_jobs WHERE state NOT IN('ready','disabled')").first()).count);
+    assert.deepEqual((await h.db.prepare('SELECT id,generation,pages_saved FROM sync_jobs ORDER BY id').all()).results,saved,'a second cron does not restart completed recovered work');
     assert.equal((await h.db.prepare('SELECT COUNT(*) AS count FROM sync_jobs').first()).count,3,'recovery is idempotent, including one bounded analysis catalog');
   }finally{await h.dispose();}
 });
@@ -152,16 +163,35 @@ test('owner track refresh queues only the selected attached private match and ac
     await h.repo.ingestSourcePage({accountId:account.id,generation:account.generation,records:{teams:[{provider:'trace',native_id:'400',name:'Own Trace',details:JSON.stringify({account_owned:true,slug:'own-trace'}),archived:0,observed_at:'2026-10-10T12:00:00Z'}]},fixtures:[{provider:'trace',native_id:'4001',home_id:'trace:400',away_id:null,starts_at:'2026-10-09T20:00:00Z',type:'game',status:'FINAL',conditional:0,home_score:2,away_score:1,payload:JSON.stringify({home_name:'Own Trace',away_name:'Other',approx_half_duration:25}),observed_at:'2026-10-10T12:00:00Z'}]});
     const source=await h.db.prepare("SELECT id FROM source_teams WHERE provider='trace' AND native_id='400' AND account_id=?").bind(account.id).first(),attachment=await h.repo.attachTeam({teamId:team.id,seasonId:team.season_id,sourceTeamId:source.id,accountId:account.id});await h.repo.projectTeam(team.id,team.season_id);
     const event=await h.db.prepare('SELECT event_id FROM team_events WHERE app_team_id=?').bind(team.id).first();
-    const children=Array.from({length:5},(_,i)=>({provider:'trace',component:i<2?'tracking':'analytics',scope:`trace:4001:400:home:track1:${i}`,resourceKey:`trace:4001:400:home:track1:${i}`,args:{team_id:'400',game_id:'4001',side:'home',gid:'track1',player_id:'track:track1',gids:['track1']},accountId:account.id,accountGeneration:account.generation}));
+    // Synthetic native observations enter through the production source mapper;
+    // an attachment alone cannot authorize invented private tracking jobs.
+    const observed='2026-10-10T12:00:00Z',parts=[
+      {part:'member:0',value:{gid:'track1',side:'home',name:'Unidentified own track',dummy:true}},
+      ...[1,2].map(half=>({part:'clip:'+half,value:{half,game_clip_id:40010+half,start:Date.parse('2026-10-09T20:00:00Z')+(half-1)*1800000,duration:1500}})),
+    ];
+    await h.repo.ingestSourcePage({accountId:account.id,generation:account.generation,records:{trace_parts:parts.map(p=>({...p,fixture_id:'trace:4001',team_id:'trace:400',account_id:account.id,value:JSON.stringify(p.value),observed_at:observed}))}});
+    const tracks=new NativeTrackService(h.db,{owner:true}),context=await tracks.context({team_id:team.id,team_season_id:team.season_id},event.event_id);
+    const member=await h.db.prepare('SELECT * FROM source_game_members WHERE source_event_id=? AND source_team_id=? AND account_id=? AND gid=?').bind(context.source.id,context.source.source_team_id,account.id,'track1').first();
+    const children=await tracks.sourceChildren({...context,member});
+    assert.equal(children.length,5);assert.equal(new Set(children.map(c=>c.resourceKey)).size,5,'five distinct native resources');assert.equal(children.filter(c=>c.component==='tracking').length,2);assert.equal(children.filter(c=>c.component==='analytics').length,3);
+    assert.ok(children.every(c=>c.args.analysis_source_proof?.source_event_id===context.source.id&&c.args.analysis_source_proof?.member_id===member.id));
+    // Preserve this test's admission-only budget boundary: source ingestion and
+    // child generation are setup; reserve20 accounts for preceding route work.
     const db=new BudgetDB(h.db,48);db.reserve(20);const service=new ApplicationSyncService(db,{}, {wake:async()=>{}});
     await service.enqueueAnalysisRefresh({teamId:team.id,seasonId:team.season_id,eventId:event.event_id,sourceChildren:children});assert.ok(db.used<=48);
     const jobs=(await h.db.prepare("SELECT account_id,authorization_generation,priority,stage FROM sync_jobs WHERE provider='trace'").all()).results;assert.equal(jobs.length,5);assert.ok(jobs.every(j=>j.account_id===account.id&&j.authorization_generation===account.generation&&j.priority===80&&j.stage==='analysis'));
     assert.equal((await h.db.prepare('SELECT COUNT(*) n FROM sync_job_subscribers WHERE demand_key=? AND app_team_id=?').bind(attachment.id,team.id).first()).n,5);
     assert.equal((await h.db.prepare("SELECT COUNT(*) n FROM sync_jobs WHERE provider='analysis' AND component='match'").first()).n,1);
     const rawService=new ApplicationSyncService(h.db,{}, {wake:async()=>{}}),request={teamId:team.id,seasonId:team.season_id,eventId:event.event_id};
-    await assert.rejects(()=>rawService.enqueueTrackSource({...request,sourceChildren:children.map(c=>({...c,accountGeneration:account.generation+1}))}),error=>error.code==='invalid_job');
-    await assert.rejects(()=>rawService.enqueueTrackSource({...request,sourceChildren:children.map(c=>({...c,args:{...c.args,side:'away'}}))}),error=>error.code==='invalid_job');
-    const other=await h.repo.createTeam({name:'Unattached other',seasonYear:2026});await assert.rejects(()=>rawService.enqueueTrackSource({...request,teamId:other.id,seasonId:other.season_id,sourceChildren:children}),error=>error.code==='invalid_job');
+    const withoutProof=children.map(c=>{const args={...c.args};delete args.analysis_source_proof;return {...c,args};});
+    await assert.rejects(()=>rawService.enqueueTrackSource({...request,sourceChildren:withoutProof}),error=>error.code==='analysis_source_scope');
+    await assert.rejects(()=>rawService.enqueueTrackSource({...request,sourceChildren:children.map(c=>({...c,accountGeneration:account.generation+1}))}),error=>error.code==='analysis_source_scope');
+    await assert.rejects(()=>rawService.enqueueTrackSource({...request,sourceChildren:children.map(c=>({...c,args:{...c.args,side:'away'}}))}),error=>error.code==='analysis_source_scope');
+    const other=await h.repo.createTeam({name:'Unattached other',seasonYear:2026});await assert.rejects(()=>rawService.enqueueTrackSource({...request,teamId:other.id,seasonId:other.season_id,sourceChildren:children}),error=>error.code==='analysis_source_scope');
+    await h.db.prepare("UPDATE source_events SET provenance='file_import' WHERE id=?").bind(context.source.id).run();
+    const importedContext=await tracks.context({team_id:team.id,team_season_id:team.season_id},event.event_id);
+    assert.deepEqual(await tracks.sourceChildren({...importedContext,member}),[],'saved imported tracks may be analyzed locally but cannot mint fetch authority');
+    await assert.rejects(()=>rawService.enqueueTrackSource({...request,sourceChildren:children}),error=>error.code==='analysis_source_scope');
     assert.equal((await h.db.prepare('SELECT COUNT(*) n FROM sync_jobs').first()).n,6,'rejected scopes cannot grant private job demand');
   }finally{await h.dispose();}
 });
@@ -183,7 +213,7 @@ test('recovery reduces projection fan-out to the remaining request budget after 
   }finally{await h.dispose();}
 });
 
-test('more than 128 shared seasons commit source data and remaining fan-out recovers through native scheduled events',async()=>{
+test('more than 128 shared seasons finish all bounded projection pages through native alarms',async()=>{
   const h=await applicationFixture();try{
     await h.repo.ingestSourcePage({records:{teams:[{provider:'gotsport',native_id:'212707',name:'Old public team',details:JSON.stringify({profile:true,club_name:'',logo:''}),archived:0,observed_at:'2026-10-10T12:00:00Z'}]},fixtures:[]});
     const teams=Array.from({length:131},(_,i)=>({id:crypto.randomUUID(),season:crypto.randomUUID(),attachment:crypto.randomUUID(),name:'Shared '+i})),data=JSON.stringify(teams),sourceId=sourceKey('gotsport','212707');
@@ -195,17 +225,14 @@ test('more than 128 shared seasons commit source data and remaining fan-out reco
       h.db.prepare("INSERT INTO team_source_attachments(id,app_team_id,team_season_id,source_team_id) SELECT json_extract(value,'$.attachment'),json_extract(value,'$.id'),json_extract(value,'$.season'),? FROM json_each(?)").bind(sourceId,data),
     ]);
     await h.action('/refresh',{attachmentId:teams[0].attachment});
-    await h.waitFor(async()=>{const row=await h.db.prepare("SELECT state FROM sync_jobs WHERE provider='gotsport' AND component='profile'").first(),pending=await h.db.prepare("SELECT COUNT(*) count FROM sync_jobs WHERE state NOT IN('ready','disabled')").first();return row?.state==='ready'&&pending.count===0;},30000);
+    // No scheduled event or browser/manual runner request is needed after the
+    // one refresh. Alarm recovery admits the five children beyond the source
+    // commit's 126 projection + two provider child bound.
+    await h.waitFor(async()=>{const row=await h.db.prepare("SELECT state FROM sync_jobs WHERE provider='gotsport' AND component='profile'").first(),pending=await h.db.prepare("SELECT (SELECT COUNT(*) FROM sync_jobs WHERE state NOT IN('ready','disabled')) jobs,(SELECT COUNT(*) FROM team_projection_state WHERE pending=1) projections,(SELECT COUNT(*) FROM team_read_state WHERE pending=1) reads").first();return row?.state==='ready'&&pending.jobs===0&&pending.projections===0&&pending.reads===0;},90000);
     assert.equal((await h.db.prepare('SELECT name FROM source_teams WHERE id=?').bind(sourceId).first()).name,'Updated public team');
-    assert.equal((await h.db.prepare('SELECT COUNT(*) count FROM team_projection_state WHERE pending=1').first()).count,5,'126 inline projections plus two native children fit the 128 child bound');
-    const worker=await h.mf.getWorker('application-test');let ticks=0;
-    for(;ticks<3;ticks++) {
-      const pending=await h.db.prepare('SELECT COUNT(*) count FROM team_projection_state WHERE pending=1').first();if(!pending.count)break;
-      assert.equal((await worker.scheduled({cron:'* * * * *',scheduledTime:Date.now()})).outcome,'ok');
-      await h.waitFor(async()=>!(await h.db.prepare("SELECT COUNT(*) count FROM sync_jobs WHERE state NOT IN('ready','disabled')").first()).count);
-    }
-    assert.equal((await h.db.prepare('SELECT COUNT(*) count FROM team_projection_state WHERE pending=1').first()).count,0);assert.equal(ticks,2);
-    assert.equal((await h.db.prepare('SELECT COUNT(*) count FROM app_teams').first()).count,131,'account discovery in the scheduled fallback never adds app teams');
-    console.log(JSON.stringify({large_projection_fanout:'PASS',affected_seasons:131,inline_projection_children:126,native_scheduled_events:ticks,browser_open:false,manual_runner_requests:0,production_cron_timing_not_verified:true}));
+    const budget=await h.budget();assert.ok(budget.count>0);assert.ok(budget.max<=48);assert.deepEqual(budget.violations,[]);assert.equal(budget.projection_admissions,5,'bounded alarm recovery admits exactly the five remaining projections');
+    assert.deepEqual(await h.db.prepare("SELECT count(*) total,min(pages_saved) minimum_pages,max(pages_saved) maximum_pages,sum(pages_saved) pages,sum(failures) failures FROM sync_jobs WHERE provider='domain' AND component='projection'").first(),{total:131,minimum_pages:6,maximum_pages:6,pages:786,failures:0},'fan-out remains exactly six bounded pages per season, without rescans or retries');
+    assert.equal((await h.db.prepare('SELECT COUNT(*) count FROM app_teams').first()).count,131,'automatic local recovery never adds app teams');
+    console.log(JSON.stringify({large_projection_fanout:'PASS',affected_seasons:131,inline_projection_children:126,native_scheduled_events:0,native_alarms:budget.count,max_native_statements:budget.max,alarm_projection_admissions:budget.projection_admissions,browser_open:false,manual_runner_requests:0}));
   }finally{await h.dispose();}
 });

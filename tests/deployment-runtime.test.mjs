@@ -11,7 +11,7 @@ const password='deployment-test-owner-password-123';
 const stale={state:'complete',started_at:'2026-10-10T00:00:00Z',finished_at:'2026-10-10T00:01:00Z',queries:42};
 
 async function harness(){
-  const modules={},files=['worker.js',...(await readdir(path.join(root,'src'),{recursive:true})).filter(f=>f.endsWith('.js')).map(f=>'src/'+f)];
+  const modules={},files=['worker.js','web/app/coach-tactics.js',...(await readdir(path.join(root,'src'),{recursive:true})).filter(f=>f.endsWith('.js')).map(f=>'src/'+f)];
   for(const file of files)modules[file]={type:'esm',contents:await readFile(path.join(root,file),'utf8')};
   // Test instrumentation only: the assembled production Worker/runtime handles
   // every ordinary request, wake and native alarm without a runner endpoint.
@@ -64,7 +64,8 @@ test('an existing scheduler alarm waits for fresh installation, ignores old stat
     const team=await h.request('/api/teams',{method:'POST',body:{name:'Deployment workflow team',timezone:'UTC',season_year:2026}});assert.equal(team.status,201);
     const snapshot=await h.request('/api/reports/snapshots',{method:'POST',body:{team_id:team.data.team.id,team_season_id:team.data.season_id,type:'season'}});assert.equal(snapshot.status,202,JSON.stringify(snapshot.data));
     const closedAt=Date.now();
-    await h.waitFor(async()=>(await h.db.prepare('SELECT state FROM report_snapshots WHERE id=?').bind(snapshot.data.data.snapshot_id).first()).state==='ready');
+    await h.waitFor(async()=>{const row=await h.db.prepare('SELECT state,error_code FROM report_snapshots WHERE id=?').bind(snapshot.data.data.snapshot_id).first();assert.notEqual(row.state,'failed',JSON.stringify(row));return row.state==='ready';});
+    const ready=await h.db.prepare('SELECT content_revision,total,captured,selection FROM report_snapshots WHERE id=?').bind(snapshot.data.data.snapshot_id).first();assert.equal(ready.content_revision,1);assert.equal(ready.total,6);assert.equal(ready.captured,6);assert.equal(JSON.parse(ready.selection).report_initial_publication,undefined);
     const job=await h.db.prepare("SELECT state,last_saved_at,last_complete_at FROM sync_jobs WHERE provider='reports' AND component='capture'").first();
     assert.equal(job.state,'ready');assert.ok(job.last_saved_at>=closedAt&&job.last_complete_at>=closedAt);
     const setup=await h.db.prepare('SELECT schema_fingerprint,started_at FROM setup_state WHERE id=1').first(),status=await h.status();

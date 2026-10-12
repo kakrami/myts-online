@@ -1,16 +1,7 @@
-import {DOMAIN_SCHEMA,DOMAIN_SCHEMA_VERSION} from './src/domain/schema.js';
-import {SECURITY_SCHEMA} from './src/security/schema.js';
-import {SYNC_SCHEMA} from './src/sync/schema.js';
-import {COACH_SCHEMA} from './src/coaching/schema.js';
-import {ANALYSIS_SCHEMA} from './src/analysis/schema.js';
-import {REPORT_SCHEMA} from './src/reporting/schema.js';
-import {DATA_FILE_SCHEMA} from './src/reporting/data-schema.js';
-import {TRACKING_CAPTURE_SCHEMA} from './src/tracking/schema.js';
 import {trackingCaptureService,collectTrackingCaptureJob} from './src/application/tracking.js';
-import {TEAM_FEATURE_SCHEMA} from './src/application/team-features.js';
-import {CATALOG_SCHEMA} from './src/application/team-catalog.js';
-import {AWARDS_SCHEMA} from './src/read-model/feature-schema.js';
-import {FreshInstallation} from './src/application/fresh-install.js';
+import {SCHEMA,SEED} from './src/application/installation-schema.js';
+import {InstallationUpgrade} from './src/application/schema-upgrade.js';
+import {wrapDatabase} from './src/application/installation-epoch.js';
 import {VERSION} from './src/application/version.js';
 import {applicationRoutes} from './src/application/routes.js';
 import {json,errorResponse} from './src/application/http.js';
@@ -20,14 +11,16 @@ import {collectReportJob,reportService,dataFileService} from './src/application/
 import {wakeSync} from './src/sync/runtime.js';
 import {coachingRoutes} from './src/coaching/routes.js';
 
-const SCHEMA=[...DOMAIN_SCHEMA,...SECURITY_SCHEMA,...SYNC_SCHEMA,...TEAM_FEATURE_SCHEMA,...CATALOG_SCHEMA,...COACH_SCHEMA,...ANALYSIS_SCHEMA,...REPORT_SCHEMA,...DATA_FILE_SCHEMA,...TRACKING_CAPTURE_SCHEMA,...AWARDS_SCHEMA];
-const SEED=[{sql:`INSERT INTO domain_installation(id,schema_version,created_at) VALUES(1,${DOMAIN_SCHEMA_VERSION},strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(id) DO NOTHING`,params:[]}];
+const installationFor=(db,env)=>new InstallationUpgrade(db,{schema:SCHEMA,seed:SEED,bootstrapPassword:env.ADMIN_KEY,upgradeMode:env.MYTS_UPGRADE_MODE});
 export const SyncRuntime=createApplicationRuntime({reportCollector:collectReportJob,trackingCollector:collectTrackingCaptureJob,runtimeOptions:{
-  // Keep the existing 48-query job allowance plus the two read-only installation
-  // checks inside the same 50-query invocation ceiling.
+  // Readiness and every N+2 guarded write batch share the same unchanged
+  // 50-statement invocation ceiling; collectors reserve the actual overhead.
   statementLimit:50,
+  wrapDatabase,
+  async advanceInstallation({db,env}){return installationFor(db,env).advanceUpgrade();},
+  async recoverConnections({db,env}){return new ApplicationSyncService(db,env).recoverLocalDemand({wake:false});},
   async inspectInstallation({db,env}){
-    const state=await new FreshInstallation(db,{schema:SCHEMA,seed:SEED,bootstrapPassword:env.ADMIN_KEY}).inspect();
+    const state=await installationFor(db,env).inspect();
     if(state.state!=='ready')return state;
     return {...state,identity:state.schema_fingerprint+':'+state.started_at};
   },
@@ -39,8 +32,8 @@ export default {
     try{
       if(url.pathname==='/api/health'&&request.method==='GET')return json({service:'myTS',version:VERSION});
       if(url.pathname.startsWith('/api/')){
-        if(!env.DB)return json({error:{code:'database_unconfigured',message:'Connect a new database to this installation.'}},503);
-        const db=new BudgetDB(env.DB),installation=new FreshInstallation(db,{schema:SCHEMA,seed:SEED,bootstrapPassword:env.ADMIN_KEY});
+        if(!env.DB)return json({error:{code:'database_unconfigured',message:'The existing database binding is unavailable. Preserve the installation and review its configuration.'}},503);
+        const budget=new BudgetDB(env.DB),installation=installationFor(budget,env),db=wrapDatabase(budget);
         return await applicationRoutes(request,env,{db,installation,extraRoutes:[coachingRoutes]});
       }
       if(!['GET','HEAD'].includes(request.method))return json({error:{code:'method_not_allowed',message:'Use a supported request method.'}},405);
@@ -54,8 +47,10 @@ export default {
   },
   async scheduled(controller,env,ctx){ctx.waitUntil((async()=>{
     if(!env.DB)return;
-    const db=new BudgetDB(env.DB),installation=new FreshInstallation(db,{schema:SCHEMA,seed:SEED,bootstrapPassword:env.ADMIN_KEY});
-    if((await installation.inspect()).state!=='ready')return;
+    const budget=new BudgetDB(env.DB),installation=installationFor(budget,env),state=await installation.inspect();
+    if(['upgrade_required','upgrading'].includes(state.state)){await wakeSync(env);return;}
+    if(state.state!=='ready')return;
+    const db=wrapDatabase(budget);
     try{
       if(db.remaining>=7)await trackingCaptureService(db,env).pruneExpired();
       if(db.remaining>=7)await reportService(db,env).pruneExpired({limit:5});

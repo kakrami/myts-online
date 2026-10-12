@@ -6,7 +6,7 @@ export class InstallationError extends Error {
 const fail=(code,message,status)=>{throw new InstallationError(code,message,status);};
 const META=`CREATE TABLE IF NOT EXISTS setup_state(id INTEGER PRIMARY KEY CHECK(id=1),schema_fingerprint TEXT NOT NULL,next_index INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL CHECK(state IN('initializing','ready')),started_at TEXT NOT NULL,completed_at TEXT)`;
 const query="SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'";
-const readyRow='SELECT schema_fingerprint,next_index,state,started_at FROM setup_state WHERE id=1';
+const readyRow='SELECT schema_fingerprint,next_index,state,started_at,completed_at FROM setup_state WHERE id=1';
 const encode=new TextEncoder();
 
 /** Only CREATE statements for the single fresh schema are accepted. No upgrades. */
@@ -24,18 +24,18 @@ export class FreshInstallation {
     this.fingerprint=digest(JSON.stringify({schema:this.schema,seed}));
     this.tables=new Set(this.schema.filter(sql=>/^CREATE TABLE/i.test(sql)).map(sql=>sql.match(/^CREATE TABLE IF NOT EXISTS\s+(\w+)/i)[1]));
   }
-  async inspect() {
-    const names=(await this.db.prepare(query).all()).results.map(r=>r.name);
+  async inspect(snapshot) {
+    const names=snapshot?.names??(await this.db.prepare(query).all()).results.map(r=>r.name);
     if(!names.includes('setup_state')) {
-      if(names.some(name=>name!=='d1_migrations')) fail('fresh_database_required','This build requires a new, empty database.');
+      if(names.some(name=>name!=='d1_migrations')) fail('fresh_database_required','This database does not match the installation. Preserve its data and review the database binding.');
       return {state:'empty',progress:0};
     }
     const domainSeed=this.seed.some(s=>/^INSERT INTO domain_installation\b/i.test(s.sql));
-    const row=await this.db.prepare(domainSeed&&names.includes('domain_installation')?readyRow.replace(' FROM setup_state',', (SELECT COUNT(*) FROM domain_installation WHERE id=1) AS domain_seed_count FROM setup_state'):readyRow).first();
+    const row=snapshot?.row??await this.db.prepare(domainSeed&&names.includes('domain_installation')?readyRow.replace(' FROM setup_state',', (SELECT COUNT(*) FROM domain_installation WHERE id=1) AS domain_seed_count FROM setup_state'):readyRow).first();
     if(!row||row.schema_fingerprint!==await this.fingerprint||names.some(name=>name!=='setup_state'&&name!=='d1_migrations'&&!this.tables.has(name)))
-      fail('fresh_database_required','This database belongs to a different build. Use a new, empty database.');
+      fail('fresh_database_required','This database belongs to a different build. Preserve its data and review the installation identity.');
     if(row.state==='ready'&&([...this.tables].some(name=>!names.includes(name))||domainSeed&&row.domain_seed_count!==1))
-      fail('installation_incomplete','This installation is missing required records. Use a new, empty database.');
+      fail('installation_incomplete','This installation is missing required records. Preserve its data and review the installation integrity.');
     return {...row,progress:Math.min(100,Math.floor(row.next_index/this.schema.length*100))};
   }
   async verifyBootstrap(password) {

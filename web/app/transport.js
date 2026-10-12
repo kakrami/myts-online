@@ -41,7 +41,7 @@ export class RequestCoordinator {
   }
 }
 export class RevisionRefresh {
-  constructor(coordinator, onChange, onError, {interval=15000}={}) { this.coordinator=coordinator; this.onChange=onChange; this.onError=onError; this.interval=interval; this.previous=null; this.timer=null; this.running=null; this.epoch=0; }
+  constructor(coordinator, onChange, onError, {interval=15000,onInitial=null}={}) { this.onInitial=onInitial; this.coordinator=coordinator; this.onChange=onChange; this.onError=onError; this.interval=interval; this.previous=null; this.timer=null; this.running=null; this.epoch=0; }
   start(path) { this.stop(); this.path=path; this.previous=null; this.timer=setInterval(()=>this.check(),this.interval); return this.check(); }
   stop() { if(this.timer) clearInterval(this.timer); this.timer=null; this.previous=null; this.path=null; this.epoch++; }
   async check() {
@@ -52,7 +52,9 @@ export class RevisionRefresh {
       const result=await this.coordinator.read('revisions',path);
       if(result.discarded || epoch!==this.epoch) return;
       const signature=JSON.stringify(result.data.revision || result.data.revisions || result.data);
-      if(this.previous!==null && signature!==this.previous) { this.coordinator.invalidate(); await this.onChange(result.data); }
+      if(this.previous===null&&this.onInitial){if(await this.onInitial(result.data)===false)return;}
+      else if(this.previous!==null && signature!==this.previous) { this.coordinator.invalidate(); if(await this.onChange(result.data)===false)return; }
+      if(epoch!==this.epoch||path!==this.path)return;
       this.previous=signature;
     } catch(error) { if(epoch===this.epoch) this.onError(error); }
     finally { if(this.running===epoch) this.running=null; }

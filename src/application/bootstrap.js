@@ -3,10 +3,11 @@ import {VERSION} from './version.js';
 import {TeamCatalog} from './team-catalog.js';
 import {CursorCodec} from '../read-model/cursor.js';
 import {actor} from './http.js';
+const maintenancePhases=new Set(['sealing','expanding','transfers','roots','memberships','receipts','rosters','events','validating']);
 const invalidSession=error=>error instanceof SecurityError&&['sign_in_required','share_invalid'].includes(error.code);
 export async function bootstrapModel(request,{db,installation,security}) {
   const setup=await installation.inspect();
-  if(setup.state!=='ready')return {version:VERSION,setup:{state:setup.state,progress:setup.progress},session:{role:'anonymous'},teams:[],preferences:{theme:'light',revision:0}};
+  if(setup.state!=='ready')return {version:VERSION,setup:{state:setup.state,progress:setup.progress,...(maintenancePhases.has(setup.phase)?{phase:setup.phase}:{})},session:{role:'anonymous'},teams:[],preferences:{theme:'light',revision:0}};
   const configured=await security.ownerConfigured();
   if(!configured)return {version:VERSION,setup:{state:'ready',progress:100,owner_ready:false},session:{role:'anonymous'},teams:[],preferences:{theme:'light',revision:0}};
   let principal=null;

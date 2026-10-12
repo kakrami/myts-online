@@ -3,6 +3,7 @@ export const SERIALIZATION_KEYS={
  source_teams:['id'],source_players:['id'],source_competitions:['id'],source_divisions:['id'],source_competition_memberships:['id'],source_events:['id'],
  source_roster_memberships:['source_team_id','source_player_id'],source_references:['id'],source_standings:['id'],source_attendance:['id'],source_trace_components:['id'],source_game_members:['id'],source_game_moments:['id'],source_tracking_segments:['id'],source_stat_summaries:['id'],source_stat_items:['id'],source_division_coverage:['id'],source_standings_coverage:['source_division_id'],source_component_coverage:['id'],source_event_logistics:['source_event_id'],source_heatmaps:['id'],
  source_event_teams:['source_team_id','source_event_id','side'],source_team_links:['a','b'],
+ connection_roster_evidence:['connection_id','team_season_id','source_player_id','basis_key'],
 };
 export const INTERNAL_SOURCE_FIELDS=new Set(['content_hash','content_revision']);
 export const serializationKey=(table,alias)=>`json_array(${SERIALIZATION_KEYS[table].map(c=>`${alias}.${c}`).join(',')})`;

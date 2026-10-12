@@ -4,7 +4,8 @@ import {mkdtemp, mkdir, readFile, rm, symlink, writeFile} from 'node:fs/promises
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {requiredFiles, stageRelease} from '../scripts/release-check.mjs';
+import {requiredFiles, stageRelease, schemaIdentity} from '../scripts/release-check.mjs';
+import {V714_OBJECTS,V714_FINGERPRINT} from '../src/application/schema-v714.js';
 
 const fakeWrangler = `#!/usr/bin/env node
 const fs = require('node:fs');
@@ -13,6 +14,16 @@ fs.appendFileSync(process.env.MYTS_GUARD_TRACE, JSON.stringify(args) + '\\n');
 if (args[0] === 'd1' && args[1] === 'execute' && args[2] === 'DB'
     && args.includes('--remote') && args.includes('--json')) {
   switch (process.env.MYTS_GUARD_SCENARIO) {
+    case 'known-old':
+    case 'initializing-target': {
+      const loaded=JSON.parse(fs.readFileSync(process.env.MYTS_GUARD_DATABASE_FIXTURE,'utf8'));
+      const fixture=process.env.MYTS_GUARD_SCENARIO==='initializing-target'?loaded.target:loaded;
+      const sql=args[args.indexOf('--command')+1];
+      const results=sql.includes('FROM sqlite_master')?fixture.objects:sql.includes('FROM setup_state')?[fixture.setup]:sql.includes('FROM domain_installation')?[{schema_version:1}]:null;
+      if(!results){process.exitCode=87;break;}
+      process.stdout.write(JSON.stringify([{success:true,results}]));
+      break;
+    }
     case 'empty':
       process.stdout.write(JSON.stringify([{success:true, results:[]}]));
       break;
@@ -24,7 +35,7 @@ if (args[0] === 'd1' && args[1] === 'execute' && args[2] === 'DB'
       process.stdout.write('This fixture response is not JSON.');
       break;
     case 'foreign-schema':
-      process.stdout.write(JSON.stringify([{success:true, results:[{name:'installation'}]}]));
+      process.stdout.write(JSON.stringify([{success:true, results:[{type:'table',name:'installation',sql:'CREATE TABLE installation(id INTEGER)'}]}]));
       break;
     case 'empty-envelope':
       process.stdout.write('[]');
@@ -71,6 +82,9 @@ async function runPipeline(scenario, check, amendConfig) {
     await symlink('../wrangler/bin/wrangler.js', path.join(npmBin, 'wrangler'));
     const trace = path.join(fixture, 'guard-trace.jsonl');
     const sentinel = path.join(fixture, 'deploy-sentinel.txt');
+    const databaseFixture=path.join(fixture,'guard-database.json');
+    const identity=await schemaIdentity();
+    await writeFile(databaseFixture,JSON.stringify({target:{objects:[V714_OBJECTS.find(row=>row.name==='setup_state')],setup:{schema_fingerprint:identity.fingerprint,next_index:0,state:'initializing',started_at:'2026-10-12T05:20:00.000Z',completed_at:null}},objects:V714_OBJECTS,setup:{schema_fingerprint:V714_FINGERPRINT,next_index:270,state:'ready',started_at:'2026-10-12T05:20:00.000Z',completed_at:'2026-10-12T05:29:49.040Z'}}));
     const result = spawnSync('npm', ['run', 'deploy'], {
       cwd:fixture,
       encoding:'utf8',
@@ -81,6 +95,7 @@ async function runPipeline(scenario, check, amendConfig) {
         MYTS_GUARD_SCENARIO:scenario,
         MYTS_GUARD_TRACE:trace,
         MYTS_GUARD_DEPLOY_SENTINEL:sentinel,
+        MYTS_GUARD_DATABASE_FIXTURE:databaseFixture,
         // An explicit guard must fail closed independently of Node's
         // unhandled-rejection policy. The original missing await could warn,
         // exit successfully, and allow the shell's && to reach deploy.
@@ -106,14 +121,14 @@ async function runPipeline(scenario, check, amendConfig) {
   }
 }
 
-test('actual npm deploy awaits an empty remote database inspection before deploying', async () => {
-  await runPipeline('empty', ({result, output, calls, deployed}) => {
+test('actual npm deploy awaits the exact preserved 7.1.4 physical schema before deploying', async () => {
+  await runPipeline('known-old', ({result, output, calls, deployed}) => {
     assert.equal(result.status, 0, output);
-    assert.match(output, /Remote rebuild database inspected: empty\. Deployment guard passed\./);
+    assert.match(output, /Remote rebuild database inspected: upgrade_required\. Deployment guard passed\./);
     assert.doesNotMatch(output, /inspected: undefined/);
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 4);
     assert.equal(calls[0][0], 'd1');
-    assert.deepEqual(calls[1], ['deploy', '--config', 'wrangler.jsonc']);
+    assert.deepEqual(calls[3], ['deploy', '--config', 'wrangler.jsonc']);
     assert.equal(deployed, 'deploy reached\n');
   });
 });
@@ -135,6 +150,8 @@ for (const [label, amendConfig] of [
 }
 
 for (const [scenario, message] of [
+  ['empty', /production database is unexpectedly empty/],
+  ['initializing-target', /production target must be fully ready/],
   ['query-failure', /Remote database inspection failed/],
   ['unreadable-json', /Remote inspection returned an unreadable response/],
   ['foreign-schema', /selected remote database belongs to another build/],
@@ -147,7 +164,7 @@ for (const [scenario, message] of [
       assert.notEqual(result.status, 0, output);
       assert.match(output, message);
       assert.doesNotMatch(output, /Deployment guard passed|inspected: undefined|UnhandledPromiseRejectionWarning/);
-      assert.equal(calls.length, 1);
+      assert.equal(calls.length, scenario==='initializing-target'?2:1);
       assert.equal(calls[0][0], 'd1');
       assert.equal(deployed, null);
     });

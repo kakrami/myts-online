@@ -79,9 +79,9 @@ export async function resetInclusion(features,teamId,seasonId,command) {
   const expected=revision(command?.revision),content=revision(command?.content_revision);
   const result=await features.writeTeam(teamId,'COALESCE((SELECT revision FROM season_controls WHERE team_season_id=?),0)=? AND (SELECT content_revision FROM team_read_state WHERE app_team_id=?)=?',[seasonId,expected,teamId,content],[
     features.db.prepare('DELETE FROM season_inclusion_rules WHERE team_season_id=?').bind(seasonId),
-    features.db.prepare('UPDATE team_seasons SET include_june=1 WHERE id=?').bind(seasonId),
+    features.db.prepare('UPDATE team_seasons SET include_june=0 WHERE id=?').bind(seasonId),
     features.db.prepare('INSERT INTO season_controls VALUES(?,1) ON CONFLICT(team_season_id) DO UPDATE SET revision=revision+1 RETURNING revision').bind(seasonId),
     features.db.prepare('UPDATE team_read_state SET content_revision=content_revision+1 WHERE app_team_id=? RETURNING content_revision').bind(teamId),
   ]);
-  return {ok:true,include_june:true,revision:result[2].results[0].revision,content_revision:result[3].results[0].content_revision};
+  return {ok:true,include_june:false,revision:result[2].results[0].revision,content_revision:result[3].results[0].content_revision};
 }

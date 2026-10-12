@@ -10,7 +10,8 @@ import { SyncError } from '../src/sync/errors.js';
 const root = path.resolve('.');
 async function fixture(nativeAlarms = false, freshDomain = false, runtimeOptions={}) {
   const modules = {};
-  for (const name of ['schema','errors','coordinator','budget','runtime']) modules[`src/sync/${name}.js`] = {type:'esm',contents:await readFile(`src/sync/${name}.js`,'utf8')};
+  for (const name of ['schema','errors','coordinator','budget','runtime','public-history','public-history-bridge']) modules[`src/sync/${name}.js`] = {type:'esm',contents:await readFile(`src/sync/${name}.js`,'utf8')};
+  modules['src/application/public-history-schema.js']={type:'esm',contents:await readFile('src/application/public-history-schema.js','utf8')};
   modules['sync-test-worker.js'] = {type:'esm',contents:`
     import {JobCoordinator} from './src/sync/coordinator.js';
     import {createSyncRuntime,wakeSync} from './src/sync/runtime.js';
@@ -35,7 +36,7 @@ async function fixture(nativeAlarms = false, freshDomain = false, runtimeOptions
       return Response.json({error:'not_found'},{status:404});
     }};
   `};
-  const mf = new Miniflare({telemetry:{enabled:false},logRequests:false,workers:[{config:{name:'sync-test',compatibilityDate:'2026-09-09',manifest:{mainModule:'sync-test-worker.js',modulesRoot:root,modules},env:{DB:{type:'d1',id:'sync-test'},SYNC:{type:'durable-object',worker:'sync-test',exportName:'SyncRuntime'}},exports:{SyncRuntime:{type:'durable-object',storage:'sqlite'}}}}]});
+  const mf = new Miniflare({cf:false,telemetry:{enabled:false},logRequests:false,workers:[{config:{name:'sync-test',compatibilityDate:'2026-09-09',manifest:{mainModule:'sync-test-worker.js',modulesRoot:root,modules},env:{DB:{type:'d1',id:'sync-test'},SYNC:{type:'durable-object',worker:'sync-test',exportName:'SyncRuntime'}},exports:{SyncRuntime:{type:'durable-object',storage:'sqlite'}}}}]});
   await mf.ready;
   const db = await mf.getD1Database('DB','sync-test');
   if (freshDomain) {
@@ -44,6 +45,11 @@ async function fixture(nativeAlarms = false, freshDomain = false, runtimeOptions
   } else await db.batch([
     db.prepare('CREATE TABLE provider_accounts(id TEXT PRIMARY KEY,provider TEXT NOT NULL,generation INTEGER NOT NULL,active INTEGER NOT NULL)'),
     db.prepare('CREATE TABLE app_teams(id TEXT PRIMARY KEY,name TEXT NOT NULL)'),
+    db.prepare("CREATE TABLE team_source_connections(id TEXT PRIMARY KEY,app_team_id TEXT NOT NULL,source_team_id TEXT DEFAULT 'fixture-source',account_id TEXT,scope_mode TEXT DEFAULT 'observed_history',input_revision INTEGER NOT NULL DEFAULT 1,reconciled_revision INTEGER NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,generation INTEGER NOT NULL DEFAULT 1)"),
+    db.prepare("CREATE TABLE source_teams(id TEXT PRIMARY KEY,provenance TEXT NOT NULL DEFAULT 'provider')"),
+    db.prepare("INSERT INTO source_teams(id) VALUES('fixture-source')"),
+    db.prepare('CREATE TABLE account_source_teams(account_id TEXT NOT NULL,source_team_id TEXT NOT NULL)'),
+    db.prepare("CREATE TABLE team_source_attachments(id TEXT PRIMARY KEY,app_team_id TEXT NOT NULL,source_team_id TEXT DEFAULT 'fixture-source',account_id TEXT,active INTEGER NOT NULL DEFAULT 1,generation INTEGER NOT NULL DEFAULT 1)"),
     db.prepare('CREATE TABLE team_read_state(app_team_id TEXT PRIMARY KEY REFERENCES app_teams(id),content_revision INTEGER NOT NULL DEFAULT 0,status_revision INTEGER NOT NULL DEFAULT 0,pending INTEGER NOT NULL DEFAULT 0)'),
     db.prepare('CREATE TABLE source_sync_facts(id TEXT PRIMARY KEY,value TEXT NOT NULL,saved_at INTEGER NOT NULL)'),
     db.prepare("INSERT INTO app_teams VALUES('team-a','Team A'),('team-b','Team B')"),
@@ -356,5 +362,206 @@ test('atomic demand admission cannot recreate deleting team work or propagate re
     assert.ok(await c.enqueue(maintenance,[{kind:'team',key:'delete:team-a',teamId:'team-a'}]));
     await h.db.prepare("UPDATE team_lifecycle SET state='deleted' WHERE team_id='team-a'").run();
     await assert.rejects(c.enqueue(maintenance,[{kind:'team',key:'delete:team-a',teamId:'team-a'}]),error=>error.code==='demand_unavailable');
+  }finally{await h.dispose();}
+});
+
+test('typed connection generations fence admission, claim and stale source commits after unlink',async()=>{
+  const h=await fixture();try{
+    await h.db.prepare("INSERT INTO team_source_connections(id,app_team_id,active,generation) VALUES('root-a','team-a',1,1)").run();
+    const jobs=new JobCoordinator(h.db),demand=[{kind:'team',key:'connection:root-a',teamId:'team-a',generation:1}],id=await jobs.enqueue(spec('root-resource'),demand),lease=await jobs.claim();assert.equal(lease.id,id);
+    await h.db.prepare("UPDATE team_source_connections SET active=0,generation=2 WHERE id='root-a'").run();
+    const committed=await jobs.commit(lease,page('must-not-save',true));assert.equal(committed.committed,false);assert.equal(await h.db.prepare("SELECT * FROM source_sync_facts WHERE id='must-not-save'").first(),null);
+    assert.equal(await jobs.claim(),null);await assert.rejects(jobs.enqueue(spec('new-stale-demand'),demand),error=>error.code==='demand_unavailable');
+    await h.db.prepare("UPDATE team_source_connections SET active=1,generation=3 WHERE id='root-a'").run();
+    await assert.rejects(jobs.enqueue(spec('old-generation'),demand),error=>error.code==='demand_unavailable');
+    assert.ok(await jobs.enqueue(spec('new-generation'),[{...demand[0],generation:3}]));
+  }finally{await h.dispose();}
+});
+
+test('unlinking one root retains shared collection for a different live consumer',async()=>{
+  const h=await fixture();try{
+    await h.db.prepare("INSERT INTO team_source_connections(id,app_team_id) VALUES('root-a','team-a'),('root-b','team-b')").run();
+    const jobs=new JobCoordinator(h.db),a={kind:'team',key:'connection:root-a',teamId:'team-a',generation:1},b={kind:'team',key:'connection:root-b',teamId:'team-b',generation:1};
+    const id=await jobs.enqueue(spec('shared-root-resource'),[a,b]),lease=await jobs.claim();assert.equal(lease.id,id);
+    await h.db.prepare("UPDATE team_source_connections SET active=0,generation=generation+1 WHERE id='root-a'").run();await jobs.unsubscribe('team',a.key);
+    const result=await jobs.commit(lease,page('shared-survives',true));assert.equal(result.committed,true);
+    assert.deepEqual((await h.db.prepare('SELECT app_team_id FROM sync_job_subscribers WHERE job_id=?').bind(id).all()).results,[{app_team_id:'team-b'}]);
+  }finally{await h.dispose();}
+});
+
+test('existing legacy attachment demand cannot commit after a season exclusion',async()=>{
+  const h=await fixture();try{
+    await h.db.prepare("INSERT INTO team_source_attachments(id,app_team_id,active,generation) VALUES('legacy-a','team-a',1,4)").run();
+    const jobs=new JobCoordinator(h.db),id=await jobs.enqueue(spec('legacy-resource'),[{kind:'team',key:'legacy-a',teamId:'team-a',generation:4}]),lease=await jobs.claim();assert.equal(lease.id,id);
+    await h.db.prepare("UPDATE team_source_attachments SET active=0,generation=5 WHERE id='legacy-a'").run();assert.equal((await jobs.commit(lease,page('excluded-no-save',true))).committed,false);assert.equal(await jobs.claim(),null);
+  }finally{await h.dispose();}
+});
+
+test('connection input advances preserve in-progress cursors and leases but completed scans and identity changes restart',async()=>{
+  const h=await fixture();try{
+    await h.db.prepare("INSERT INTO team_source_connections(id,app_team_id) VALUES('coalesced-root','team-a')").run();
+    const jobs=new JobCoordinator(h.db,{pageDelayMs:0}),demand=[{kind:'team',key:'connection:coalesced-root',teamId:'team-a',generation:1}];
+    const rootSpec=(inputRevision,generation=1)=>({provider:'domain',component:'connection',stage:'projection',scope:'team-a',resourceKey:'coalesced-root',args:{connectionId:'coalesced-root',teamId:'team-a',generation,inputRevision},recurring:false,priority:90});
+    const [id]=await jobs.enqueueMany([rootSpec(1)],demand);let lease=await jobs.claim();
+    await jobs.commit(lease,{statements:[],checkpoint:{phase:'events',after:'first',inputRevision:1},complete:false});
+    const initial=await h.db.prepare('SELECT generation FROM sync_jobs WHERE id=?').bind(id).first();
+    await jobs.enqueueMany([rootSpec(2)],demand);
+    let saved=await h.db.prepare('SELECT * FROM sync_jobs WHERE id=?').bind(id).first();
+    assert.equal(saved.generation,initial.generation);assert.equal(JSON.parse(saved.checkpoint).after,'first');
+    lease=await jobs.claim();assert.equal(lease.args.inputRevision,2);assert.equal(lease.checkpoint.after,'first');
+    await jobs.enqueueMany([rootSpec(3)],demand);
+    saved=await h.db.prepare('SELECT * FROM sync_jobs WHERE id=?').bind(id).first();
+    assert.equal(saved.state,'running');assert.equal(saved.lease_token,lease.lease_token);assert.equal(saved.generation,lease.generation);
+    // An invalidated source-input fence retries locally without losing its
+    // durable cursor; the materializer is responsible for its bounded catch-up.
+    await jobs.fail(lease,new SyncError('revision_conflict','Input changed.'));
+    await jobs.enqueueMany([rootSpec(4)],demand);
+    saved=await h.db.prepare('SELECT * FROM sync_jobs WHERE id=?').bind(id).first();
+    assert.equal(saved.state,'retrying');assert.equal(saved.generation,initial.generation);assert.equal(JSON.parse(saved.checkpoint).after,'first');
+    await h.db.prepare('UPDATE sync_jobs SET next_at=0 WHERE id=?').bind(id).run();lease=await jobs.claim();
+    await jobs.commit(lease,{statements:[],checkpoint:{phase:'done',after:'last',inputRevision:4},complete:true});
+    await jobs.enqueueMany([rootSpec(5)],demand);
+    saved=await h.db.prepare('SELECT * FROM sync_jobs WHERE id=?').bind(id).first();
+    assert.equal(saved.state,'queued');assert.deepEqual(JSON.parse(saved.checkpoint),{});assert.equal(saved.generation,initial.generation+1);
+    lease=await jobs.claim();await jobs.commit(lease,{statements:[],checkpoint:{phase:'events',after:'second-pass'},complete:false});
+    await h.db.prepare("UPDATE team_source_connections SET generation=2 WHERE id='coalesced-root'").run();
+    await jobs.enqueueMany([rootSpec(6,2)],[{...demand[0],generation:2}]);
+    saved=await h.db.prepare('SELECT * FROM sync_jobs WHERE id=?').bind(id).first();
+    assert.deepEqual(JSON.parse(saved.checkpoint),{});assert.equal(saved.generation,initial.generation+2,'root generation changes still invalidate every old cursor');
+    const sourceId=await jobs.enqueue(spec('ordinary-source',{args:{inputRevision:1},priority:100}),subscriber);lease=await jobs.claim();assert.equal(lease.id,sourceId);
+    await jobs.commit(lease,{statements:[],checkpoint:{after:'source-page'},complete:false});
+    await jobs.enqueue(spec('ordinary-source',{args:{inputRevision:2},priority:100}),subscriber);
+    assert.deepEqual(JSON.parse((await h.db.prepare('SELECT checkpoint FROM sync_jobs WHERE id=?').bind(sourceId).first()).checkpoint),{},'provider argument changes retain their original reset semantics');
+  }finally{await h.dispose();}
+});
+
+test('legacy attachment provider demand loses entitlement and import authority without blocking saved local work',async()=>{
+  const h=await fixture();try{
+    await h.db.prepare("INSERT INTO team_source_attachments(id,app_team_id,account_id) VALUES('private-legacy','team-a','account-a')").run();
+    await h.db.prepare("INSERT INTO account_source_teams VALUES('account-a','fixture-source')").run();
+    const jobs=new JobCoordinator(h.db),demand=[{kind:'team',key:'private-legacy',teamId:'team-a',generation:1}],sourceSpec=spec('legacy-entitlement',{accountId:'account-a',accountGeneration:1});
+    const id=await jobs.enqueue(sourceSpec,demand),lease=await jobs.claim();assert.equal(lease.id,id);
+    await h.db.prepare("DELETE FROM account_source_teams WHERE account_id='account-a'").run();
+    assert.equal((await jobs.commit(lease,page('must-not-save-after-entitlement',true))).committed,false);
+    await assert.rejects(jobs.enqueue({...sourceSpec,resourceKey:'revoked-admission'},demand),error=>error.code==='demand_unavailable');
+    await h.db.prepare("INSERT INTO account_source_teams VALUES('account-a','fixture-source')").run();
+    await h.db.prepare("UPDATE source_teams SET provenance='file_import' WHERE id='fixture-source'").run();
+    await assert.rejects(jobs.enqueue({...sourceSpec,resourceKey:'import-admission'},demand),error=>error.code==='demand_unavailable');
+    await h.db.prepare("DELETE FROM account_source_teams WHERE account_id='account-a'").run();
+    const localId=await jobs.enqueue({provider:'domain',component:'projection',stage:'projection',scope:'team-a',resourceKey:'saved-season',priority:100},demand),local=await jobs.claim();assert.equal(local.id,localId);
+    assert.equal((await jobs.commit(local,page('local-saved-content',true))).committed,true);
+  }finally{await h.dispose();}
+});
+
+test('automatic projection children wait for dirty connection evidence but owner demand remains admissible',async()=>{
+  const h=await fixture(false,true);try{
+    const {DomainRepository,sourceKey}=await import('../src/domain/repository.js'),repo=new DomainRepository(h.db),team=await repo.createTeam({name:'Accepted evidence',seasonYear:2026});
+    await repo.ingestSourcePage({records:{teams:[{provider:'gotsport',native_id:'pending-root',name:'Saved source',details:{}}]},fixtures:[]});
+    await h.db.prepare("INSERT INTO team_source_connections(id,app_team_id,source_team_id,scope_mode,input_revision,reconciled_revision,created_at) VALUES('pending-root',?,?,'observed_history',2,1,'fixture')").bind(team.id,sourceKey('gotsport','pending-root')).run();
+    const jobs=new JobCoordinator(h.db),demand=[{kind:'team',key:'source-consumer',teamId:team.id}],child={provider:'domain',component:'projection',stage:'projection',scope:team.id,resourceKey:team.season_id,args:{teamId:team.id,seasonId:team.season_id},priority:100,recurring:false,subscriberMode:'projection',subscribers:[{kind:'team',key:'projection:'+team.id,teamId:team.id}]};
+    await jobs.enqueue(spec('pending-source'),demand);let lease=await jobs.claim();assert.equal((await jobs.commit(lease,page('accepted-source-page',true,{children:[child]}))).committed,true);
+    assert.equal((await h.db.prepare("SELECT count(*) n FROM sync_jobs WHERE provider='domain' AND component='projection'").first()).n,0,'source facts commit without premature publication demand');
+    const {ApplicationSyncService}=await import('../src/application/sync-service.js'),sync=new ApplicationSyncService(h.db,{}, {wake:async()=>{}});
+    assert.equal((await sync.recoverProjections({wake:false})).queued,0,'scheduled repair uses the same accepted-evidence gate');
+    const explicit=await sync.enqueueProjection(team.id,team.season_id,{wake:false});assert.equal(explicit.queued,true,'owner/manual demand is still admitted');
+    lease=await jobs.claim();assert.equal(lease.id,explicit.jobId);await jobs.commit(lease,{statements:[],checkpoint:{},complete:true});
+    await h.db.prepare("UPDATE team_source_connections SET reconciled_revision=input_revision WHERE id='pending-root'").run();
+    assert.equal((await sync.recoverProjections({wake:false})).queued,1,'completed root evidence releases durable pending publication');
+  }finally{await h.dispose();}
+});
+
+test('one failed or delayed root cannot starve another roots accepted automatic publication',async()=>{
+  const h=await fixture(false,true);try{
+    const {DomainRepository,sourceKey}=await import('../src/domain/repository.js'),{ApplicationSyncService}=await import('../src/application/sync-service.js'),repo=new DomainRepository(h.db),team=await repo.createTeam({name:'Independent source progress',seasonYear:2026});
+    await repo.ingestSourcePage({records:{teams:[{provider:'gotsport',native_id:'healthy',name:'Healthy',details:{}},{provider:'gotsport',native_id:'delayed',name:'Delayed',details:{}}]},fixtures:[]});
+    for(const [root,native,reconciled] of [['healthy-root','healthy',2],['delayed-root','delayed',1]])await h.db.prepare("INSERT INTO team_source_connections(id,app_team_id,source_team_id,scope_mode,input_revision,reconciled_revision,created_at) VALUES(?,?,?,'observed_history',2,?,'fixture')").bind(root,team.id,sourceKey('gotsport',native),reconciled).run();
+    const jobs=new JobCoordinator(h.db),sync=new ApplicationSyncService(h.db,{}, {wake:async()=>{}}),rootArgs={connectionId:'delayed-root',teamId:team.id,generation:1,inputRevision:2};
+    const delayed=await jobs.enqueue({provider:'domain',component:'connection',stage:'projection',scope:team.id,resourceKey:'delayed-root',args:rootArgs,recurring:false,priority:20},[{kind:'team',key:'connection:delayed-root',teamId:team.id,generation:1}]);
+    await h.db.prepare("UPDATE sync_jobs SET state='failed' WHERE id=?").bind(delayed).run();
+    const child={provider:'domain',component:'projection',stage:'projection',scope:team.id,resourceKey:team.season_id,args:{teamId:team.id,seasonId:team.season_id},priority:100,recurring:false,subscriberMode:'projection',subscribers:[{kind:'team',key:'projection:'+team.id,teamId:team.id}]};
+    await jobs.enqueue(spec('healthy-source',{priority:70}),[{kind:'team',key:'connection:healthy-root',teamId:team.id,generation:1}]);let lease=await jobs.claim();
+    assert.equal((await jobs.commit(lease,page('healthy-despite-failed-peer',true,{children:[child]}))).committed,true);
+    lease=await jobs.claim();assert.equal(lease.component,'projection');await jobs.commit(lease,{statements:[],checkpoint:{},complete:true});
+    for(const [state,next] of [['failed',0],['blocked',0],['retrying',Date.now()+60000]]){
+      await h.db.prepare('UPDATE sync_jobs SET state=?,next_at=? WHERE id=?').bind(state,next,delayed).run();
+      assert.equal((await sync.recoverProjections({wake:false})).queued,1,state+' peer must not block accepted content');
+      lease=await jobs.claim();assert.equal(lease.component,'projection');await jobs.commit(lease,{statements:[],checkpoint:{},complete:true});
+    }
+    for(const state of ['queued','running','ready','disabled','retrying']){
+      await h.db.prepare('UPDATE sync_jobs SET state=?,next_at=0 WHERE id=?').bind(state,delayed).run();
+      assert.equal((await sync.recoverProjections({wake:false})).queued,0,state+' active/due or unadmitted reconciliation still coalesces');
+    }
+    await h.db.prepare("UPDATE sync_jobs SET state='failed',args=? WHERE id=?").bind(JSON.stringify({...rootArgs,inputRevision:1}),delayed).run();
+    assert.equal((await sync.recoverProjections({wake:false})).queued,0,'a failure for older input is not evidence that new dirty input was admitted');
+    assert.deepEqual(await h.db.prepare("SELECT input_revision,reconciled_revision,active FROM team_source_connections WHERE id='delayed-root'").first(),{input_revision:2,reconciled_revision:1,active:1},'the failed root remains honestly pending');
+  }finally{await h.dispose();}
+});
+
+test('scope renewal fences old leases, preserves shared cursors and reconnects only the proven descendant graph',async()=>{
+  const h=await fixture();try{
+    await h.db.prepare("INSERT INTO team_source_connections(id,app_team_id) VALUES('scope-root','team-a'),('shared-root','team-b')").run();
+    const jobs=new JobCoordinator(h.db,{pageDelayMs:0}),demand=generation=>[{kind:'team',key:'connection:scope-root',teamId:'team-a',generation}],shared=[{kind:'team',key:'connection:shared-root',teamId:'team-b',generation:1}],profile=spec('selected-team',{provider:'gotsport',component:'profile',priority:97});
+    const [profileId]=await jobs.enqueueMany([profile],demand(1));let lease=await jobs.claim();assert.equal(lease.id,profileId);
+    const history={...spec('selected-team',{provider:'gotsport',component:'history',priority:30}),subscriberMode:'inherit'};
+    await jobs.commit(lease,{statements:[],checkpoint:{finished:true},complete:true,children:[history]});
+    lease=await jobs.claim();const historyId=lease.id;assert.equal(lease.component,'history');
+    await jobs.commit(lease,{statements:[],checkpoint:{page:7},complete:false});
+    const snapshot=()=>h.db.prepare('SELECT generation,checkpoint,scan_id,state,args FROM sync_jobs WHERE id=?').bind(historyId).first(),before=await snapshot();
+    lease=await jobs.claim();assert.equal(lease.id,historyId);const oldLease=lease;
+    await h.db.prepare("UPDATE team_source_connections SET generation=2,input_revision=input_revision+1 WHERE id='scope-root'").run();
+    await jobs.enqueueMany([profile],demand(2));
+    assert.deepEqual(await snapshot(),{...before,generation:before.generation+1});
+    assert.equal((await h.db.prepare('SELECT generation FROM sync_job_subscribers WHERE job_id=?').bind(historyId).first()).generation,2);
+    const forbiddenChild={...spec('old-lease-child'),subscriberMode:'inherit'};
+    assert.equal((await jobs.commit(oldLease,page('old-lease-must-not-save',true,{children:[forbiddenChild]}))).committed,false);
+    assert.equal(await h.db.prepare("SELECT id FROM source_sync_facts WHERE id='old-lease-must-not-save'").first(),null);
+    assert.equal((await h.db.prepare("SELECT count(*) n FROM sync_jobs WHERE resource_key='old-lease-child'").first()).n,0);
+    lease=await jobs.claim();assert.equal(lease.id,historyId);assert.deepEqual(lease.checkpoint,{page:7},'new claim resumes the saved page');
+    await jobs.enqueue(history,shared);
+    await h.db.prepare("UPDATE team_source_connections SET generation=3,input_revision=input_revision+1 WHERE id='scope-root'").run();
+    await jobs.enqueueMany([profile],demand(3));
+    assert.equal((await jobs.commit(lease,page('shared-old-lease-must-not-save',true))).committed,false);
+    assert.deepEqual(await snapshot(),{...before,generation:before.generation+2});
+    assert.deepEqual((await h.db.prepare('SELECT app_team_id,generation FROM sync_job_subscribers WHERE job_id=? ORDER BY app_team_id').bind(historyId).all()).results,[{app_team_id:'team-a',generation:3},{app_team_id:'team-b',generation:1}]);
+    lease=await jobs.claim();assert.equal(lease.id,historyId);assert.deepEqual(lease.checkpoint,{page:7});
+    const leaf={...spec('valid-shared-child'),subscriberMode:'inherit'};
+    assert.equal((await jobs.commit(lease,page('post-scope-history',true,{children:[leaf]}))).committed,true);
+    assert.deepEqual((await h.db.prepare("SELECT s.app_team_id,s.generation FROM sync_job_subscribers s JOIN sync_jobs j ON j.id=s.job_id WHERE j.resource_key='valid-shared-child' ORDER BY s.app_team_id").all()).results,[{app_team_id:'team-a',generation:3},{app_team_id:'team-b',generation:1}]);
+    lease=await jobs.claim();assert.equal(lease.resource_key,'valid-shared-child');await jobs.commit(lease,{statements:[],checkpoint:{finished:true},complete:true});
+    const savedHistory=await snapshot();
+    await h.db.prepare("UPDATE team_source_connections SET active=0,generation=4 WHERE id='scope-root'").run();await jobs.unsubscribe('team','connection:scope-root');
+    await assert.rejects(jobs.enqueueMany([profile],demand(4)),error=>error.code==='demand_unavailable');
+    assert.equal((await h.db.prepare("SELECT count(*) n FROM sync_job_subscribers WHERE demand_key='connection:scope-root'").first()).n,0,'renewal cannot recreate removed descendant keys');
+    assert.deepEqual(await snapshot(),savedHistory,'the independent consumer retains its saved history');
+    await h.db.prepare("UPDATE team_source_connections SET active=1,generation=5,input_revision=input_revision+1 WHERE id='scope-root'").run();await jobs.enqueueMany([profile],demand(5));
+    assert.deepEqual((await h.db.prepare('SELECT app_team_id,generation FROM sync_job_subscribers WHERE job_id=? ORDER BY app_team_id').bind(historyId).all()).results,[{app_team_id:'team-a',generation:5},{app_team_id:'team-b',generation:1}],'reconnect inherits only the still-live exact-source donor graph');
+    lease=await jobs.claim();assert.equal(lease.id,profileId);await jobs.commit(lease,{statements:[],checkpoint:{finished:true},complete:true,children:[history]});
+    assert.deepEqual(await snapshot(),savedHistory,'reproving the same shared graph preserves its completed history cursor');
+    await h.db.prepare('UPDATE sync_jobs SET next_at=0 WHERE id=?').bind(historyId).run();lease=await jobs.claim();assert.equal(lease.id,historyId,'the existing history poll remains eligible after narrow, widen, unlink and reconnect');
+    assert.equal((await jobs.commit(lease,page('reconnected-history',true))).committed,true);
+  }finally{await h.dispose();}
+});
+
+test('new roots inherit only a live exact-source donor graph and keep a ready shared parent untouched',async()=>{
+  const h=await fixture();try{
+    await h.db.prepare("INSERT INTO team_source_connections(id,app_team_id) VALUES('donor-root','team-a'),('new-root','team-b')").run();
+    const jobs=new JobCoordinator(h.db),donor=[{kind:'team',key:'connection:donor-root',teamId:'team-a',generation:1}],incoming=[{kind:'team',key:'connection:new-root',teamId:'team-b',generation:1}],profile=spec('same-profile',{provider:'gotsport',component:'profile'}),history={...spec('saved-history',{provider:'gotsport',component:'history'}),subscriberMode:'inherit'};
+    const [profileId]=await jobs.enqueueMany([profile],donor);let lease=await jobs.claim();await jobs.commit(lease,{statements:[],checkpoint:{finished:true},complete:true,children:[history]});
+    lease=await jobs.claim();const historyId=lease.id;await jobs.commit(lease,{statements:[],checkpoint:{page:9,finished:true},complete:true});
+    const snapshot=()=>h.db.prepare('SELECT id,state,generation,checkpoint,scan_id,args FROM sync_jobs ORDER BY id').all(),before=(await snapshot()).results;
+    await h.db.prepare("UPDATE team_source_connections SET active=0 WHERE id='donor-root'").run();
+    await jobs.enqueueMany([profile],incoming);
+    const count=()=>h.db.prepare("SELECT count(*) n FROM sync_job_subscribers WHERE job_id=? AND demand_key='connection:new-root'").bind(historyId).first();
+    assert.equal((await count()).n,0,'an inactive donor cannot confer continuing history demand');
+    await h.db.prepare("INSERT INTO source_teams(id) VALUES('different-source')").run();
+    await h.db.prepare("UPDATE team_source_connections SET active=1 WHERE id='donor-root'").run();
+    await h.db.prepare("UPDATE team_source_connections SET source_team_id='different-source' WHERE id='new-root'").run();
+    await jobs.enqueueMany([profile],incoming);assert.equal((await count()).n,0,'a different selected native source cannot inherit this graph');
+    await h.db.prepare("UPDATE team_source_connections SET source_team_id='fixture-source' WHERE id='new-root'").run();
+    await jobs.enqueueMany([profile],incoming);assert.equal((await count()).n,1);
+    assert.deepEqual((await snapshot()).results,before,'inheriting proven demand does not refetch or reset ready parent/history jobs');
+    await h.db.prepare("UPDATE team_source_connections SET active=0,generation=2 WHERE id='donor-root'").run();await jobs.unsubscribe('team','connection:donor-root');
+    await h.db.prepare('UPDATE sync_jobs SET next_at=0 WHERE id=?').bind(historyId).run();lease=await jobs.claim();assert.equal(lease.id,historyId);assert.notEqual(lease.id,profileId);
+    assert.equal((await jobs.commit(lease,page('new-root-history-poll',true))).committed,true);
   }finally{await h.dispose();}
 });

@@ -66,9 +66,9 @@ export class ReadRepository {
     const filter=this.filters(selection,{calendar:true});
     const queries=await this.db.batch([
       this.stateQuery(selection),
-      this.db.prepare(`SELECT ${ORDER_DAY} AS day,COUNT(*) AS total FROM team_events e WHERE ${filter.where} AND ${ORDER_DAY}>=? AND ${ORDER_DAY}<? GROUP BY ${ORDER_DAY} ORDER BY day`).bind(...filter.params,from,to),
+      this.db.prepare(`SELECT ${ORDER_DAY} AS day,COUNT(*) AS total,json_group_array(DISTINCT e.type) AS kinds FROM team_events e WHERE ${filter.where} AND ${ORDER_DAY}>=? AND ${ORDER_DAY}<? GROUP BY ${ORDER_DAY} ORDER BY day`).bind(...filter.params,from,to),
     ]);
-    return this.envelope(selection,queries[0].results[0],{from,to,days:queries[1].results});
+    return this.envelope(selection,queries[0].results[0],{from,to,days:queries[1].results.map(row=>({...row,kinds:(parse(row.kinds)||[]).filter(kind=>['game','practice','event'].includes(kind)).sort()}))});
   }
   async overview(input) {
     const {selection}=await this.context({...input,mode:'season',type:'all',period:'all',search:''});

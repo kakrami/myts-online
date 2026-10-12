@@ -1,3 +1,5 @@
+> Historical owner-initialization correction. For the current additive transition and recovery boundaries, follow [schema-upgrade.md](schema-upgrade.md); its target identity supersedes the old unchanged-schema statement below.
+
 # Owner initialization correction, myTS 7.1.2
 
 This correction starts from production/review commit 8411d36d9a2a6f66df35fdf83c7964d7a13509c8. Production has the existing rebuild DB binding. The user reports setup_state ready at cursor 270, completed 2026-10-12T05:29:49.040Z, 122 tables, 40 indexes, 98 triggers, 10 views and one domain seed. Owner, vault and session counts were zero after /api/owner/initialize returned HTTP 500 at 05:29:49.370Z, invocation 21dc2c94bba9d696646b078b427ff18b. Displayed progress 88 was stale.

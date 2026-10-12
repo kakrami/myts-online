@@ -69,7 +69,7 @@ export class DomainRepository {
   constructor(db,{inlineProjection=false}={}) { this.db=db;this.inlineProjection=inlineProjection; }
   async state() { return this.db.prepare("SELECT * FROM domain_installation WHERE id=1").first(); }
   async team(teamId) {
-    return requireValue(await this.db.prepare("SELECT t.*,s.id AS season_id,s.start_day,s.end_day,s.include_june FROM app_teams t JOIN team_seasons s ON s.app_team_id=t.id AND s.year=t.season_year WHERE t.id=?").bind(teamId).first(),"Team was not found.","not_found",404);
+    return requireValue(await this.db.prepare("SELECT t.*,s.id AS season_id,s.start_day,s.end_day,s.include_june FROM app_teams t LEFT JOIN team_seasons s ON s.app_team_id=t.id AND s.year=t.season_year WHERE t.id=?").bind(teamId).first(),"Team was not found.","not_found",404);
   }
   async domainBatch(build,precondition={sql:"1",params:[]}) {
     const before=await this.state(), token=id(), guard="EXISTS(SELECT 1 FROM domain_fences WHERE id='domain' AND token=?)";
@@ -113,12 +113,12 @@ export class DomainRepository {
     seasonYear=Number(seasonYear??(now.getUTCFullYear()-(now.getUTCMonth()<5?1:0)));
     requireValue(Number.isInteger(seasonYear)&&seasonYear>=2000&&seasonYear<=2100,"Invalid season.");
     const startDay=`${seasonYear}-06-01`,endDay=`${seasonYear+1}-06-01`;
-    return {id:teamId,name,timezone,season_year:seasonYear,request_id:requestId,created_at:stamp(),season_id:seasonId,start_day:startDay,end_day:endDay,start_at:localMidnight(startDay,timezone),end_at:localMidnight(endDay,timezone),include_june:1};
+    return {id:teamId,name,timezone,season_year:seasonYear,request_id:requestId,created_at:stamp(),season_id:seasonId,start_day:startDay,end_day:endDay,start_at:localMidnight(startDay,timezone),end_at:localMidnight(endDay,timezone),include_june:0};
   }
   teamCreationStatements(team,guard,token) {
     return [
       this.db.prepare(`INSERT INTO app_teams SELECT ?,?,?,?,?,? WHERE ${guard}`).bind(team.id,team.name,team.timezone,team.season_year,team.request_id,team.created_at,token),
-      this.db.prepare(`INSERT INTO team_seasons SELECT ?,?,?,?,?,?,?,1 WHERE ${guard}`).bind(team.season_id,team.id,team.season_year,team.start_day,team.end_day,team.start_at,team.end_at,token),
+      this.db.prepare(`INSERT INTO team_seasons SELECT ?,?,?,?,?,?,?,0 WHERE ${guard}`).bind(team.season_id,team.id,team.season_year,team.start_day,team.end_day,team.start_at,team.end_at,token),
       this.db.prepare(`INSERT INTO team_read_state(app_team_id,pending) SELECT ?,1 WHERE ${guard}`).bind(team.id,token),
       this.db.prepare(`INSERT INTO team_projection_state(team_season_id,app_team_id) SELECT ?,? WHERE ${guard}`).bind(team.season_id,team.id,token),
     ];
@@ -154,7 +154,7 @@ export class DomainRepository {
     if(previous) return previous;
     const seasonId=id();
     await this.domainBatch((guard,token)=>[
-      this.db.prepare(`INSERT INTO team_seasons SELECT ?,?,?,?,?,?,?,1 WHERE ${guard}`).bind(seasonId,teamId,year,`${year}-06-01`,`${year+1}-06-01`,localMidnight(`${year}-06-01`,team.timezone),localMidnight(`${year+1}-06-01`,team.timezone),token),
+      this.db.prepare(`INSERT INTO team_seasons SELECT ?,?,?,?,?,?,?,0 WHERE ${guard}`).bind(seasonId,teamId,year,`${year}-06-01`,`${year+1}-06-01`,localMidnight(`${year}-06-01`,team.timezone),localMidnight(`${year+1}-06-01`,team.timezone),token),
       this.db.prepare(`INSERT INTO team_projection_state(team_season_id,app_team_id) SELECT ?,? WHERE ${guard}`).bind(seasonId,teamId,token),
     ],{sql:"EXISTS(SELECT 1 FROM app_teams WHERE id=?) AND NOT EXISTS(SELECT 1 FROM team_lifecycle WHERE team_id=?)",params:[teamId,teamId]});
     return this.db.prepare("SELECT * FROM team_seasons WHERE id=?").bind(seasonId).first();
@@ -165,7 +165,9 @@ export class DomainRepository {
     if(provenance==="file_import")requireValue(!(records.identity_links||[]).length&&!(page.sourceCoverage||[]).length&&!(page.replacements||[]).length,"File observations cannot assert provider verification or terminal scope.","import_authority",403);
     const before=await this.state();
     const account=accountId?await this.db.prepare("SELECT * FROM provider_accounts WHERE id=?").bind(accountId).first():null;
-    if (accountId) requireValue(account?.active===1&&account.generation===generation,"Authorization changed before source save.","stale_generation",409);
+    // A saved-file import uses the owner's existing account identity, not its
+    // upstream authorization. Provider collection still requires an active grant.
+    if (accountId) requireValue(account&&(provenance==='file_import'||account.active===1)&&account.generation===generation,"Authorization changed before source save.","stale_generation",409);
     const scopeFor=(provider)=>{
       if (PUBLIC.has(provider)) return {scope:"public",account_id:null};
       requireValue(account&&account.provider===provider,"Private source belongs to another account.","source_scope",403);
@@ -195,8 +197,13 @@ export class DomainRepository {
     });
     const total=Object.values(rows).reduce((n,list)=>n+list.length,0)+roster.length+links.length;
     requireValue(total<=500&&byteSize(rows)<=1750000,"Source page needs a smaller slice.","page_size",413);
-    for (const [table,list] of Object.entries(rows)) if(list.length) {
-      const old=(await this.db.prepare(`SELECT * FROM ${table} WHERE id IN(SELECT value FROM json_each(?))`).bind(JSON.stringify(list.map((r)=>r.id))).all()).results;
+    // One bounded snapshot of exactly the incoming native IDs. Aligned scalar
+    // columns avoid duplicating large saved evidence through JSON encoding.
+    const sourceLists=Object.entries(rows).filter(([,list])=>list.length);
+    const previousColumns=[...new Set(sourceLists.flatMap(([table])=>SOURCE_COLUMNS[table]))];
+    const previousSources=sourceLists.length?(await this.db.prepare(sourceLists.map(([table])=>`SELECT '${table}' AS source_table,${previousColumns.map(column=>SOURCE_COLUMNS[table].includes(column)?column:`NULL AS ${column}`).join(',')} FROM ${table} WHERE id IN(SELECT value FROM json_each(?))`).join(' UNION ALL ')).bind(...sourceLists.map(([,list])=>JSON.stringify(list.map(row=>row.id)))).all()).results:[];
+    for (const [table,list] of sourceLists) {
+      const old=previousSources.filter(row=>row.source_table===table).map(row=>Object.fromEntries(SOURCE_COLUMNS[table].map(column=>[column,row[column]])));
       const byId=new Map(old.map((r)=>[r.id,r]));
       for(const row of list) {
         const previous=byId.get(row.id);row.provenance=provenance;
@@ -239,7 +246,7 @@ export class DomainRepository {
     const statements=[],add=(sql,...params)=>statements.push({sql,params});
     if(!changed&&!auxiliary.statements.length&&!allLinks.length) return {changed:false,statements,affectedTeams:[],ignored_app_records:["spaces","space_teams"].filter((key)=>records[key]?.length)};
     // An optimistic precondition fails the entire enclosing source/job transaction.
-    add(`INSERT INTO domain_source_preconditions SELECT 1,?,CASE WHEN ${account?"EXISTS(SELECT 1 FROM provider_accounts WHERE id=? AND generation=? AND active=1)":"1"} THEN (SELECT source_revision FROM domain_installation WHERE id=1) ELSE -1 END WHERE $FENCE ON CONFLICT(id) DO UPDATE SET expected_revision=excluded.expected_revision,actual_revision=excluded.actual_revision`,before.source_revision,...(account?[accountId,generation]:[]));
+    add(`INSERT INTO domain_source_preconditions SELECT 1,?,CASE WHEN ${account?`EXISTS(SELECT 1 FROM provider_accounts WHERE id=? AND generation=?${provenance==='file_import'?'':' AND active=1'})`:"1"} THEN (SELECT source_revision FROM domain_installation WHERE id=1) ELSE -1 END WHERE $FENCE ON CONFLICT(id) DO UPDATE SET expected_revision=excluded.expected_revision,actual_revision=excluded.actual_revision`,before.source_revision,...(account?[accountId,generation]:[]));
     for (const [table,list] of Object.entries(rows)) if (list.length) {
       const cols=SOURCE_COLUMNS[table],data=JSON.stringify(list),updates=cols.filter((c)=>c!=="id").map((c)=>`${c}=excluded.${c}`).join(",");
       add(`INSERT INTO ${table}(${cols.join(",")}) SELECT ${cols.map((c)=>`json_extract(value,'$.${c}')`).join(",")} FROM json_each(?) WHERE $FENCE ON CONFLICT(id) DO UPDATE SET ${updates}`,data);
@@ -252,11 +259,13 @@ export class DomainRepository {
       const canonical=await Promise.all(rows.source_events.filter(r=>PUBLIC.has(r.provider)).map(async r=>({source_id:r.id,id:await nativeCanonicalId('event',r.id)})));
       if(canonical.length){add("INSERT OR IGNORE INTO events SELECT json_extract(value,'$.id'),? FROM json_each(?) WHERE $FENCE",stamp(),JSON.stringify(canonical));add("INSERT OR IGNORE INTO event_source_links(source_event_id,event_id,reason,evidence) SELECT json_extract(value,'$.source_id'),json_extract(value,'$.id'),'source_identity','{}' FROM json_each(?) WHERE $FENCE",JSON.stringify(canonical));}
       add(`DELETE FROM source_event_teams WHERE source_event_id IN (SELECT json_extract(value,'$.id') FROM json_each(?)) AND EXISTS(SELECT 1 FROM source_events e WHERE e.id=source_event_teams.source_event_id AND source_event_teams.source_team_id IS NOT CASE source_event_teams.side WHEN 'home' THEN e.home_source_team_id ELSE e.away_source_team_id END) AND $FENCE`,data);
-      for (const side of ["home","away"]) add(`INSERT OR IGNORE INTO source_event_teams SELECT ${side}_source_team_id,id,'${side}' FROM source_events WHERE id IN(SELECT json_extract(value,'$.id') FROM json_each(?)) AND ${side}_source_team_id IS NOT NULL AND $FENCE`,data);
+      // Keep home before away: a self-participant conflict retains the same
+      // first side as the former two INSERTs, without spending a second query.
+      add(`INSERT OR IGNORE INTO source_event_teams SELECT CASE sides.side WHEN 'home' THEN e.home_source_team_id ELSE e.away_source_team_id END,e.id,sides.side FROM source_events e CROSS JOIN (SELECT 'home' AS side,0 AS ordinal UNION ALL SELECT 'away',1) sides WHERE e.id IN(SELECT json_extract(value,'$.id') FROM json_each(?)) AND CASE sides.side WHEN 'home' THEN e.home_source_team_id ELSE e.away_source_team_id END IS NOT NULL AND $FENCE ORDER BY sides.ordinal,e.id`,data);
     }
     statements.push(...auxiliary.statements);
+    const publicChanged=changed&&(rows.source_events.some(r=>PUBLIC.has(r.provider))||rows.source_teams.some(r=>PUBLIC.has(r.provider))||links.length||auxiliary.affectedDivisionIds.length||auxiliary.affectedCompetitionIds.length);
     if(changed) {
-      if(rows.source_events.some(r=>PUBLIC.has(r.provider))||rows.source_teams.some(r=>PUBLIC.has(r.provider))||links.length||auxiliary.affectedDivisionIds.length||auxiliary.affectedCompetitionIds.length)add("UPDATE domain_installation SET public_revision=public_revision+1 WHERE id=1 AND $FENCE");
       if(rows.source_teams.length)add("INSERT INTO source_team_state SELECT value,1 FROM json_each(?) WHERE $FENCE ON CONFLICT(source_team_id) DO UPDATE SET content_revision=source_team_state.content_revision+1",JSON.stringify(rows.source_teams.map(r=>r.id)));
       const eventIds=[...new Set([...rows.source_events.map(r=>r.id),...auxiliary.affectedEventIds])];
       if(eventIds.length)add("INSERT INTO source_event_state SELECT value,1 FROM json_each(?) WHERE $FENCE ON CONFLICT(source_event_id) DO UPDATE SET input_revision=source_event_state.input_revision+1",JSON.stringify(eventIds));
@@ -267,7 +276,7 @@ export class DomainRepository {
       add(`UPDATE team_projection_state SET pending=1,source_revision=source_revision+1,input_revision=input_revision+1 WHERE team_season_id IN(SELECT team_season_id FROM(${consumerQuery.sql})) AND $FENCE`,...consumerQuery.params);
       add(`UPDATE team_read_state SET pending=1,status_revision=status_revision+1 WHERE app_team_id IN(SELECT app_team_id FROM(${consumerQuery.sql})) AND $FENCE`,...consumerQuery.params);
     }
-    add("UPDATE domain_installation SET source_revision=source_revision+? WHERE id=1 AND $FENCE",changed?1:0);
+    add("UPDATE domain_installation SET source_revision=source_revision+?,public_revision=public_revision+? WHERE id=1 AND $FENCE",changed?1:0,publicChanged?1:0);
     return {changed,statements,affectedTeams:changed?affected:[],ignored_app_records:["spaces","space_teams"].filter((key)=>records[key]?.length)};
   }
   async ingestSourcePage(page) {
@@ -502,11 +511,11 @@ export class DomainRepository {
     requireValue(old.revision===revision,"Correction changed; reload it.","revision_conflict",409);
     const consumers=(await this.db.prepare(`SELECT DISTINCT app_team_id,team_season_id FROM ${table} WHERE app_team_id=? AND ${column}=?`).bind(teamId,entityId).all()).results;
     const result=await this.domainBatch((guard,token)=>[
-      this.db.prepare(`INSERT INTO domain_overrides SELECT ?,?,?,?,1 WHERE ?=0 AND ${guard} ON CONFLICT(app_team_id,kind,entity_id) DO NOTHING`).bind(teamId,kind,entityId,bounded(value,16000),revision,token),
-      this.db.prepare(`UPDATE domain_overrides SET fields=?,revision=revision+1 WHERE app_team_id=? AND kind=? AND entity_id=? AND revision=? AND ?>0 AND ${guard}`).bind(bounded(value,16000),teamId,kind,entityId,revision,revision,token),
+      this.db.prepare(`INSERT INTO domain_overrides SELECT ?,?,?,?,1 WHERE ?=0 AND ${guard} ON CONFLICT(app_team_id,kind,entity_id) DO NOTHING RETURNING revision`).bind(teamId,kind,entityId,bounded(value,16000),revision,token),
+      this.db.prepare(`UPDATE domain_overrides SET fields=?,revision=revision+1 WHERE app_team_id=? AND kind=? AND entity_id=? AND revision=? AND ?>0 AND ${guard} RETURNING revision`).bind(bounded(value,16000),teamId,kind,entityId,revision,revision,token),
       ...this.dirtyStatements(guard,token,consumers),
     ],{sql:`EXISTS(SELECT 1 FROM app_teams WHERE id=?) AND NOT EXISTS(SELECT 1 FROM team_lifecycle WHERE team_id=?) AND EXISTS(SELECT 1 FROM ${table} WHERE app_team_id=? AND ${column}=?) AND (${revision===0?"NOT EXISTS(SELECT 1 FROM domain_overrides WHERE app_team_id=? AND kind=? AND entity_id=?)":"EXISTS(SELECT 1 FROM domain_overrides WHERE app_team_id=? AND kind=? AND entity_id=? AND revision=?)"})`,params:[teamId,teamId,teamId,entityId,teamId,kind,entityId,...(revision===0?[]:[revision])]});
-    requireValue(result[1].meta.changes+result[2].meta.changes===1,"Correction changed; reload it.","revision_conflict",409);
+    requireValue(result[1].results.length+result[2].results.length===1,"Correction changed; reload it.","revision_conflict",409);
     await this.projectConsumers(consumers);return {revision:revision+1,affectedTeams:consumers};
   }
   async resetOverride({teamId,kind,entityId,revision}) {

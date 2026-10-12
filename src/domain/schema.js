@@ -1,5 +1,6 @@
 import { AUXILIARY_SCHEMA } from './auxiliary-schema.js';
 import {serializationSchema} from './serialization.js';
+import {CONNECTION_SCHEMA} from './connection-schema.js';
 export const DOMAIN_SCHEMA_VERSION = 1;
 
 export const DOMAIN_SCHEMA = [
@@ -48,6 +49,7 @@ export const DOMAIN_SCHEMA = [
   ...AUXILIARY_SCHEMA,
 ];
 
+DOMAIN_SCHEMA.push(...CONNECTION_SCHEMA);
 DOMAIN_SCHEMA.push(...serializationSchema(DOMAIN_SCHEMA));
 
 export async function initializeDomain(db) {

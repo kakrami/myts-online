@@ -1,5 +1,5 @@
 import { RequestCoordinator, RevisionRefresh, AppError } from "./transport.js";
-import { ConnectionFlow, sourceSeasonYear, ownerSessionExpired, discoveryMessage } from "./connection-flow.js";
+import { ConnectionFlow, ownerSessionExpired, discoveryMessage } from "./connection-flow.js";
 import { mountShell, updateShell, bindShell, applyTheme, setDetail } from "../ui-original/shell.js";
 import * as screens from "../ui-original/screens.js";
 import * as forms from "../ui-original/forms.js";
@@ -19,17 +19,17 @@ const fullCalendarRange = day => {const first=day.slice(0,7)+"-01",weekday=new D
 const monthStep = (day,offset) => {const date=new Date(day.slice(0,7)+"-01T12:00:00Z");date.setUTCMonth(date.getUTCMonth()+offset);return date.toISOString().slice(0,10);};
 
 /** Mount only from the isolated build's explicit entry. No source collection runs here. */
-export function createApp({host=document.body,fetcher=fetch,routes={},handlers={}}={}) {
+export function createApp({host=document.body,fetcher=fetch,routes={},handlers={},maintenanceInterval=5000}={}) {
   routes={...defaultRoutes,...routes};
   const viewerToken=location.pathname.startsWith("/view/") ? location.pathname.split("/")[2] : null;
   const transport=new RequestCoordinator((path,options)=>fetcher(path,{...options,headers:{...options.headers,...(viewerToken ? {"x-view-key":viewerToken} : {})}}));
-  const state={bootstrap:null,team:null,season:null,view:"overview",filters:{mode:"day",type:"all",period:"all",date:localDay(),sort:"date",direction:"asc"},model:null,routeEpoch:0,details:[],modal:null,editorDirty:false,traceAttempt:null,attachChoice:null,theme:"light",active:false,teamCatalog:null,seasonCatalog:null};
+  const state={bootstrap:null,team:null,season:null,view:"overview",filters:{mode:"day",type:"all",period:"all",date:localDay(),sort:"date",direction:"asc"},model:null,routeEpoch:0,details:[],modal:null,editorDirty:false,traceAttempt:null,attachChoice:null,theme:"light",active:false,teamCatalog:null,seasonCatalog:null,catalogRevision:null};
   let sessionStorage;try{sessionStorage=window.sessionStorage;}catch{}
   const connection=new ConnectionFlow({storage:sessionStorage});
-  const refresh=new RevisionRefresh(transport,()=>reloadVisible(),error=>showError(error));
+  const refresh=new RevisionRefresh(transport,model=>reloadVisible(model),error=>showError(error),{onInitial:model=>Object.entries(model.revision??{}).some(([key,value])=>['seasons','teams','branding'].includes(key)&&value!==state.catalogRevision?.[key])?reloadVisible(model):undefined});
   const discoveryTransport=new RequestCoordinator((path,options)=>fetcher(path,{...options,headers:{...options.headers,...(viewerToken ? {"x-view-key":viewerToken} : {})}}));
   const discoveryRefresh=new RevisionRefresh(discoveryTransport,()=>refreshAccountChooser(),error=>showError(error));
-  let interactionEpoch=0;
+  let interactionEpoch=0,maintenanceTimer=null,maintenanceChecking=false,maintenanceReturn=null,maintenanceOAuth=null;
   let unbind=null,gestureCleanup=null,modalGestureCleanup=null,pendingDiscard=null,historyHandling=false,toastTimer=null;
   const logoCache=new Map();
   const root=()=>host.querySelector("#root"), role=()=>state.bootstrap?.session?.role??"anonymous";
@@ -41,11 +41,28 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
   const selectedSeason=()=>selectedTeam()?.seasons?.find(season=>season.id===state.season);
   const context=()=>({team_id:state.team,team_season_id:state.season});
   const pathFor=(path,params={})=>path+"?"+new URLSearchParams(Object.entries({...context(),...params}).filter(([,value])=>value!=null));
-  const needsInitialization=()=>!!state.bootstrap?.setup&&(state.bootstrap.setup.state!=="ready"||state.bootstrap.setup.owner_ready===false);
-  const shellModel=()=>({mode:role()!=="anonymous" ? "dashboard" : "login",version:state.bootstrap?.version??"",owner_login:location.pathname.startsWith("/admin"),needs_initialization:needsInitialization(),teams:(state.bootstrap?.teams??[]).map(team=>({value:team.id,label:team.name,group:team.group??"My team",logo:team.display_logo??team.logo_url??null})),selected_team_id:state.team,seasons:(selectedTeam()?.seasons??[]).map(season=>({value:season.id,label:season.label})),selected_season_id:state.season,active_view:state.view,owner:role()==="owner",allowed_views:["overview","schedule","competitions","team","bookmarks"].filter(canView),team_catalog:state.teamCatalog,season_catalog:state.seasonCatalog,login_title:needsInitialization() ? "Initialize myTS" : "Owner console",login_help:state.bootstrap?.setup?.state==="ready"&&state.bootstrap.setup.owner_ready===false ? "Finish owner access with the configured owner password." : needsInitialization() ? "Use the configured owner password to initialize this installation." : undefined});
+  const isMaintenance=()=>['maintenance','upgrade_required','upgrading'].includes(state.bootstrap?.setup?.state);
+  const needsInitialization=()=>!!state.bootstrap?.setup&&!isMaintenance()&&(state.bootstrap.setup.state!=="ready"||state.bootstrap.setup.owner_ready===false);
+  const maintenanceModel=()=>{
+    const setup=state.bootstrap?.setup??{},labels={sealing:'Preparing the update',transfers:'Preserving saved files and Coach plans',expanding:'Preparing saved data',roots:'Updating saved connections',memberships:'Updating saved seasons',receipts:'Preserving connection history',rosters:'Updating saved rosters',events:'Updating saved events',validating:'Checking the update'};
+    return {label:labels[setup.phase]??'Preparing the update',progress:Math.min(100,Math.max(0,Number(setup.progress)||0))};
+  };
+  function scheduleMaintenanceCheck(){if(!state.active||!isMaintenance()||maintenanceTimer||maintenanceChecking)return;maintenanceTimer=setTimeout(()=>{maintenanceTimer=null;void checkMaintenance();},maintenanceInterval);}
+  async function checkMaintenance(){
+    if(!state.active||!isMaintenance()||maintenanceChecking)return false;
+    clearTimeout(maintenanceTimer);maintenanceTimer=null;maintenanceChecking=true;
+    try{
+      const restored=await bootstrap({preferredTeam:maintenanceReturn?.team??null,preferredSeason:maintenanceReturn?.season??null,accept:()=>state.active});
+      if(restored&&!isMaintenance()&&state.active){if(maintenanceOAuth){const callback=maintenanceOAuth;maintenanceOAuth=null;await completeOAuthReturn(callback);}else if(role()==='owner'&&connection.value)await resumeConnection();}
+      return restored;
+    }catch(error){if(state.active&&isMaintenance())updateShell(host,{...shellModel(),login_error:'The update is still being checked. This page will retry automatically.'});return false;}
+    finally{maintenanceChecking=false;scheduleMaintenanceCheck();}
+  }
+  const shellModel=()=>({mode:role()!=="anonymous" ? "dashboard" : "login",version:state.bootstrap?.version??"",owner_login:!!state.bootstrap&&!isMaintenance()&&location.pathname.startsWith("/admin"),maintenance:isMaintenance()?maintenanceModel():null,needs_initialization:needsInitialization(),teams:(state.bootstrap?.teams??[]).map(team=>({value:team.id,label:team.name,group:team.group??"My team",logo:team.display_logo??team.logo_url??null})),selected_team_id:state.team,seasons:(selectedTeam()?.seasons??[]).map(season=>({value:season.id,label:season.label})),selected_season_id:state.season,season_pending:!!state.team&&!state.season,active_view:state.view,owner:role()==="owner",allowed_views:["overview","schedule","competitions","team","bookmarks"].filter(canView),team_catalog:state.teamCatalog,season_catalog:state.seasonCatalog,login_title:isMaintenance()?"Updating myTS":needsInitialization() ? "Initialize myTS" : "Owner console",login_help:isMaintenance()?"Your saved dashboard is being updated. This page will reopen automatically when it is ready.":state.bootstrap?.setup?.state==="ready"&&state.bootstrap.setup.owner_ready===false ? "Finish owner access with the configured owner password." : needsInitialization() ? "Use the configured owner password to initialize this installation." : undefined});
   const notice=message=>{clearTimeout(toastTimer);const node=host.querySelector("#toast");if(node){node.textContent=message;node.classList.remove("hidden");toastTimer=setTimeout(()=>node.classList.add("hidden"),4500);}};
   function showError(error,{target=null}={}) {
     if(error?.name==="AbortError")return;
+    if(error?.code==='installation_maintenance'){if(state.active&&!isMaintenance())void bootstrap().catch(()=>notice('myTS is being updated. Reload this page to check its progress.'));return;}
     const message=error?.message??"The request failed.";
     if(target)target.innerHTML=`<div class="login-error" role="alert">${e(message)}</div>`;
     else notice(message);
@@ -68,10 +85,10 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     if(!team){requireOwner();const result=await transport.read('team-context',routes.teams+'?'+new URLSearchParams({limit:'50',preferred_team_id:teamId}));if(!guarded(epoch,result))return null;team=unwrap(result.data).preferred_team;if(!team)throw new AppError('That team is no longer available.','team_forbidden',403);}
     let seasons=team.seasons??[],catalog=teamId===state.seasonCatalog?.team_id?state.seasonCatalog:null;
     if(!seasons.length||(seasonId&&!seasons.some(s=>s.id===seasonId))){const loaded=await readSeasons(teamId,{preferred:seasonId});if(!loaded)return null;seasons=loaded.rows;catalog=loaded.catalog;}
-    const season=seasons.find(s=>s.id===seasonId)??(!seasonId?seasons[0]:null);if(!season)throw new AppError('That season is no longer available.','season_forbidden',403);
+    const season=seasons.find(s=>s.id===seasonId)??(!seasonId?seasons[0]:null);if(!season&&seasonId)throw new AppError('That season is no longer available.','season_forbidden',403);
     return {team:{...team,seasons},season,catalog};
   }
-  function installContext(prepared){const pinned=prepared.team;state.bootstrap.teams=[...(state.bootstrap.teams??[]).filter(t=>t.id!==pinned.id).slice(0,50).map(t=>({...t,seasons:[]})),pinned];state.seasonCatalog=prepared.catalog;updateContext(pinned.id,prepared.season.id);}
+  function installContext(prepared){const pinned=prepared.team;state.bootstrap.teams=[...(state.bootstrap.teams??[]).filter(t=>t.id!==pinned.id).slice(0,50).map(t=>({...t,seasons:[]})),pinned];state.seasonCatalog=prepared.catalog;updateContext(pinned.id,prepared.season?.id??null);}
   async function teamsPage(cursor=null,trail=[]){requireOwner();const epoch=state.routeEpoch,result=await transport.read('team-catalog',routes.teams+'?'+new URLSearchParams({limit:'50',...(cursor?{cursor}:{}),...(state.team?{preferred_team_id:state.team}:{})}));if(!guarded(epoch,result))return false;const model=unwrap(result.data),selected=selectedTeam(),pin=model.preferred_team?{...model.preferred_team,seasons:selected?.seasons??[]}:selected,teams=(model.items??[]).map(t=>t.id===pin?.id?{...t,...pin}:{...t,seasons:[]});if(pin&&!teams.some(t=>t.id===pin.id))teams.push(pin);state.bootstrap.teams=teams;state.teamCatalog={total:model.total,revision:model.revision,next_cursor:model.next_cursor,cursor,trail,has_previous:trail.length>0};await hydrateCatalog();updateShell(host,shellModel());return true;}
   async function seasonsPage(cursor=null,trail=[]){const loaded=await readSeasons(state.team,{cursor,trail});if(!loaded)return;selectedTeam().seasons=loaded.rows;state.seasonCatalog=loaded.catalog;updateShell(host,shellModel());}
   function selection(){return {...context(),...state.filters};}
@@ -96,13 +113,23 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     try{installContext(prepared);state.filters={...state.filters,...route.filters};state.view=route.view;state.details=(route.details??[]).filter(detail=>canDetail(detail.kind));await renderView();root().scrollTop=route.scroll??0;const detail=state.details.at(-1);if(detail&&handlers.openDetail)await handlers.openDetail(detail,api);else setDetail(host,{open:false});void refresh.start(pathFor(routes.revisions));}catch(error){showError(error);}finally{historyHandling=false;}
   }
   async function bootstrap({accept=()=>true,preferredTeam=state.team,preferredSeason=state.season}={}){
-    const result=await transport.read("bootstrap",routes.bootstrap+(preferredTeam?"?"+new URLSearchParams({preferred_team_id:preferredTeam,...(preferredSeason?{preferred_season_id:preferredSeason}:{})}):""));if(result.discarded||!accept())return false;
-    const model=unwrap(result.data);if(model.selected_team&&!model.teams?.some(t=>t.id===model.selected_team.id))model.teams=[...model.teams??[],model.selected_team];if(model.selected_team){const row=model.teams.find(t=>t.id===model.selected_team.id);if(!row.seasons)row.seasons=[];if(model.selected_season&&!row.seasons.some(s=>s.id===model.selected_season.id))row.seasons.push(model.selected_season);}state.teamCatalog=model.team_catalog?{...model.team_catalog,cursor:null,trail:[],has_previous:false}:null;state.seasonCatalog=model.season_catalog?{...model.season_catalog,cursor:null,trail:[],has_previous:false}:null;state.bootstrap=model;state.theme=model.preferences?.theme??state.theme;applyTheme(state.theme);
+    const result=await transport.read("bootstrap",routes.bootstrap+(preferredTeam?"?"+new URLSearchParams({preferred_team_id:preferredTeam,...(preferredSeason?{preferred_season_id:preferredSeason}:{})}):""));if(result.discarded||!state.active||!accept())return false;
+    const model=unwrap(result.data);
+    if(['maintenance','upgrade_required','upgrading'].includes(model.setup?.state)){
+      if(!isMaintenance())maintenanceReturn=captureRoute();
+      // Pause the visible flow without cancelling its recoverable Trace/OAuth or
+      // immutable command intent while the server is read-only for an update.
+      connection.dismiss();state.bootstrap=model;updateContext(null,null);root().innerHTML='';host.querySelector('#accountBody').innerHTML='';scheduleMaintenanceCheck();return false;
+    }
+    clearTimeout(maintenanceTimer);maintenanceTimer=null;
+    const restore=maintenanceReturn;maintenanceReturn=null;
+    if(restore){preferredTeam??=restore.team;preferredSeason??=restore.season;}
+    if(model.selected_team&&!model.teams?.some(t=>t.id===model.selected_team.id))model.teams=[...model.teams??[],model.selected_team];if(model.selected_team){const row=model.teams.find(t=>t.id===model.selected_team.id);if(!row.seasons)row.seasons=[];if(model.selected_season&&!row.seasons.some(s=>s.id===model.selected_season.id))row.seasons.push(model.selected_season);}state.teamCatalog=model.team_catalog?{...model.team_catalog,cursor:null,trail:[],has_previous:false}:null;state.seasonCatalog=model.season_catalog?{...model.season_catalog,cursor:null,trail:[],has_previous:false}:null;state.bootstrap=model;state.catalogRevision={seasons:model.season_catalog?.revision,teams:model.team_catalog?.revision,branding:model.team_catalog?.branding_revision};state.theme=model.preferences?.theme??state.theme;applyTheme(state.theme);
     const team=model.teams?.find(t=>t.id===preferredTeam)??model.teams?.find(t=>t.id===(model.selected_team?.id??model.selection?.team_id??model.selected_team_id))??model.teams?.[0];
     const season=team?.seasons?.find(s=>s.id===preferredSeason)??team?.seasons?.find(s=>s.id===(model.selected_season?.id??model.selection?.team_season_id??model.selected_season_id))??team?.seasons?.[0];
-    updateContext(team?.id??null,season?.id??null);if(role()==="viewer"&&!canView(state.view))state.view=["overview","schedule","competitions","team","bookmarks","reports"].find(canView)??"unavailable";
-    if(role()==="anonymous"){root().innerHTML="";setDetail(host,{open:false,bodyHTML:"",actionsHTML:""});host.querySelector("#accountBody").innerHTML="";saveHistory(true);return;}
-    if(!state.team){root().innerHTML=role()==="owner"?`${empty("Connect an account and choose your team.")}<div class="action-row">${button("source-manage","Connect TeamSnap",{data:{provider:"teamsnap"}})}${button("source-manage","Connect Trace",{data:{provider:"trace"}})}${button("search","Find a GotSport team")}</div>`:empty("This shared team is no longer available.");saveHistory(true);return;}
+    updateContext(team?.id??null,season?.id??null);if(restore&&scopeMatches(restore))state.filters={...state.filters,...restore.filters};if(role()==="viewer"&&!canView(state.view))state.view=["overview","schedule","competitions","team","bookmarks","reports"].find(canView)??"unavailable";
+    if(role()==="anonymous"){root().innerHTML="";setDetail(host,{open:false,bodyHTML:"",actionsHTML:""});host.querySelector("#accountBody").innerHTML="";saveHistory(true);return true;}
+    if(!state.team){root().innerHTML=role()==="owner"?`${empty("Connect an account and choose your team.")}<div class="action-row">${button("source-manage","Connect TeamSnap",{data:{provider:"teamsnap"}})}${button("source-manage","Connect Trace",{data:{provider:"trace"}})}${button("search","Find a GotSport team")}</div>`:empty("This shared team is no longer available.");saveHistory(true);return true;}
     await renderView();if(!accept())return false;void hydrateCatalog();saveHistory(true);void refresh.start(pathFor(routes.revisions));return true;
   }
   async function scheduleNeighbors(day=state.filters.date){
@@ -114,7 +141,17 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     do{const page=await readSeasons(captured.team_id,{cursor,preferred:captured.team_season_id});if(!page||epoch!==state.routeEpoch||captured.team_id!==state.team||captured.team_season_id!==state.season)return null;inspect(page.rows);cursor=page.catalog.next_cursor;if(cursor){if(seen.has(cursor))throw new AppError("The season list changed. Reopen Schedule.","cursor_restart",409);seen.add(cursor);}}while(cursor&&Object.keys(needed).some(side=>needed[side]&&!neighbors[side]));
     return neighbors;
   }
-  const scheduleDay=day=>{const season=selectedSeason();return season?.start_day&&day<season.start_day?season.start_day:season?.end_day&&day>=season.end_day?addDays(season.end_day,-1):day;};
+  async function selectScheduleDay(day){
+    if(typeof day!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(day)||!Number.isFinite(Date.parse(day+"T12:00:00Z"))||new Date(day+"T12:00:00Z").toISOString().slice(0,10)!==day)throw new AppError("Choose a valid schedule date.","invalid_selection");
+    const contains=season=>season.start_day<=day&&day<season.end_day;
+    if(!contains(selectedSeason()??{})){
+      const intent=interactionEpoch,teamId=state.team,seen=new Set();let season=(selectedTeam()?.seasons??[]).find(contains),cursor=null;
+      while(!season){const page=await readSeasons(teamId,{cursor});if(!page||intent!==interactionEpoch||teamId!==state.team)return false;season=page.rows.find(contains);cursor=page.catalog.next_cursor;if(!cursor)break;if(seen.has(cursor))throw new AppError("The season list changed. Reopen Schedule.","cursor_restart");seen.add(cursor);}
+      if(!season){notice("There is no saved season for that date yet.");return false;}
+      const prepared=await prepareContext(teamId,season.id);if(!prepared||intent!==interactionEpoch)return false;installContext(prepared);void refresh.start(pathFor(routes.revisions));
+    }
+    state.filters.date=day;state.filters.mode="day";state.filters.type="all";state.filters.period="all";return true;
+  }
   function scheduleModel(envelope,calendarEnvelope=null,neighbors={}){
     const page=unwrap(envelope),selection=envelope.selection??selection(),calendarData=unwrap(calendarEnvelope),counts=new Map((calendarData.days??[]).map(day=>[day.day,day]));
     const date=selection.date??state.filters.date,bounds=selectedSeason(),days=[];let previous=false,next=false;
@@ -122,8 +159,14 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     return {...envelope,data:{mode:selection.mode,filter:selection.type,period:selection.period,selected_day:date,month_label:formatDate(date,{month:"short",day:undefined}),season_label:selectedSeason()?.label,days,events:page}};
   }
   async function renderView({append=false,cursor=null}={}){
-    if(!state.team||!state.season)return;if(!canView(state.view)){root().innerHTML=empty("No dashboard sections are available through this viewer link.");updateShell(host,shellModel());return;}
+    if(!state.team)return;if(!canView(state.view)){root().innerHTML=empty("No dashboard sections are available through this viewer link.");updateShell(host,shellModel());return;}
     const epoch=++state.routeEpoch,captured=captureRoute();gestureCleanup?.();gestureCleanup=null;
+    if(!state.season){
+      state.model=null;root().classList.remove('schedule-day-view');root().removeAttribute('aria-busy');
+      const available=selectedTeam()?.seasons??[];
+      root().innerHTML=empty(available.length?'Season data is available. Choose a season to view your team.':'No dated season data is available yet. Seasons will appear here as saved dates are resolved.')+`<div class="action-row">${available.length?button('season','View '+available[0].label,{data:{value:available[0].id}}):''}${role()==='owner'?button('status-open','View import progress')+button('settings','Settings'):''}</div>`;
+      updateShell(host,shellModel());return;
+    }
     root().setAttribute("aria-busy","true");
     try{
       const route=routes[state.view];
@@ -142,17 +185,18 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
       }else if(screens[state.view])root().innerHTML=screens[state.view](envelope);
       else if(handlers.renderView){const markup=await handlers.renderView(state.view,envelope,{state,context:context()});if(!guarded(epoch,result))return;root().innerHTML=markup;}
       else root().innerHTML=empty("This dashboard section is unavailable.");
-      updateShell(host,shellModel());applyCapabilities();
+      updateShell(host,shellModel());applyCapabilities();handlers.afterRender?.(state.view,api);
       if(unwrap(envelope).windowed)root().insertAdjacentHTML('afterbegin',`<p class="scope-caption">Showing the latest 200 loaded rows. Full totals cover this selection. ${button('list-restart','Return to first page',{className:'text-action'})}</p>`);
       if(envelope.projection_pending)root().insertAdjacentHTML("afterbegin",'<p class="scope-caption" role="status">Saved data is updating in the background.</p>');
     }catch(error){if(epoch!==state.routeEpoch)return;if(error.code==="cursor_restart"&&cursor){notice("The list changed. Reloading this selection.");return renderView();}showError(error,{target:root()});}
     finally{if(epoch===state.routeEpoch)root()?.removeAttribute("aria-busy");}
   }
   function openModal({title="",html="",kind="custom",data={},connection:connectionModal=false}){
+    handlers.closeModal?.(api);
     if(!connectionModal)dismissConnection();
     modalGestureCleanup?.();modalGestureCleanup=null;state.routeEpoch++;const modal=host.querySelector("#accountModal");host.querySelector("#accountModalTitle").textContent=title;host.querySelector("#accountBody").innerHTML=html;modal.classList.remove("hidden");state.modal={kind,data,connection:connectionModal};applyCapabilities();modal.querySelector("input,select,button")?.focus();
   }
-  function closeModal(){dismissConnection();modalGestureCleanup?.();modalGestureCleanup=null;state.routeEpoch++;host.querySelectorAll(".modal").forEach(modal=>modal.classList.add("hidden"));if(pendingDiscard)resolveDiscard(false);discoveryRefresh.stop();state.modal=null;state.traceAttempt=null;state.attachChoice=null;}
+  function closeModal(){handlers.closeModal?.(api);dismissConnection();modalGestureCleanup?.();modalGestureCleanup=null;state.routeEpoch++;host.querySelectorAll(".modal").forEach(modal=>modal.classList.add("hidden"));if(pendingDiscard)resolveDiscard(false);discoveryRefresh.stop();state.modal=null;state.traceAttempt=null;state.attachChoice=null;}
   async function settings(){
     const epoch=state.routeEpoch;let accounts=[];
     if(role()==="owner"){const result=await transport.read("accounts",routes.accounts);if(!guarded(epoch,result))return;accounts=unwrap(result.data).accounts??[];}
@@ -163,7 +207,7 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
   const flowCurrent=ticket=>state.active&&connection.current(ticket);
   function connectionModal(options){openModal({...options,connection:true});}
   function connectionError(error){
-    if(ownerSessionExpired(error)){showError(error);return;}
+    if(ownerSessionExpired(error)||error?.code==='installation_maintenance'){showError(error);return;}
     const body=host.querySelector('#accountBody');let target=body?.querySelector('[data-connection-error]');
     if(!target&&body){body.insertAdjacentHTML('afterbegin','<div data-connection-error role="alert"></div>');target=body.querySelector('[data-connection-error]');}
     if(target)target.innerHTML=`<p class="login-error">${e(error?.message??'The request did not finish. Try again.')}</p>`;
@@ -172,16 +216,15 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
   async function cancelTrace(attempt){if(!attempt)return;try{await transport.command(routes.traceCancel,{attempt});}catch(error){if(ownerSessionExpired(error)&&state.active)showError(error);else if(state.active)notice('Trace cancellation could not be confirmed. Do not use the old code; the attempt will expire.');}}
   function dismissConnection(){
     if(!connection.active)return;
-    if(state.modal?.kind==='source-attach')connection.update({draft:{...connection.value.draft,...attachmentDraft()}});
     const attempt=connection.value?.attempt;connection.update({attempt:null,attemptExpires:null});connection.dismiss();
     if(attempt)void cancelTrace(attempt);
   }
   function loadingConnection(message){connectionModal({title:providerLabel(connection.value.provider),kind:'connection-loading',html:`<p class="modal-copy" role="status">${e(message)}</p>${button('connection-cancel','Cancel')}`});}
-  function ensureConnection(provider){if(!connection.active||connection.value?.provider!==provider)connection.begin(provider,{teamId:state.team,seasonId:state.season});return connection.ticket();}
-  async function manageSource(provider,{forceSignIn=false,repair=false}={}){
+  function ensureConnection(provider){if(!connection.active||connection.value?.provider!==provider)connection.begin(provider,{teamId:state.team,teamName:selectedTeam()?.name,seasonId:state.season});return connection.ticket();}
+  async function manageSource(provider,{forceSignIn=false,repair=false,addTeam=false}={}){
     requireOwner();
     if(connection.value?.pending)return resumeConnection();
-    dismissConnection();connection.begin(provider,{teamId:state.team,seasonId:state.season});
+    dismissConnection();connection.begin(provider,addTeam?{}:{teamId:state.team,teamName:selectedTeam()?.name,seasonId:state.season});
     if(provider==='gotsport')return showGotSport();
     if(forceSignIn)return providerSignIn({repair});
     return chooseAccount();
@@ -209,20 +252,25 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     try{const result=await transport.command(routes.teamsnapAuthorize,clientId?{client_id:clientId}:{});if(!flowCurrent(ticket)||result.discarded)return;const url=new URL(result.data.authorization_url);if(url.protocol!=='https:'||url.hostname!=='auth.teamsnap.com')throw new AppError('TeamSnap returned an invalid sign-in address.','oauth_url_invalid');location.assign(url.href);}
     catch(error){if(flowCurrent(ticket)){connection.update({stage:'sign-in'});connectionError(error);}}
   }
+  async function completeOAuthReturn(callback){
+    let ticket;
+    try{
+      if(role()!=='owner')throw new AppError('Sign in as the owner, then reconnect TeamSnap.','sign_in_required',401);
+      if(connection.value?.provider!=='teamsnap')connection.begin('teamsnap',{teamId:state.team,teamName:selectedTeam()?.name,seasonId:state.season});else connection.resume();
+      ticket=connection.ticket();loadingConnection('Confirming your TeamSnap sign-in…');
+      const result=await transport.command(routes.teamsnapCallback,callback);if(!flowCurrent(ticket)||result.discarded)return;
+      connection.update({accountId:result.data.account?.id,accountName:result.data.account?.name,stage:'teams'});await accountTeams('teamsnap',result.data.account?.id);
+    }catch(error){if(ticket&&!flowCurrent(ticket))return;if(error.code==='installation_maintenance'){maintenanceOAuth=callback;showError(error);return;}if(role()==='owner'){await providerSignIn({repair:error.code==='oauth_client_invalid'});connectionError(error);}else showError(error);}
+    finally{if(maintenanceOAuth!==callback)for(const key of Object.keys(callback))callback[key]=null;}
+  }
   async function oauthReturn(){
     const values=new URLSearchParams(location.hash.slice(1));if(!values.has('access_token')&&!values.has('error'))return false;
     const callback=Object.fromEntries(['state','access_token','token_type','expires_in','scope','error','error_description'].filter(key=>values.has(key)).map(key=>[key,values.get(key)]));
     history.replaceState(history.state,'',location.pathname+location.search);
-    // Strip the fragment before any await. Never persist provider tokens.
-    let ticket;
-    try{
-      await bootstrap();if(role()!=='owner')throw new AppError('Sign in as the owner, then reconnect TeamSnap.','sign_in_required',401);
-      if(connection.value?.provider!=='teamsnap')connection.begin('teamsnap',{teamId:state.team,seasonId:state.season});else connection.resume();
-      ticket=connection.ticket();loadingConnection('Confirming your TeamSnap sign-in…');
-      const result=await transport.command(routes.teamsnapCallback,callback);if(!flowCurrent(ticket)||result.discarded)return true;
-      connection.update({accountId:result.data.account?.id,accountName:result.data.account?.name,stage:'teams'});await accountTeams('teamsnap',result.data.account?.id);
-    }catch(error){if(ticket&&!flowCurrent(ticket))return true;if(role()==='owner'){await providerSignIn({repair:error.code==='oauth_client_invalid'});connectionError(error);}else showError(error);}
-    finally{for(const key of Object.keys(callback))callback[key]=null;}
+    // Strip the fragment before any await. A maintenance pause keeps this only
+    // in memory, never in browser storage or a saved connection command.
+    try{await bootstrap();if(isMaintenance()){maintenanceOAuth=callback;return true;}await completeOAuthReturn(callback);}
+    catch(error){for(const key of Object.keys(callback))callback[key]=null;showError(error);}
     return true;
   }
   async function accountTeams(provider,accountId=null,{cursor=null,trail=[],poll=true}={}){
@@ -230,7 +278,7 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     connection.update({stage:'teams',accountId});
     try{const params=new URLSearchParams({limit:'50',...(cursor?{cursor}:{})}),result=await transport.read('source-teams',`${routes.accounts}/${encodeURIComponent(accountId)}/teams?${params}`);if(!flowCurrent(ticket)||result.discarded)return;
       const model=unwrap(result.data),teams=model.teams??model.items??[],pending=['queued','running'].includes(model.discovery?.state);
-      connectionModal({title:pending?'Finding teams':'Choose a team',kind:'source-teams',data:{provider,account_id:accountId,teams,cursor,trail,next_cursor:model.next_cursor},html:forms.candidateTeams({provider,account_id:accountId,account_name:connection.value.accountName,teams,pending,message:discoveryMessage(model)})+`<div class="action-row">${trail.length?button('account-teams-previous','Previous teams'):''}${model.next_cursor?button('account-teams-more','Next teams',{data:{cursor:model.next_cursor}}):''}${button('connection-refresh','Refresh teams')}${button('connection-sign-in',model.discovery?.state==='blocked'||model.discovery?.state==='failed'?'Reconnect and retry discovery':'Use another account')}${button('connection-cancel','Close')}</div>`});
+      connectionModal({title:pending?'Finding teams':'Choose a team',kind:'source-teams',data:{provider,account_id:accountId,teams,cursor,trail,next_cursor:model.next_cursor},html:forms.candidateTeams({provider,account_id:accountId,account_name:connection.value.accountName,teams,pending,message:discoveryMessage(model)+(connection.value.destination?.teamName?' Connect to '+connection.value.destination.teamName+'.':'')})+`<div class="action-row">${trail.length?button('account-teams-previous','Previous teams'):''}${model.next_cursor?button('account-teams-more','Next teams',{data:{cursor:model.next_cursor}}):''}${button('connection-refresh','Refresh teams')}${button('connection-sign-in',model.discovery?.state==='blocked'||model.discovery?.state==='failed'?'Reconnect and retry discovery':'Use another account')}${button('connection-cancel','Close')}</div>`});
       if(poll)void discoveryRefresh.start(`${routes.accounts}/${encodeURIComponent(accountId)}/revisions`);
     }catch(error){if(flowCurrent(ticket)){connectionModal({title:`${providerLabel(provider)} teams`,kind:'connection-recovery',html:`<p class="modal-copy">Your myTS sign-in and saved content are still available. Try refreshing teams, or sign in to this provider again.</p><div class="action-row">${button('connection-refresh','Retry')}${button('connection-sign-in','Reconnect account')}${button('connection-cancel','Close')}</div>`});connectionError(error);}}
   }
@@ -262,7 +310,7 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
   async function resumeConnection(){
     requireOwner();if(!connection.value)return;connection.resume();const ticket=connection.ticket(),flow=connection.value;
     if(flow.pending){state.attachChoice={source:flow.source,provider:flow.provider,account_id:flow.accountId,pendingAttach:flow.pending};return showConnectionRetry();}
-    if(flow.source){state.attachChoice={source:flow.source,provider:flow.provider,account_id:flow.accountId,destinationTeam:selectedTeam()??null,destinationCatalog:state.seasonCatalog};const destination=flow.draft?.destination?.split(':');const teamId=destination?.[0]||flow.destination?.teamId,seasonId=destination?.[1]||flow.destination?.seasonId;if(teamId&&(teamId!==state.team||seasonId!==state.season)){const prepared=await prepareContext(teamId,seasonId);if(!flowCurrent(ticket)||!prepared)return;state.attachChoice.destinationTeam=prepared.team;state.attachChoice.destinationCatalog=prepared.catalog;}return renderAttachment(state.attachChoice,flow.draft);}
+    if(flow.source){state.attachChoice={source:flow.source,provider:flow.provider,account_id:flow.accountId};return connectSelectedSource();}
     if(flow.provider==='gotsport')return showGotSport();
     if(flow.provider==='trace'&&flow.attempt){
       loadingConnection('Checking your pending Trace sign-in…');
@@ -275,34 +323,35 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     if(flow.accountId)return accountTeams(flow.provider,flow.accountId);
     return chooseAccount();
   }
-  const attachmentTeams=()=>{const team=state.attachChoice?.destinationTeam;return [...(state.bootstrap.teams??[]).filter(t=>t.id!==team?.id),...(team?[team]:[])];};
-  function attachmentDraft(){const node=host.querySelector('form[data-form="source-attach"]');return node?{destination:node.elements.destination.value,name:node.elements.name?.value,season_year:node.elements.season_year?.value,kind:node.elements.kind?.value}:{};}
-  function renderAttachment(choice,values={}){
-    const source=choice.source,flow=connection.value,destination=values.destination??(flow.destination?.teamId&&flow.destination?.seasonId?flow.destination.teamId+':'+flow.destination.seasonId:''),teams=attachmentTeams(),catalog=choice.destinationCatalog??(choice.destinationTeam?.id===state.team?state.seasonCatalog:null),year=values.season_year??sourceSeasonYear(source)??'',name=values.name??source.name;
-    connection.update({stage:'confirm',source,draft:{...flow.draft,...values,destination,name,season_year:year}});
-    const selected=teams.flatMap(t=>(t.seasons??[]).map(season=>({team:t,season,key:t.id+':'+season.id}))).find(row=>row.key===destination);
-    const options=teams.map(t=>`<optgroup label="${e(t.name)}">${t.seasons?.length?t.seasons.map(season=>{const key=t.id+':'+season.id;return `<option value="${e(key)}"${key===destination?' selected':''}>${e(t.name)} · ${e(season.label)}</option>`;}).join(''):`<option value="${e(t.id+':')}">${e(t.name)} · Choose season</option>`}</optgroup>`).join('');
-    const kind=choice.provider==='gotsport'?`<label>Team group<select name="kind"><option value="own"${values.kind!=='followed'?' selected':''}>My team</option><option value="followed"${values.kind==='followed'?' selected':''}>Followed team</option></select></label>`:'';
-    const seasonField=forms.inputField('season_year','What year does this season start?',year,{type:'number',min:2000,max:2100,required:true});
-    connectionModal({title:'Connect this team?',kind:'source-attach',html:`<p class="modal-copy"><b>${e(source.name)}</b>${source.archived?' · Archived season':''}<br>${selected?`Connect to ${e(selected.team.name)} · ${e(selected.season.label)}`:`Create ${e(name)}${year?' · '+e(year)+'–'+e(Number(year)+1):''}`}</p><p class="source-note">myTS will import available schedule and team data in the background. You can close the app while it works.</p><form data-form="source-attach">${!destination&&!year?`<div class="edit-fields" data-season-question>${seasonField}</div><p class="source-note">This provider did not identify a clear season year.</p>`:''}<details${destination&&!selected?' open':''}><summary>Change destination or details</summary><div class="edit-fields"><label>Destination<select name="destination"><option value=""${destination===''?' selected':''}>Create this team</option>${options}</select></label></div><div class="action-row">${state.teamCatalog?.has_previous?button('attachment-teams-previous','Previous teams'):''}${state.teamCatalog?.next_cursor?button('attachment-teams-more','More teams',{data:{cursor:state.teamCatalog.next_cursor}}):''}${catalog?.has_previous?button('attachment-seasons-previous','Previous seasons'):''}${catalog?.next_cursor?button('attachment-seasons-more','Older destination seasons',{data:{cursor:catalog.next_cursor}}):''}</div><div class="edit-fields" data-new-team-fields${destination?' hidden':''}>${kind}${forms.inputField('name','Team name',name,{required:true})}${destination||year?seasonField:''}</div></details><div class="action-row"><button class="btn primary" type="submit">Connect and import</button>${button('connection-cancel','Cancel')}</div></form>`});toggleNewTeamFields();
+  async function connectSelectedSource(){
+    const choice=state.attachChoice,flow=connection.value;if(!choice||!flow)return;
+    const explicitTeam=Object.hasOwn(flow.draft??{},'destination')?(String(flow.draft.destination).split(':')[0]||null):flow.destination?.teamId??null;
+    const pending=connection.pending(routes.connections,{source_team_id:choice.source.id,account_id:choice.account_id,
+      ...(explicitTeam?{team_id:explicitTeam}:{new_team:{name:choice.source.name,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||'America/Los_Angeles',timezone_source:'device',kind:flow.draft?.kind??'own'}})},
+      {teamId:explicitTeam,seasonId:flow.destination?.seasonId??null});
+    choice.pendingAttach=pending;return commitAttachment();
+  }
+  async function changeConnectionScope(row,mode){
+    requireOwner();if(connection.value?.pending)return resumeConnection();
+    if(row.app_team_id!==state.team||!['fixed_seasons','observed_history'].includes(mode))throw new AppError('Reload this team connection.','connection_unavailable');
+    dismissConnection();connection.begin(row.provider,{teamId:state.team,teamName:selectedTeam()?.name,seasonId:state.season});
+    const source={id:row.source_team_id,provider:row.provider,name:row.name};state.attachChoice={source,account_id:row.account_id,provider:row.provider};connection.update({source,accountId:row.account_id});
+    state.attachChoice.pendingAttach=connection.pending(routes.connections,{team_id:state.team,source_team_id:row.source_team_id,account_id:row.account_id,kind:selectedTeam()?.kind??'own',connection_generation:row.generation,scope:{mode,...(mode==='fixed_seasons'?{season_ids:(row.seasons??[]).filter(season=>!season.excluded).map(season=>season.id)}:{})}},{teamId:state.team,seasonId:state.season});return commitAttachment();
   }
   async function sourceTeamChoice(data){
-    const m=state.modal?.data??{},source=m.teams?.find(t=>t.id===data.id);if(!source)throw new AppError('Choose a team from this account.','source_team_invalid');const ticket=connection.ticket();state.attachChoice={source,account_id:m.account_id??data.account??null,provider:m.provider??data.provider,destinationTeam:selectedTeam()??null,destinationCatalog:state.seasonCatalog};discoveryRefresh.stop();connection.update({source,accountId:state.attachChoice.account_id});
-    const destination=connection.value.destination;if(destination?.teamId&&(destination.teamId!==state.team||destination.seasonId!==state.season)){const prepared=await prepareContext(destination.teamId,destination.seasonId);if(!flowCurrent(ticket)||!prepared)return;state.attachChoice.destinationTeam=prepared.team;state.attachChoice.destinationCatalog=prepared.catalog;}
-    renderAttachment(state.attachChoice);
+    const m=state.modal?.data??{},source=m.teams?.find(t=>t.id===data.id);if(!source)throw new AppError('Choose a team from this account.','source_team_invalid');
+    state.attachChoice={source,account_id:m.account_id??data.account??null,provider:m.provider??data.provider};discoveryRefresh.stop();connection.update({source,accountId:state.attachChoice.account_id});
+    return connectSelectedSource();
   }
   async function followSourceTeam(candidate){
-    requireOwner();if(candidate.provider!=='gotsport'||!candidate.official_url)throw new AppError('This public team has no verified follow link.','source_team_unverified');if(connection.value?.pending)return resumeConnection();dismissConnection();connection.begin('gotsport',{});const ticket=connection.ticket();loadingConnection('Checking this public team…');
-    const result=await transport.command('/api/sources/gotsport/resolve',{url:candidate.official_url});if(!flowCurrent(ticket)||result.discarded)return;const teams=unwrap(result.data).teams??[],source=teams.find(t=>t.id===candidate.id)??(teams.length===1?teams[0]:null);if(!source)throw new AppError('Choose this team from the verified public results.','source_team_unverified');state.attachChoice={source,account_id:null,provider:'gotsport',destinationTeam:selectedTeam()??null,destinationCatalog:state.seasonCatalog};connection.update({source});renderAttachment(state.attachChoice,{destination:'',kind:'followed',name:source.name});
+    requireOwner();if(candidate.provider!=='gotsport'||!candidate.official_url)throw new AppError('This public team has no verified follow link.','source_team_unverified');if(connection.value?.pending)return resumeConnection();dismissConnection();connection.begin('gotsport',{});connection.update({draft:{kind:'followed'}});const ticket=connection.ticket();loadingConnection('Checking this public team…');
+    const result=await transport.command('/api/sources/gotsport/resolve',{url:candidate.official_url});if(!flowCurrent(ticket)||result.discarded)return;const teams=unwrap(result.data).teams??[],source=teams.find(t=>t.id===candidate.id)??(teams.length===1?teams[0]:null);if(!source)throw new AppError('Choose this team from the verified public results.','source_team_unverified');state.attachChoice={source,account_id:null,provider:'gotsport'};connection.update({source});return connectSelectedSource();
   }
-  function toggleNewTeamFields(){const form=host.querySelector('form[data-form="source-attach"]'),group=form?.querySelector('[data-new-team-fields]');if(!group)return;const existing=!!form.elements.destination.value;group.hidden=existing;group.querySelectorAll('input,select').forEach(node=>node.disabled=existing);form.querySelectorAll('[data-season-question] input').forEach(node=>node.disabled=existing);}
-  async function destinationChanged(){
-    const choice=state.attachChoice;if(!choice)return;const values=attachmentDraft(),destination=values.destination??'';toggleNewTeamFields();
-    if(!destination){renderAttachment(choice,values);return;}
-    if(!destination.endsWith(':')){renderAttachment(choice,values);return;}
-    const prepared=await prepareContext(destination.slice(0,-1));if(!prepared||state.attachChoice!==choice)return;choice.destinationTeam=prepared.team;choice.destinationCatalog=prepared.catalog;renderAttachment(choice,{...values,destination:prepared.team.id+':'+prepared.season.id});
+  async function showDestinationChoice(cursor=null,trail=[]){
+    const ticket=connection.ticket();loadingConnection('Finding your saved teams…');
+    const result=await transport.read('connection-destinations',routes.teams+'?'+new URLSearchParams({limit:'50',...(cursor?{cursor}:{})}));if(!flowCurrent(ticket)||result.discarded)return;
+    const model=unwrap(result.data);connectionModal({title:'Choose the destination team',kind:'connection-destination',data:{teams:model.items??[],cursor,trail},html:`<p class="modal-copy">This source is connected to more than one saved team. Choose the team to open or connect.</p>${(model.items??[]).map(team=>button('connection-destination',team.name,{data:{id:team.id}})).join('')}<div class="action-row">${trail.length?button('connection-destinations-previous','Previous teams'):''}${model.next_cursor?button('connection-destinations-more','More teams',{data:{cursor:model.next_cursor}}):''}${button('connection-cancel','Cancel')}</div>`});
   }
-  async function attachmentCatalog(name,data){const choice=state.attachChoice;if(!choice)return;const values=attachmentDraft();if(name.includes('teams-')){const trail=[...state.teamCatalog?.trail??[]],cursor=name.endsWith('previous')?trail.pop()??null:data.cursor;if(!name.endsWith('previous'))trail.push(state.teamCatalog?.cursor??null);if(!await teamsPage(cursor,trail)||state.attachChoice!==choice)return;}else{const team=choice.destinationTeam??selectedTeam();if(!team)return;const current=choice.destinationCatalog??state.seasonCatalog,trail=[...current?.trail??[]],cursor=name.endsWith('previous')?trail.pop()??null:data.cursor;if(!name.endsWith('previous'))trail.push(current?.cursor??null);const selected=(team.seasons??[]).find(row=>team.id+':'+row.id===values.destination),loaded=await readSeasons(team.id,{cursor,trail,preferred:selected?.id});if(!loaded||state.attachChoice!==choice)return;choice.destinationTeam={...team,seasons:loaded.rows};choice.destinationCatalog=loaded.catalog;}renderAttachment(choice,values);}
   function showClubChoice(conflict){
     const choice=state.attachChoice;if(!choice?.pendingAttach)throw new AppError("Choose the provider team again.","source_team_invalid");
     choice.clubConflict=conflict;
@@ -319,7 +368,7 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     loadingConnection('Checking the saved connection…');
     try{const result=await transport.read('connection-receipt',routes.connections+'?'+new URLSearchParams({request_id:pending.requestId}));if(!flowCurrent(ticket)||result.discarded)return;const saved=unwrap(result.data);
       if(!saved.found){showConnectionRetry(new AppError('No saved connection was found yet. A request still in progress may finish; retry with the same request or check again.','connection_not_found'));return;}
-      connectionModal({title:'Connection record found',kind:'connection-receipt',data:saved,html:`<p class="modal-copy">${saved.team_available?'The team was saved.':'The team has since been removed or is being removed.'} ${saved.attachment_active?'Its source link is saved.':'Its source link is no longer active.'} ${saved.account_active===false?'The provider account now needs reconnection.':''} This check does not start or confirm an import.</p><div class="action-row">${saved.team_available?button('connection-open-saved','Open saved team',{className:'btn primary'}):''}${button('connection-resume','Return to recovery')}${button('connection-abandon','Start over')}</div>`});
+      connectionModal({title:'Connection record found',kind:'connection-receipt',data:saved,html:`<p class="modal-copy">${saved.team_available?'The team was saved.':'The team has since been removed or is being removed.'} ${(saved.connection_active??saved.attachment_active)?'Its source link is saved.':'Its source link is no longer active.'} ${saved.account_active===false?'The provider account now needs reconnection.':''} This check does not start or confirm an import.</p><div class="action-row">${saved.team_available?button('connection-open-saved','Open saved team',{className:'btn primary'}):''}${button('connection-resume','Return to recovery')}${button('connection-abandon','Start over')}</div>`});
     }catch(error){if(flowCurrent(ticket)){showConnectionRetry(error);if(ownerSessionExpired(error))showError(error);}}
   }
   async function openSavedConnection(){
@@ -329,24 +378,17 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
   async function commitAttachment(keep=null){
     requireOwner();const choice=state.attachChoice,pending=choice?.pendingAttach??connection.value?.pending;if(!pending)throw new AppError('Choose the provider team again.','source_team_invalid');
     const ticket=connection.ticket(),body={...pending.body};
-    if(keep){const conflict=choice.clubConflict?.club_choice;if(!conflict||!(conflict.choices??[]).some(row=>row.value===keep))throw new AppError('Choose one of the saved club records.','club_choice_required');body.revision=conflict.expected.profile_revision;body.club_choice={kind:conflict.kind,keep,...conflict.expected};}
+    if(keep){const conflict=choice.clubConflict?.club_choice;if(!conflict||!(conflict.choices??[]).some(row=>row.value===keep))throw new AppError('Choose one of the saved club records.','club_choice_required');body.revision=conflict.expected.profile_revision;body.club_choice={kind:conflict.kind,keep,...conflict.expected};pending.body=body;connection.update({pending});}
     loadingConnection('Connecting your team and queuing its import…');let result;
     try{result=await transport.command(pending.path,body,{idempotencyKey:pending.requestId});}
-    catch(error){if(!flowCurrent(ticket))return;if(ownerSessionExpired(error)){showError(error);return;}if(error.status===409&&error.details?.club_choice){showClubChoice(error.details);return;}showConnectionRetry(error);return;}
+    catch(error){if(!flowCurrent(ticket))return;if(ownerSessionExpired(error)||error?.code==='installation_maintenance'){showError(error);return;}if(error.status===409&&error.details?.club_choice){showClubChoice(error.details);return;}if(error.status===409&&error.code==='connection_destination_required'){return showDestinationChoice();}showConnectionRetry(error);return;}
     if(!flowCurrent(ticket)||result.discarded)return;
-    const model=unwrap(result.data),teamId=model.team_id??pending.teamId,seasonId=model.season_id??pending.seasonId;
+    const model=unwrap(result.data),teamId=model.team_id??pending.teamId,seasonId=pending.body.team_id&&pending.seasonId?pending.seasonId:Object.hasOwn(model,'season_id')?model.season_id:pending.seasonId??null;
     const intent=interactionEpoch;connection.clear();state.attachChoice=null;closeModal();
     if(!await bootstrap({accept:()=>state.active&&interactionEpoch===intent,preferredTeam:teamId,preferredSeason:seasonId}))return;
     // Queue acceptance is not completion. The status screen reports persisted
     // stages/coverage and continues to be available after every tab is closed.
-    openModal({title:'Connected · Import queued',kind:'connection-progress',html:`<p class="modal-copy">Your team is connected. Available data will appear as the server imports it; this page can be closed.</p><div class="action-row">${button('status-open','View import progress',{className:'btn primary'})}${button('close-modal','View team')}</div>`});
-  }
-  async function attachSource(form){
-    requireOwner();const choice=state.attachChoice;if(!choice)throw new AppError('Choose the provider team again.','source_team_invalid');if(choice.pendingAttach||connection.value.pending)return commitAttachment();
-    const destination=String(form.get('destination')??'');let pending;
-    if(destination){const match=attachmentTeams().flatMap(team=>(team.seasons??[]).map(season=>({team,season,key:team.id+':'+season.id}))).find(row=>row.key===destination);if(!match)throw new AppError('Choose an available team and season.','team_forbidden');pending=connection.pending(`${routes.teams}/${encodeURIComponent(match.team.id)}/attachments`,{source_team_id:choice.source.id,account_id:choice.account_id,season_id:match.season.id},{teamId:match.team.id,seasonId:match.season.id});}
-    else{const year=Number(form.get('season_year'));if(!Number.isInteger(year)||year<2000||year>2100)throw new AppError('Choose the year this season starts.','season_required');pending=connection.pending(routes.connections,{source_team_id:choice.source.id,account_id:choice.account_id,new_team:{name:String(form.get('name')??choice.source.name),timezone:choice.destinationTeam?.timezone??selectedTeam()?.timezone??Intl.DateTimeFormat().resolvedOptions().timeZone,season_year:year,kind:form.get('kind')??'own'}});}
-    choice.pendingAttach=pending;return commitAttachment();
+    openModal({title:model.queued?'Connected · Import queued':'Team connected',kind:'connection-progress',html:`<p class="modal-copy">${model.queued?'Your team is connected. Available data will appear as the server imports it; this page can be closed.':'Your team is already connected. Its saved data and background status are available.'}</p><div class="action-row">${button('status-open','View import progress',{className:'btn primary'})}${button('close-modal','View team')}</div>`});
   }
   async function calendar(){
     const epoch=state.routeEpoch,range=fullCalendarRange(state.filters.date),result=await transport.read("calendar-modal",pathFor(routes.calendar,{...state.filters,...range}));if(!guarded(epoch,result))return;
@@ -354,31 +396,50 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     openModal({title:"Choose schedule date",kind:"calendar",html:screens.calendar({label:formatDate(state.filters.date,{month:"long",year:"numeric",day:undefined}),days:Array.from({length:42},(_,i)=>{const day=addDays(range.from,i),count=counts.get(day);return {day,selected:day===state.filters.date,today:day===localDay(selectedTeam()?.timezone),other_month:day.slice(0,7)!==state.filters.date.slice(0,7),kinds:count?.kinds??[],total:count?.total??0};})})});
     modalGestureCleanup=bindSwipe(host.querySelector("#accountBody .calendar-grid"),{disabled:()=>state.modal?.kind!=="calendar",onStep:direction=>void action("calendar-month",{offset:direction})});
   }
-  async function reloadVisible(){
+  async function refreshCatalogs(revision={}){
+    const previous=state.catalogRevision??{},captured=captureRoute(),epoch=state.routeEpoch,intent=interactionEpoch;
+    const seasonsChanged=revision.seasons!==undefined&&revision.seasons!==previous.seasons;
+    const teamsChanged=role()==='owner'&&((revision.teams!==undefined&&revision.teams!==previous.teams)||(revision.branding!==undefined&&revision.branding!==previous.branding));
+    const results=await Promise.all([
+      seasonsChanged?transport.read('refresh-seasons',`${routes.teams}/${encodeURIComponent(captured.team)}/seasons?`+new URLSearchParams({limit:'25',...(captured.season?{preferred_season_id:captured.season}:{})})):null,
+      teamsChanged?transport.read('refresh-teams',routes.teams+'?'+new URLSearchParams({limit:'50',preferred_team_id:captured.team})):null,
+    ]);
+    if(!state.active||epoch!==state.routeEpoch||intent!==interactionEpoch||!scopeMatches(captured)||results.some(result=>result?.discarded))return false;
+    const [seasonResult,teamResult]=results;
+    if(teamResult){const model=unwrap(teamResult.data),selected=selectedTeam(),pin=model.preferred_team;const teams=(model.items??[]).map(team=>({...team,seasons:team.id===state.team?selected?.seasons??[]:[]}));if(pin&&!teams.some(team=>team.id===pin.id))teams.push({...pin,seasons:selected?.seasons??[]});state.bootstrap.teams=teams;state.teamCatalog={total:model.total,revision:model.revision,branding_revision:model.branding_revision,next_cursor:model.next_cursor,cursor:null,trail:[],has_previous:false};}
+    if(seasonResult&&selectedTeam()){const model=unwrap(seasonResult.data),rows=[...model.items??[]];if(model.preferred_season&&!rows.some(season=>season.id===model.preferred_season.id))rows.push(model.preferred_season);selectedTeam().seasons=rows;state.seasonCatalog={team_id:captured.team,total:model.total,revision:model.revision,next_cursor:model.next_cursor,cursor:null,trail:[],has_previous:false};}
+    state.catalogRevision={...previous,...revision};if(seasonResult||teamResult)updateShell(host,shellModel());return true;
+  }
+  async function reloadVisible(model={}){
+    const intent=interactionEpoch,captured=captureRoute();
+    if(!await refreshCatalogs(model.revision??{}))return false;
     if(state.editorDirty){notice("Saved data changed. Your unsaved edits are preserved.");return;}
-    const modal=state.modal;await renderView();if(modal?.kind==="settings")await (handlers.actions?.settings ? handlers.actions.settings({},api) : settings());else if(modal?.kind==="calendar")await calendar();else if(modal&&handlers.refreshModal)await handlers.refreshModal(modal,api);if(handlers.refreshDetail&&state.details.length)await handlers.refreshDetail(state.details.at(-1),api);
+    if(connection.active)return false;
+    const modal=state.modal;await renderView();if(intent!==interactionEpoch||!scopeMatches(captured)||state.modal!==modal)return;
+    if(modal?.kind==="settings")await (handlers.actions?.settings ? handlers.actions.settings({},api) : settings());else if(modal?.kind==="calendar")await calendar();else if(modal&&handlers.refreshModal)await handlers.refreshModal(modal,api);if(intent===interactionEpoch&&handlers.refreshDetail&&state.details.length)await handlers.refreshDetail(state.details.at(-1),api);
   }
   async function action(name,data={}){
     interactionEpoch++;
     try{
+      if(!state.season&&["included-games","branding-kits","branding-kits-reset","reports","report-export","award-add","calendar","tracking-capture","source-identities","trace-tracks"].includes(name)){notice("Choose a dated season first.");return;}
       if(name==="discard-confirm"||name==="discard-cancel"){resolveDiscard(name==="discard-confirm");return;}
       if(name==="back"&&pendingDiscard){resolveDiscard(false);return;}
       if(name==="close-modal"&&state.editorDirty&&["editor","inclusion","inclusion-reset","coach-editor","branding","branding-kits","branding-kits-reset","award-editor","team-editor","identity","tracks"].includes(state.modal?.kind)&&!await canLeave())return;
       if(["nav","team-select","season-select","season","close-detail","back","match","player","team","competition","match-player"].includes(name)&&!await canLeave())return;
-      if(["detail-tab","analysis-team","analysis-period","analysis-kind","analysis-more","analysis-previous","lineup-edit","player-edit","match-edit","included-games","settings","source-manage","search","account-teams","branding-logo","branding-kits","branding-kits-reset","data-files","share-copy","status-open","usage","award-add","award-edit","team-rename","team-remove","source-identities","identity-evidence","identity-kind","trace-tracks"].includes(name)&&state.editorDirty&&!await canLeave())return;
-      if(name==="nav"){if(!canView(data.view))throw new AppError("This dashboard section is not shared through this link.","share_scope_denied",403);handlers.closeDetail?.(api);state.view=data.view;state.details=[];setDetail(host,{open:false});closeModal();root()?.classList.remove("schedule-day-view");if(data.filter)state.filters.type=data.filter;if(data.period)state.filters.period=data.period;saveHistory();return renderView();}
+      if(["detail-tab","h2h-range","analysis-team","analysis-period","analysis-kind","analysis-more","analysis-previous","lineup-edit","player-edit","match-edit","included-games","settings","add-team","source-manage","search","account-teams","branding-logo","branding-kits","branding-kits-reset","data-files","share-copy","status-open","usage","award-add","award-edit","team-rename","team-remove","source-identities","identity-evidence","identity-kind","trace-tracks"].includes(name)&&state.editorDirty&&!await canLeave())return;
+      if(name==="nav"){if(!canView(data.view))throw new AppError("This dashboard section is not shared through this link.","share_scope_denied",403);handlers.closeDetail?.(api);state.view=data.view;state.details=[];setDetail(host,{open:false});closeModal();root()?.classList.remove("schedule-day-view");if(data.view==="schedule"&&(data.filter||data.period)){state.filters.mode="season";state.filters.type=data.filter??"all";state.filters.period=data.filter==="analyzed"?"all":data.period??"upcoming";}saveHistory();return renderView();}
       if(name==="team-select"){const prepared=await prepareContext(data.value);if(!prepared)return;installContext(prepared);saveHistory();await renderView();void refresh.start(pathFor(routes.revisions));return;}
       if(name==="season-select"||name==="season"){const prepared=await prepareContext(state.team,data.value);if(!prepared)return;installContext(prepared);if(data.boundary)state.filters.date=data.boundary==="start"?prepared.season.start_day:addDays(prepared.season.end_day,-1);saveHistory();await renderView();void refresh.start(pathFor(routes.revisions));return;}
       if(name==='teams-more')return teamsPage(data.cursor,[...state.teamCatalog?.trail??[],state.teamCatalog?.cursor??null]);
       if(name==='teams-previous'){const trail=[...state.teamCatalog?.trail??[]],cursor=trail.pop()??null;return teamsPage(cursor,trail);}
       if(name==='seasons-more')return seasonsPage(data.cursor,[...state.seasonCatalog?.trail??[],state.seasonCatalog?.cursor??null]);
       if(name==='seasons-previous'){const trail=[...state.seasonCatalog?.trail??[]],cursor=trail.pop()??null;return seasonsPage(cursor,trail);}
-      if(name==="schedule-mode"){state.filters.mode=data.value;return renderView();}
-      if(name==="schedule-filter"){state.filters.type=data.value;return renderView();}
-      if(name==="schedule-period"){state.filters.period=data.value;return renderView();}
-      if(name==="today"){state.filters.date=scheduleDay(localDay(selectedTeam()?.timezone));state.filters.mode="day";return renderView();}
-      if(name==="day"){state.filters.date=scheduleDay(data.day);state.filters.mode="day";closeModal();await renderView();animateDateView(root().querySelector(".schedule-day-surface"));return;}
-      if(name==="date-shift"){state.filters.date=scheduleDay(addDays(state.filters.date,Number(data.offset)));return renderView();}
+      if(name==="schedule-mode"){state.filters.mode=data.value;if(data.value==="day"){state.filters.type="all";state.filters.period="all";}else if(state.filters.type!=="analyzed"&&state.filters.period==="all")state.filters.period=selectedSeason()?.end_day<=localDay(selectedTeam()?.timezone)?"past":"upcoming";saveHistory(true);return renderView();}
+      if(name==="schedule-filter"){state.filters.type=data.value;state.filters.mode="season";if(data.value==="analyzed")state.filters.period="all";else if(state.filters.period==="all")state.filters.period=selectedSeason()?.end_day<=localDay(selectedTeam()?.timezone)?"past":"upcoming";saveHistory(true);return renderView();}
+      if(name==="schedule-period"){state.filters.period=data.value;saveHistory(true);return renderView();}
+      if(name==="today"){if(!await selectScheduleDay(localDay(selectedTeam()?.timezone)))return;saveHistory(true);return renderView();}
+      if(name==="day"){if(!await selectScheduleDay(data.day))return;closeModal();saveHistory(true);await renderView();animateDateView(root().querySelector(".schedule-day-surface"));return;}
+      if(name==="date-shift"){if(!await selectScheduleDay(addDays(state.filters.date,Number(data.offset))))return;saveHistory(true);return renderView();}
       if(name==="calendar-month"){state.filters.date=monthStep(state.filters.date,Number(data.offset));return calendar();}
       if(name==="calendar")return calendar();
       if(name==="more")return handlers.actions?.more ? handlers.actions.more(data,api) : renderView({append:true,cursor:data.cursor});
@@ -390,7 +451,7 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
       if(name==='connection-check-saved')return checkSavedConnection();
       if(name==='connection-open-saved')return openSavedConnection();
       if(name==='connection-abandon'){connectionModal({title:'Start another connection?',kind:'connection-abandon',html:`<p class="modal-copy">The previous connection may already be saved. Starting over will keep every saved team and source link. Check your team list before connecting the same team again.</p><div class="action-row">${button('connection-abandon-confirm','Keep saved teams and start over')}${button('connection-resume','Return to pending connection')}</div>`});return;}
-      if(name==='connection-abandon-confirm'){const provider=connection.value.provider;connection.clear();state.attachChoice=null;return manageSource(provider);}
+      if(name==='connection-abandon-confirm'){const provider=connection.value.provider,addTeam=connection.value.intent==='add';connection.clear();state.attachChoice=null;return manageSource(provider,{addTeam});}
       if(name==='connection-accounts-more'){const page=state.modal?.data;return chooseAccount({cursor:data.cursor,trail:[...page?.trail??[],page?.cursor??null]});}
       if(name==='connection-accounts-previous'){const trail=[...state.modal?.data?.trail??[]],cursor=trail.pop()??null;return chooseAccount({cursor,trail});}
       if(name==='connection-account'){connection.update({accountId:data.account,accountName:data.name});return accountTeams(data.provider,data.account);}
@@ -399,18 +460,22 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
       if(name==='connection-refresh')return accountTeams(connection.value.provider,connection.value.accountId);
       if(name==='gotsport-search-more'||name==='gotsport-search-previous')return searchGotSport({...connection.value.draft,page:Number(data.page)});
       if(name==="source-manage")return handlers.actions?.["source-manage"] ? handlers.actions["source-manage"](data,api) : manageSource(data.provider);
-      if(name==="search")return manageSource("gotsport");
+      if(name==='add-team'){requireOwner();if(connection.value?.pending)return resumeConnection();openModal({title:'Add team',kind:'add-team',html:`<p class="modal-copy">Choose where to find your team.</p><div class="action-row">${['teamsnap','trace','gotsport'].map(provider=>button('connection-provider',providerLabel(provider),{data:{provider}})).join('')}</div>`});return;}
+      if(name==='connection-destination'){const team=state.modal?.kind==='connection-destination'&&state.modal.data.teams.find(team=>team.id===data.id);if(!team)throw new AppError('Choose a saved team.','team_forbidden');connection.update({intent:'existing',destination:{teamId:team.id,teamName:team.name,seasonId:team.id===state.team?state.season:null},pending:null,requestId:null});if(state.attachChoice)state.attachChoice.pendingAttach=null;return connectSelectedSource();}
+      if(name==='connection-destinations-more'){const page=state.modal.data;return showDestinationChoice(data.cursor,[...page.trail,page.cursor]);}
+      if(name==='connection-destinations-previous'){const trail=[...state.modal.data.trail],cursor=trail.pop()??null;return showDestinationChoice(cursor,trail);}
+      if(name==='connection-provider')return manageSource(data.provider,{addTeam:true});
+      if(name==="search")return manageSource("gotsport",{addTeam:true});
       if(name==="account-teams")return accountTeams(data.provider,data.account);
       if(name==='account-teams-more'){const chooser=state.modal?.data;if(chooser?.account_id)return accountTeams(chooser.provider,chooser.account_id,{cursor:data.cursor,trail:[...(chooser.trail??[]),chooser.cursor],poll:false});}
       if(name==='account-teams-previous'){const chooser=state.modal?.data;if(chooser?.account_id){const trail=[...(chooser.trail??[])],cursor=trail.pop()??null;return accountTeams(chooser.provider,chooser.account_id,{cursor,trail,poll:false});}}
       if(name==="source-team-select")return sourceTeamChoice(data);
-      if(['attachment-teams-more','attachment-teams-previous','attachment-seasons-more','attachment-seasons-previous'].includes(name))return attachmentCatalog(name,data);
-      if(name==="theme-cycle"){state.theme=["light","dark","soccer"][(["light","dark","soccer"].indexOf(state.theme)+1)%3];applyTheme(state.theme);if(handlers.saveTheme)await handlers.saveTheme(state.theme,api);if(state.modal?.kind==="settings")await settings();return;}
+      if(name==="theme-cycle"){const intent=interactionEpoch;state.theme=["light","dark","soccer"][(["light","dark","soccer"].indexOf(state.theme)+1)%3];applyTheme(state.theme);if(handlers.saveTheme)await handlers.saveTheme(state.theme,api);if(intent===interactionEpoch&&state.modal?.kind==="settings"){if(handlers.actions?.settings)await handlers.actions.settings({},api);else await settings();}return;}
       if(name==="sign-out"){dismissConnection();connection.clear();await transport.command(routes.ownerLogout,{});refresh.stop();state.team=null;state.season=null;transport.select({role:"anonymous"});await bootstrap();return;}
       if(name==="close-detail"){const detail=state.details[0];handlers.closeDetail?.(api);state.details=[];setDetail(host,{open:false});await restoreDetailOrigin(detail);saveHistory(true);return;}
       if(name==="back"){if(state.modal){closeModal();return;}if(state.details.length){const detail=state.details.pop(),previous=state.details.at(-1);if(previous&&handlers.openDetail)await handlers.openDetail(previous,api);else {handlers.closeDetail?.(api);setDetail(host,{open:false});await restoreDetailOrigin(detail);}saveHistory(true);}return;}
       if(['match','player','match-player','competition','team'].includes(name)&&!canDetail(name))throw new AppError('These details are not shared through this link.','share_scope_denied',403);
-      if(['match','player','match-player'].includes(name)&&data.team_season_id&&(data.team_season_id!==state.season||(data.team_id&&data.team_id!==state.team))){const origin=captureRoute(),prepared=await prepareContext(data.team_id??state.team,data.team_season_id);if(!prepared)return;installContext(prepared);await renderView();void refresh.start(pathFor(routes.revisions));data={...data,origin};}
+      if(['match','player','match-player','competition'].includes(name)&&data.team_season_id&&(data.team_season_id!==state.season||(data.team_id&&data.team_id!==state.team))){const origin=captureRoute(),prepared=await prepareContext(data.team_id??state.team,data.team_season_id);if(!prepared)return;installContext(prepared);await renderView();void refresh.start(pathFor(routes.revisions));data={...data,origin};}
       if(handlers.actions?.[name])return handlers.actions[name](data,api);
       if(["match","player","team","competition","match-player"].includes(name)&&handlers.openDetail){const detail={kind:name,id:data.id,tab:data.tab??"overview",origin:captureRoute(),...data};state.details.push(detail);saveHistory();return handlers.openDetail(detail,api);}
       notice("This action is unavailable for the selected saved record.");
@@ -421,6 +486,7 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     const controls=[...event.target.querySelectorAll("button[type=submit]")];controls.forEach(node=>node.disabled=true);
     try{
       if(name==="owner-login"){
+        if(isMaintenance()){event.target.querySelector('[name="key"]').value='';form.delete('key');return;}
         let password=String(form.get("key")??"");event.target.querySelector('[name="key"]').value="";
         try{
           const initializing=needsInitialization();let done=false;
@@ -435,7 +501,6 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
       else if(name==='trace-send-code')await sendTraceCode(form);
       else if(name==='trace-verify-code')await verifyTraceCode(form,event);
       else if(name==='gotsport-search')await searchGotSport({q:form.get('q'),state:form.get('state'),age:form.get('age'),gender:form.get('gender'),page:1});
-      else if(name==="source-attach")await attachSource(form);
       else if(name==='source-club-choice'){if(!form.get('confirmed'))throw new AppError('Confirm the shared teams affected by this choice.','club_choice_confirmation_required');await commitAttachment(String(form.get('keep')??''));}
       else if(handlers.forms?.[name])await handlers.forms[name](form,{...event.target.dataset},api);
       else throw new AppError("This form has not been connected in this review build yet.","workflow_unimplemented");
@@ -447,11 +512,11 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     }else if(connection.active)connectionError(error);else showError(error);}
     finally{controls.forEach(node=>node.disabled=false);}
   }
-  const api={state,transport,host,context,selection,pathFor,action,bootstrap,renderView,settings,canView,hydrateModel,followSourceTeam,manageSource,accountTeams,searchGotSport,resumeConnection,connection,openModal,closeModal,setDetail:options=>{setDetail(host,options);applyCapabilities();},requireOwner,notice,showError,captureRoute,canLeave};
+  const api={state,transport,host,context,selection,pathFor,applyCapabilities,action,bootstrap,renderView,refreshSavedState:reloadVisible,checkMaintenance,settings,canView,hydrateModel,followSourceTeam,changeConnectionScope,manageSource,accountTeams,searchGotSport,resumeConnection,connection,openModal,closeModal,setDetail:options=>{setDetail(host,options);applyCapabilities();},requireOwner,notice,showError,captureRoute,canLeave};
   return {
     ...api,
-    async start(){state.active=true;mountShell(host,{mode:"login",owner_login:location.pathname.startsWith("/admin")});unbind=bindShell(host,{onAction:action,onSubmit:submit,onInput:(name,value,event)=>{if(connection.active&&event.target.closest('form')?.dataset.form==='gotsport-search'&&['q','state','age','gender'].includes(name))connection.update({draft:{...connection.value.draft,[name]:value}});if(connection.active&&event.target.closest('form')?.dataset.form==='source-attach')connection.update({draft:{...connection.value.draft,...attachmentDraft()}});if(name==="destination"&&event.target.closest("form")?.dataset.form==="source-attach")void destinationChanged().catch(error=>showError(error));else if(handlers.inputs?.[name])handlers.inputs[name](value,api,event);else if(["player-correction","match-correction","included-games","coach-profile","coach-availability","coach-clock-correction","branding-kits","branding-logo","award-save","team-rename"].includes(event.target.closest("form")?.dataset.form))state.editorDirty=true;},onInteraction:(name,event)=>handlers.interactions?.[name]?.(event,api)});window.addEventListener("popstate",restoreHistory);transport.select({role:"anonymous",viewer:!!viewerToken});discoveryTransport.select({role:"anonymous"});try{if(!await oauthReturn()){await bootstrap();if(role()==='owner'&&connection.value)await resumeConnection();}}catch(error){const loginError=host.querySelector("#loginError");loginError.textContent=error.message;loginError.classList.remove("hidden");updateShell(host,{...shellModel(),login_error:error.message});showError(error);}return api;},
-    stop(){connection.dismiss();clearTimeout(toastTimer);logoCache.clear();state.active=false;handlers.cleanup?.(api);state.routeEpoch++;refresh.stop();discoveryRefresh.stop();transport.abortAll();discoveryTransport.abortAll();window.removeEventListener("popstate",restoreHistory);unbind?.();gestureCleanup?.();modalGestureCleanup?.();state.traceAttempt=null;state.attachChoice=null;if(pendingDiscard)resolveDiscard(false);},
+    async start(){state.active=true;mountShell(host,{mode:"login",owner_login:false,login_title:"Opening myTS",login_help:"Checking your saved dashboard…"});unbind=bindShell(host,{onAction:action,onSubmit:submit,onInput:(name,value,event)=>{if(connection.active&&event.target.closest('form')?.dataset.form==='gotsport-search'&&['q','state','age','gender'].includes(name))connection.update({draft:{...connection.value.draft,[name]:value}});if(handlers.inputs?.[name])handlers.inputs[name](value,api,event);else if(["player-correction","match-correction","included-games","coach-profile","coach-availability","coach-clock-correction","branding-kits","branding-logo","award-save","team-rename"].includes(event.target.closest("form")?.dataset.form))state.editorDirty=true;},onInteraction:(name,event)=>handlers.interactions?.[name]?.(event,api)});window.addEventListener("popstate",restoreHistory);transport.select({role:"anonymous",viewer:!!viewerToken});discoveryTransport.select({role:"anonymous"});try{if(!await oauthReturn()){await bootstrap();if(role()==='owner'&&connection.value)await resumeConnection();}}catch(error){const loginError=host.querySelector("#loginError");loginError.textContent=error.message;loginError.classList.remove("hidden");updateShell(host,{...shellModel(),login_error:error.message});showError(error);}return api;},
+    stop(){connection.dismiss();if(maintenanceOAuth)for(const key of Object.keys(maintenanceOAuth))maintenanceOAuth[key]=null;maintenanceOAuth=null;clearTimeout(maintenanceTimer);maintenanceTimer=null;clearTimeout(toastTimer);logoCache.clear();state.active=false;handlers.cleanup?.(api);state.routeEpoch++;refresh.stop();discoveryRefresh.stop();transport.abortAll();discoveryTransport.abortAll();window.removeEventListener("popstate",restoreHistory);unbind?.();gestureCleanup?.();modalGestureCleanup?.();state.traceAttempt=null;state.attachChoice=null;if(pendingDiscard)resolveDiscard(false);},
   };
 }
 export async function startApp(options={}){const app=createApp(options);await app.start();return app;}

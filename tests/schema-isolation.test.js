@@ -4,21 +4,9 @@ import {readFile} from 'node:fs/promises';
 import {Miniflare} from 'miniflare';
 import {FreshInstallation} from '../src/application/fresh-install.js';
 import {schemaIdentity, validateRemoteDatabase} from '../scripts/release-check.mjs';
-import {DOMAIN_SCHEMA, DOMAIN_SCHEMA_VERSION} from '../src/domain/schema.js';
-import {SECURITY_SCHEMA} from '../src/security/schema.js';
-import {SYNC_SCHEMA} from '../src/sync/schema.js';
-import {COACH_SCHEMA} from '../src/coaching/schema.js';
-import {ANALYSIS_SCHEMA} from '../src/analysis/schema.js';
-import {REPORT_SCHEMA} from '../src/reporting/schema.js';
-import {DATA_FILE_SCHEMA} from '../src/reporting/data-schema.js';
-import {TRACKING_CAPTURE_SCHEMA} from '../src/tracking/schema.js';
-import {TEAM_FEATURE_SCHEMA} from '../src/application/team-features.js';
-import {CATALOG_SCHEMA} from '../src/application/team-catalog.js';
-import {AWARDS_SCHEMA} from '../src/read-model/feature-schema.js';
+import {SCHEMA as schema,SEED as seed} from '../src/application/installation-schema.js';
 
 const old = JSON.parse(await readFile(new URL('./fixtures/deployed-7.0.1-schema.json',import.meta.url),'utf8'));
-const schema=[...DOMAIN_SCHEMA,...SECURITY_SCHEMA,...SYNC_SCHEMA,...TEAM_FEATURE_SCHEMA,...CATALOG_SCHEMA,...COACH_SCHEMA,...ANALYSIS_SCHEMA,...REPORT_SCHEMA,...DATA_FILE_SCHEMA,...TRACKING_CAPTURE_SCHEMA,...AWARDS_SCHEMA];
-const seed=[{sql:`INSERT INTO domain_installation(id,schema_version,created_at) VALUES(1,${DOMAIN_SCHEMA_VERSION},strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(id) DO NOTHING`,params:[]}];
 const password='synthetic-owner-password-for-isolation-test';
 
 async function existingDatabase() {

@@ -1,3 +1,64 @@
+# myTS 7.2.0 integrated release verification
+
+This candidate restores the original 6.20.133 product workflows on the rebuilt
+backend. The following earlier 7.1.x sections are historical receipts, not claims
+about this candidate's files or schema. Final source, aggregate and package evidence
+is recorded in `integration-checkpoint.md` and the 31-gate parity ledger.
+
+## Deployment boundary
+
+Deploying this candidate starts the explicit preserved-data transition through the
+existing scheduler alarms or cron. It is not a quiesce-only deployment. The target
+is the existing `myts-v7` Worker and `myts-v7-rebuild-data` database
+`60f77502-33d4-41d6-80d4-1c5577ebba76`. Preserve the other database
+`c3585493-4ad5-44f2-9484-816a615ee633`, ADMIN_KEY, SYNC binding/namespace, cron,
+preview setting and the 30,000 ms HTTP CPU budget. No schema import or reset is used.
+
+Only the exact reviewed 7.1.4 physical schema, its ready setup receipt, or a valid
+checkpoint of this exact transition is accepted. The target has 731 installation
+statements and fingerprint
+`e1c1b6cf96cd12afce94dc14819e103283aacac2f420329cfaf65938888e4f40`;
+plan hash is
+`755a9a58c834e2a469c8d12e91acd9e51e67800efc7cb4c5e315e037c7170cc7`.
+Unknown or inconsistent schema/journal states fail closed. Original setup timestamps
+and data survive; the completed target cursor reflects the new schema rather than
+pretending the old 270-statement cursor is its full progress.
+
+The transition durably fences old writers and drains/reconstructs three existing
+parent tables using ten bounded recovery copies. This preserves file-job IDs,
+checkpoints, entries and binary parts, and Coach sessions, players, timeline and
+intervals while restoring the 90-minute half limit. The native exact-schema proof
+passes 7/7; committed drain/swap interruption recovery and fresh-owner boundary
+pass separately 1/1 each. See `schema-upgrade.md` for the exact activation, pause,
+recovery and compatible rollback sequence. Once the transition starts, reverting
+blindly to a 7.1.4 binary is not a compatible rollback.
+
+## Remaining release acceptance
+
+The frozen deterministic/DOM/SQLite aggregate passes 653/653. The broad native
+aggregate originally finished 155 pass / 11 fail / three skip; every failed/skipped
+record now has a scoped passing rerun after reviewed repairs. The final isolated
+lifecycle groups pass 6/6 with zero skips. These are distinct receipts, not a claim
+that an unchanged full aggregate was rerun. See the exact chronology and source
+identities in `integration-checkpoint.md`.
+
+The required-only package contains 191 files plus its manifest. Clean locked install
+and dry-run build pass (1,686.33 KiB Worker, 371.35 KiB gzip). Its runtime/assets
+fingerprint is `ee58b05e8e537d9f1b0d822ae8047dc54db163e937b08468c9d701362e5464e3`.
+Final archive/tree identity and independent extracted native acceptance travel in
+the release receipt. The exact schema/transition proofs above remain unchanged.
+No remote publication, deployment or database transition was performed by this
+local engineering checkpoint.
+
+After reviewed publication/deployment, verify health version 7.2.0 and actual ready
+state, preserved timestamps/rows/authentication, then complete the original
+provider-to-team-to-history workflow, correction persistence, shared views,
+reports, Coach and closed-all-tabs scheduled changes. Synthetic Workerd tests do
+not establish live private-provider entitlement, production quota or physical
+mobile behavior. Those gates remain explicit in `parity-gates.json`.
+
+---
+
 # myTS 7.1.1 deployment correction verification
 
 This correction starts from the exact required-only ZIP at GitHub review commit 37a043b03560b4d1664413930c472a3a853eafd1. Its manifest and all 125 listed files were byte-verified before editing. Original ZIP SHA-256: 9c933f6d4c9baf91ee49c680fdbc6de2499172ab09b1421509c33e666a7c7ae8.
