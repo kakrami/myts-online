@@ -48,6 +48,81 @@ export function quantityCases({resolveMatchAnalysis:resolve,allocateHalf}) {
   const r=resolve(input),p=only(r);valid(assert,r);assert.equal(p.started.value,true);assert.equal(p.appearance.value,true);unknown(assert,p);
   assert.equal(p.halves[1].appearance.value,true);assert.equal(p.halves[2].appearance.value,null);assert.equal(p.estimatedSeconds,0);
  });
+ const starterInput=(kind,scope,value=true)=>{
+  const input=copy(inputD);input.halves=[];
+  input.players[0]={id:'p',eligible:true,[kind]:scope==='match'?{match:{started:value}}:{halves:{[scope]:{started:value}}}};
+  return input;
+ };
+ for(const kind of ['manual','reported']) for(const scope of ['match',1,2])
+  add('clockless '+kind+' '+(scope==='match'?'match':'half '+scope)+' starter proves appearance with unknown minutes',assert=>{
+   const input=starterInput(kind,scope),before=JSON.stringify(input),r=resolve(input),p=only(r);valid(assert,r);
+   assert.equal(p.appearance.value,true);assert.equal(p.appearance.state,'inferred');
+   assert.equal(p.appearance.provenance.basis,'confirmed_start_proves_participation');
+   assert.deepEqual(p.appearance.provenance.parts,[{half:scope==='match'?1:scope,field:'started',value:true,state:kind,
+    provenance:{kind,basis:scope==='match'?'match_decision':'half_decision',sourceRefs:[]}}]);
+   assert.equal(p.started.value,scope===2?null:true);assert.equal(p.started.state,scope===2?'unknown':kind);
+   unknown(assert,p);for(const key of ['minutes','fieldMinutes','gkMinutes'])assert.equal(p[key].value,null,key);
+   assert.equal(p.observedSeconds,0);assert.equal(p.estimatedSeconds,0);assert.deepEqual(p.halves,{});
+   assert.equal(r.durationSeconds,null);assert.equal(r.totals.capacitySeconds,null);
+   assert.deepEqual(r.lineups,{});assert.equal(JSON.stringify(input),before);assert.deepEqual(resolve(input),r);
+  });
+ add('clockless start false never proves nonparticipation or quantity',assert=>{
+  for(const kind of ['manual','reported'])for(const scope of ['match',1,2]){
+   const r=resolve(starterInput(kind,scope,false)),p=only(r);valid(assert,r);
+   assert.equal(p.appearance.value,null);unknown(assert,p);assert.equal(p.minutes.value,null);
+   assert.equal(p.started.value,scope===2?null:false);
+  }
+ });
+ add('explicit zero is preserved alongside every clockless starter scope',assert=>{
+  for(const kind of ['manual','reported'])for(const scope of ['match',1,2])for(const halves of [[],[windows[0]],windows]){
+   const input=starterInput(kind,scope);input.halves=copy(halves);input.players[0][kind].match={...input.players[0][kind].match,totalSeconds:0};
+   const r=resolve(input),p=only(r);valid(assert,r);assert.equal(p.appearance.value,true);
+   for(const key of ['totalSeconds','fieldSeconds','gkSeconds','minutes','fieldMinutes','gkMinutes'])assert.equal(p[key].value,0,key);
+   assert.equal(p.minutes.state,kind);assert.equal(p.estimatedSeconds,0);
+  }
+ });
+ add('manual DNP suppresses lower-priority reported starters without losing zeros',assert=>{
+  for(const scope of ['match',1,2])for(const halves of [[],[windows[0]],windows]){
+   const input=starterInput('reported',scope);input.halves=copy(halves);input.players[0].manual={match:{appearance:false}};
+   const r=resolve(input);valid(assert,r);zeros(assert,only(r));assert.equal(only(r).appearance.value,false);
+  }
+ });
+ add('manual starter corrects reported DNP without retaining derived zero time',assert=>{
+  for(const scope of ['match',1,2])for(const halves of [[],[windows[0]],windows]){
+   const input=starterInput('manual',scope);input.halves=copy(halves);input.players[0].reported={match:{appearance:false}};
+   const r=resolve(input),p=only(r);valid(assert,r);assert.equal(p.appearance.value,true);unknown(assert,p);assert.equal(p.minutes.value,null);
+   if(scope===2)assert.notEqual(p.started.value,true);else assert.equal(p.started.value,true);assert.equal(p.estimatedSeconds,0);
+  }
+ });
+ add('same-priority DNP/start conflict blocks either clockless half',assert=>{
+  for(const kind of ['manual','reported'])for(const scope of ['match',1,2]){
+   const input=starterInput(kind,scope);input.players[0][kind].match={...input.players[0][kind].match,appearance:false};
+   const r=resolve(input);assert.equal(r.publishable,false);assert.equal(only(r).appearance.value,false);
+   assert.ok(r.issues.some(i=>i.code==='dnp_started_conflict'&&i.half===(scope==='match'?1:scope)));
+   assert.equal(only(r).minutes.value,0);assert.deepEqual(resolve(input),r);
+  }
+ });
+ add('clockless selected starters respect half and manual precedence',assert=>{
+  const selections=[
+   {manual:{match:{started:false}},reported:{halves:{1:{started:true}}}},
+   {manual:{match:{started:true},halves:{1:{started:false}}}},
+   {reported:{match:{started:true},halves:{1:{started:false}}}}
+  ];
+  for(const selection of selections){
+   const input=starterInput('manual','match');input.players[0]={id:'p',eligible:true,...selection};
+   const r=resolve(input),p=only(r);valid(assert,r);assert.equal(p.started.value,false);assert.equal(p.appearance.value,null);unknown(assert,p);
+   input.players[0].reported={...input.players[0].reported,halves:{...input.players[0].reported?.halves,2:{started:true}}};
+   const second=resolve(input);valid(assert,second);assert.equal(only(second).started.value,false);assert.equal(only(second).appearance.value,true);unknown(assert,only(second));
+   assert.equal(only(second).appearance.provenance.parts[0].half,2);
+  }
+ });
+ add('clockless starter eligibility is enforced for whole and both halves',assert=>{
+  for(const kind of ['manual','reported'])for(const scope of ['match',1,2]){
+   const input=starterInput(kind,scope);input.players[0].eligible=false;
+   const r=resolve(input);assert.equal(only(r).appearance.value,true);unknown(assert,only(r));assert.equal(r.publishable,false);
+   assert.ok(r.issues.some(i=>i.code==='participation_outside_eligibility'));
+  }
+ });
  add('explicit field role and appearance still cannot invent time',assert=>{
   const input=copy(inputD);input.players[0].manual.match.role='field';
   const r=resolve(input);valid(assert,r);unknown(assert,only(r));assert.equal(only(r).estimatedSeconds,0);
@@ -104,7 +179,7 @@ export function quantityCases({resolveMatchAnalysis:resolve,allocateHalf}) {
    assert.equal(r.publishable,true);assert.equal(r.players[0].totalSeconds,1500);assert.equal(r.players[0][role==='Field'?'gkSeconds':'fieldSeconds'],0);assert.equal(r.players[0].observedSeconds,300);}
  });
  add('quantities and precedence preserve immutable deterministic output',assert=>{
-  const input=copy(inputC),before=JSON.stringify(input),r=resolve(input);assert.equal(JSON.stringify(input),before);assert.equal(Object.isFrozen(input),false);assert.equal(Object.isFrozen(r),true);assert.equal(r.version,'1.0.1');assert.equal(Object.isFrozen(r.players[0].halves[1].totalSeconds.provenance),true);assert.deepEqual(resolve(input),r);
+  const input=copy(inputC),before=JSON.stringify(input),r=resolve(input);assert.equal(JSON.stringify(input),before);assert.equal(Object.isFrozen(input),false);assert.equal(Object.isFrozen(r),true);assert.equal(r.version,'1.0.2');assert.equal(Object.isFrozen(r.players[0].halves[1].totalSeconds.provenance),true);assert.deepEqual(resolve(input),r);
  });
  add('1000 seeded unknown/zero/role facts preserve bounds and conservation',assert=>{
   let seed=9231781;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};

@@ -2,7 +2,7 @@ import { validateHalfWindows, normalizeSegments, intervalDuration } from './inte
 import { allocateHalf } from './allocation.js';
 import { normalizePosition, inferSpatialPosition, resolveLineup } from './lineup.js';
 
-export const RESOLVER_VERSION = '1.0.1';
+export const RESOLVER_VERSION = '1.0.2';
 const EPS = 1e-7;
 const own = (value, key) => value != null && Object.hasOwn(value, key) && value[key] != null;
 const cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
@@ -84,6 +84,18 @@ const pick = (p, half, key) => {
    return fact(p[kind].match[key],kind,'match_decision');
  }
  return fact(null);
+};
+// Select participation facts before using start as proof. Cross-field decisions
+// retain manual precedence; contradictions within one layer remain publish-blocking.
+const participation = (p, half) => {
+ let appearance=pick(p,half,'appearance'), started=pick(p,half,'started');
+ if(appearance.value===false&&started.value===true) {
+  if(appearance.state==='manual'&&started.state==='reported')
+   started=fact(false,'manual','confirmed_dnp_nonstarter',[],{participation:appearance,suppressedStart:started});
+  else if(appearance.state==='reported'&&started.state==='manual')
+   appearance=fact(true,'manual','manual_start_overrides_reported_dnp',[],{start:started});
+ }
+ return {appearance,started};
 };
 /** Resolve one canonical event from bounded, already-authorized DTOs. No IO or mutable globals.
  * A source/account/date/season/revision fence remains the adapter's responsibility.
@@ -200,7 +212,7 @@ export function resolveMatchAnalysis(input) {
  const halfResults = {}, halfFacts = {};
  for (const w of windows) {
   const roster = players.map(p => {
-   let appearance = pick(p,w.id,'appearance'); const started = pick(p,w.id,'started'), position = pick(p,w.id,'position'), role = pick(p,w.id,'role');
+   let {appearance,started} = participation(p,w.id); const position = pick(p,w.id,'position'), role = pick(p,w.id,'role');
    const observed = p.observed[w.id], all = normalizeSegments([...observed.field,...observed.goalkeeper,...observed.unknown],w);
    if(appearance.value===true&&appearance.provenance.basis==='match_decision') appearance=fact(null,'unknown','whole_participation_has_unasserted_half_timing');
    const observedProof=intervalDuration(all)>0,openingProof=started.value===true;
@@ -316,20 +328,31 @@ export function resolveMatchAnalysis(input) {
    if(totalSeconds.value!=null&&gkSeconds.value!=null&&fieldSeconds.value==null&&gkSeconds.value<=totalSeconds.value)
     fieldSeconds=derived(totalSeconds.value-gkSeconds.value,[{field:'total',fact:totalSeconds},{field:'goalkeeper',fact:gkSeconds}],'explicit_total_minus_keeper');
   }
+  const participationParts=expectedHalfIds.map(half=>{
+   const selected=participation(p,half);
+   const part={half,appearance:halves[half]?.appearance??selected.appearance,started:halves[half]?.started??selected.started};
+   if(!halves[half]&&part.appearance.value===false&&part.started.value===true)
+    issue('dnp_started_conflict','error',{playerId:p.id,half});
+   return part;
+  });
+  const startProofs=participationParts.filter(part=>part.started.value===true&&part.appearance.value!==false);
+  const startDependencies=startProofs.map(part=>({half:part.half,field:'started',value:true,state:part.started.state,provenance:part.started.provenance}));
   let appearance = pick(p,null,'appearance');
   const explicitHalfAppearance=expectedHalfIds.some(half=>own(p.manual.halves[half],'appearance') || own(p.reported.halves[half],'appearance'));
   if (explicitHalfAppearance) {
-   const parts=expectedHalfIds.map(half=>({half,...(halves[half]?.appearance??pick(p,half,'appearance'))})),values=parts.map(part=>part.value);
+   const parts=participationParts.map(part=>({half:part.half,...part.appearance})),values=parts.map(part=>part.value);
    const value=values.some(v=>v===true)?true:values.every(v=>v===false)?false:appearance.value===true?true:null;
    const kinds=[...new Set(parts.map(part=>part.state))],kind=kinds.length===1?kinds[0]:'mixed';
    const wholeOnlyPositive=value===true&&!values.some(v=>v===true)&&appearance.value===true;
    appearance=fact(value,wholeOnlyPositive?appearance.state:kind,wholeOnlyPositive?'whole_participation_half_timing_unknown':'effective_half_appearance',p.refs[1].concat(p.refs[2]),{parts:parts.map(part=>({half:part.half,value:part.value,state:part.state}))});
   }
+  if(appearance.state==='reported'&&appearance.value===false&&startProofs.some(part=>part.started.state==='manual'))
+   appearance=fact(true,'manual','manual_start_overrides_reported_dnp',p.refs[1].concat(p.refs[2]),{parts:startDependencies});
   if (appearance.value == null) {
    const halfAppearances = Object.values(halves).map(h=>h.appearance.value);
-   const any = halfAppearances.some(v=>v===true) || [totalSeconds,fieldSeconds,gkSeconds].some(f=>(f.value??0)>0);
+   const any = startProofs.length>0 || halfAppearances.some(v=>v===true) || [totalSeconds,fieldSeconds,gkSeconds].some(f=>(f.value??0)>0);
    const dnp = completeWindows && halfAppearances.every(v=>v===false);
-   appearance = fact(any?true:dnp?false:null,any||dnp?'inferred':'unknown',any?'evidenced_match_participation':dnp?'all_halves_dnp':'no_match_participation_proof',p.refs[1].concat(p.refs[2]));
+   appearance = fact(any?true:dnp?false:null,any||dnp?'inferred':'unknown',startProofs.length?'confirmed_start_proves_participation':any?'evidenced_match_participation':dnp?'all_halves_dnp':'no_match_participation_proof',p.refs[1].concat(p.refs[2]),startProofs.length?{parts:startDependencies}:{});
   }
   const manualPositive=[totalSeconds,fieldSeconds,gkSeconds].some(f=>(f.value??0)>0&&(f.state==='manual'||f.state==='mixed'));
   if (appearance.state==='reported' && appearance.value===false && manualPositive) appearance=fact(true,'manual','manual_quantity_overrides_reported_dnp');
@@ -351,7 +374,7 @@ export function resolveMatchAnalysis(input) {
   if(totalSeconds.value!=null&&fieldSeconds.value!=null&&gkSeconds.value!=null&&Math.abs(fieldSeconds.value+gkSeconds.value-totalSeconds.value)>EPS)
    issue('match_role_conservation','error',{playerId:p.id});
   if (appearance.value===false && (totalSeconds.value ?? 0)>0) issue('match_dnp_positive_seconds','error',{playerId:p.id});
-  let effectiveStart=halves[1]?.started??pick(p,1,'started');
+  let effectiveStart=participationParts.find(part=>part.half===1).started;
   if(appearance.value===false&&effectiveStart.value==null)effectiveStart=fact(false,appearance.state,'confirmed_dnp_nonstarter');
   if(appearance.value===false&&effectiveStart.value===true)issue('match_dnp_started_conflict','error',{playerId:p.id});
   if(!p.eligible&&(appearance.value===true||effectiveStart.value===true||[totalSeconds,fieldSeconds,gkSeconds].some(f=>(f.value??0)>0)))

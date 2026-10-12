@@ -12,7 +12,9 @@ export interface ResolvedFact<T> { readonly value: T | null; readonly state: Fac
 export interface MatchFacts {
  totalSeconds?: number | null; fieldSeconds?: number | null; gkSeconds?: number | null;
  appearance?: boolean | null;
- /** Match start means first-half start, never second-half start. */
+ /** A selected true start proves appearance without proving seconds, even without video.
+  * Match start means first-half start, never second-half start. Derived appearance
+  * retains the selected manual/reported start and its scope in provenance.parts. */
  started?: boolean | null;
  position?: string | null; role?: Role | null;
  /** Owner pitch anchor, 0..100, both coordinates required. Manual layer only. */
