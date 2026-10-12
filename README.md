@@ -1,6 +1,6 @@
-# myTS 7.1.3
+# myTS 7.1.4
 
-This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.1.3**. This package is not a production deployment.
+This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.1.4**. This package is not a production deployment.
 
 The original compact mobile interface, team and season navigation, schedule, competitions, player and match details, bookmarks, source management, branding, corrections, matching, awards, four reports and private Coach workflows are retained. Their server records and background processing use the new architecture. Exact behavior and verification boundaries are documented in the included contracts and final review evidence.
 
@@ -43,7 +43,7 @@ Native Workerd/D1 and frontend checks against the required-only package are loca
 Maintainer packaging, after the release gates pass:
 
 ```sh
-node scripts/release-check.mjs --stage tmp/release-stage --zip tmp/myTS-7.1.3.zip
+node scripts/release-check.mjs --stage tmp/release-stage --zip tmp/myTS-7.1.4.zip
 ```
 
 The staging recipe follows the actual fresh Worker/browser import graph and copies required source, assets, pinned configuration, documentation and a SHA-256 manifest. It excludes old modules, dependency directories, provider credentials, local databases, tests, screenshots and temporary work. The verification ledger is required automatically; finalize it with the exact-package results before the release is packaged. Do not substitute a ZIP of the entire workspace.

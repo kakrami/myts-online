@@ -334,3 +334,22 @@ keeps saved myTS content and offers provider recovery. Discovery, queued import,
 active import, partial/restricted content and ready coverage have distinct wording.
 Source collection remains server-owned and continues independently of open tabs.
 Queue acceptance is never presented as completed import.
+
+## 7.1.4 native provider transport correction
+
+Production uses Workerd's native global fetch. When a fetch function is retained
+as a transport property, its global receiver is now explicitly bound. Both the
+shared SourceTransport and standalone CaptureTransport use this correction;
+custom fetch overrides, inherited transports and bound service-fetch injections
+retain their precedence. The native path preserves all provider endpoint,
+redirect, credential-header, request-count, response-size and timeout restrictions.
+
+Workerd aborts have a numeric DOMException code. These now retain the intended
+collector_timeout classification instead of passing numeric code 20 through as
+an application error. Other unexpected native errors remain sanitized; raw
+exceptions, credential values and provider response bodies are not exposed.
+
+A TeamSnap callback that already failed after its state was consumed must start
+a fresh sign-in. The correction does not replay a consumed state, retain tokens
+in browser storage, bypass consent, change app registration or weaken callback
+validation. It corrects execution of the provider request itself.

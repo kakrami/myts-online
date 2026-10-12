@@ -216,3 +216,86 @@ unchanged ready setup/database counts and identities, the simpler flow in the
 user's actual browser, real TeamSnap registration/consent and Trace code access,
 public GotSport discovery, and server import completion with every tab closed.
 Neither synthetic provider fixtures nor DOM tests establish those live gates.
+
+## 7.1.4 native provider fetch correction candidate
+
+Baseline is deployed commit bc02c4954cf895c90108dd1c14143c70aad27783, tree
+8b328b6808c5f092faa3cce8d64c3b9694cc4a16. After the cloud checkout disappeared,
+all 165 tracked baseline files were recovered and their Git blob hashes verified;
+the exact tree and original commit were reconstructed before editing.
+
+The live 7.1.3 TeamSnap callback returned handled HTTP 502 at 14:12:59.214,
+14:13:24.093 and 14:13:27.060 UTC on 2026-10-12. The last observed invocation used
+10 ms CPU and 161 ms elapsed. Those logs alone did not expose an underlying stack
+or prove whether an outbound request occurred. The visible message came from the
+server SourceTransport catch; config/authorize make no provider request and the
+callback reaches /v3/me only after validating its session-bound OAuth state.
+The evidence does not identify bad user credentials or missing registration.
+
+A native Workerd reproduction of the unmodified source then produced the exact
+sanitized source_network / “Provider network request failed.” response. The raw
+synthetic reproduction was TypeError Illegal invocation, observation status null
+and zero bytes, with zero intercepted outbound calls. The cause is storing
+unbound global fetch and invoking it as a transport instance method. This matches
+[Cloudflare's receiver guidance](https://developers.cloudflare.com/workers/observability/errors/#illegal-invocation-errors)
+and the [specific Workerd receiver report](https://github.com/cloudflare/workerd/issues/6904).
+
+### Bounded change
+
+- Bind only the native global-fetch fallback to globalThis in SourceTransport and
+  CaptureTransport. Preserve custom/inherited fetch and bound service precedence.
+- Normalize aborted native requests before accepting application string error
+  codes. Native DOMException code 20 no longer bypasses collector_timeout.
+- Keep sanitized unexpected failures, allowlists, redirect limits, request/byte
+  budgets, headers and credentials unchanged.
+- Align health/package/lock/documentation at 7.1.4. No dependency, schema,
+  configuration, CPU guard, owner/auth flow, browser/UI or production-data change.
+
+The new native regression intercepts HTTPS at Workerd's outbound service boundary;
+it does not replace global fetch with a JavaScript mock. Baseline: 1/8 passes
+(the injected/service paths), 7 failures. Final transport code: 8/8 passes,
+zero skips, 27.723 seconds. It covers TeamSnap/GotSport/Trace, native /v3/me,
+standalone and inherited capture, injected/service precedence, 401/403/429,
+challenge/redirect/format rejection, native aborts, endpoint restrictions and
+credential-free observations. An independent reviewer reproduced the baseline
+Illegal invocation and zero outbound calls separately.
+
+These tests use synthetic local responses and no actual provider account.
+Earlier private-provider tests injected bound fetch functions and therefore
+missed this production-only fallback. The prior complete suite's 154/159 result
+(three background settling limits and two local Undici failures) remains
+historical evidence; this correction has not been shown to resolve those five
+failures. No new clean complete-suite or live-provider acceptance is claimed.
+
+### Current correction receipts
+
+| Check | Result |
+|---|---|
+| Native transport baseline | FAIL: 1/8; only injected/service cases passed; production global fallback failed before outbound dispatch |
+| Native transport correction | PASS: 8/8, zero skips; 27.723 seconds |
+| Existing auth/recovery/controller/discovery regression | FAIL: 33/34 passed, one local Undici HTTP fetch failure in the unchanged owner login/logout case; 383.311 seconds |
+| Source build | PASS: 140 required files, 28 assets, 1100.04 KiB bundle / 258.42 KiB gzip, pinned Wrangler 4.149.0 |
+| Exact required-only package | 140 source/asset/documentation entries plus manifest; byte/hash validation and independent extracted-native review reported with the artifact |
+| Independent source review | No blocking finding in the two-transport correction or native regression assertions |
+| Complete suite | Not rerun for this correction; prior 154/159 limitations remain explicit above |
+| Hosted acceptance | Pending reviewed deployment and fresh provider sign-in; no provider account or consent used in these tests |
+
+All 11 provider-related HTTP cases after the unchanged owner case passed, including
+verified TeamSnap identity/credential commit and Trace cancellation/recovery.
+The pure controller/discovery/provider-recovery checks passed 22/22 in the same
+run. The local owner failure was an Undici `fetch failed`, not a returned provider
+HTTP error and not the reproduced Workerd Illegal invocation. No app/test timeout
+was increased and no failed test was hidden or skipped.
+
+The runtime fingerprint for 116 required worker.js/src/web files is
+`a25a73c6d80ea4c5814e47d971b5c32dc340a95ace7d2aeaa5ef401618286ae0`,
+using the ordered `{path,sha256}` JSON SHA-256 algorithm described above.
+Schema fingerprint, wrangler.jsonc and release guard are byte-identical to 7.1.3.
+Both databases, ready cursor/timestamp, owner vault, sessions, provider records,
+ADMIN_KEY, SYNC and cron are preserved.
+
+After reviewed deployment, require health 7.1.4 and the unchanged setup/database
+identity, then start a fresh TeamSnap sign-in and verify real discovery/import.
+The failed callback consumed its single-use state; never replay it or store its
+token in browser state. Hosted provider and browser-closed completion remain
+separate required acceptance checks.

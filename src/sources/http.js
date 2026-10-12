@@ -24,7 +24,8 @@ export function unique(rows, identity) {
 }
 export class SourceTransport {
   constructor(env = {}, options = {}) {
-    this.fetcher = options.fetch || env.PROVIDER_FETCH?.fetch?.bind(env.PROVIDER_FETCH) || fetch;
+    // Workerd's global fetch requires its own receiver when stored as a method.
+    this.fetcher = options.fetch || env.PROVIDER_FETCH?.fetch?.bind(env.PROVIDER_FETCH) || fetch.bind(globalThis);
     this.maxCalls = options.maxCalls ?? 8;
     this.deadline = Date.now() + (options.deadlineMs ?? 22000);
     this.timeoutMs = options.timeoutMs ?? 10000;
@@ -78,7 +79,9 @@ export class SourceTransport {
       observation.retrieved_at = stamp();
       return { value, response, observation };
     } catch (error) {
-      const failure = error.code ? error : fail(controller.signal.aborted ? "Provider request timed out." : "Provider network request failed.", 502, controller.signal.aborted ? "collector_timeout" : "source_network");
+      // Native AbortError has numeric DOMException.code=20, not a source code.
+      const failure = controller.signal.aborted ? fail("Provider request timed out.", 502, "collector_timeout")
+        : typeof error?.code === "string" ? error : fail("Provider network request failed.", 502, "source_network");
       observation.code = failure.code;
       throw failure;
     } finally { clearTimeout(timer); this.observations.push(observation); }

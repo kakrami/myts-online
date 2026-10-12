@@ -21,7 +21,8 @@ function failure(code, status = 502, availability = "unavailable", retryAfterMs 
 /** A read-only, streaming capture transport. No response body or credential is logged. */
 export class CaptureTransport {
   constructor(base = {}, options = {}) {
-    this.fetcher = options.fetch || base.fetcher || base.PROVIDER_FETCH?.fetch?.bind(base.PROVIDER_FETCH) || fetch;
+    // Standalone captures need the same native receiver as shared source calls.
+    this.fetcher = options.fetch || base.fetcher || base.PROVIDER_FETCH?.fetch?.bind(base.PROVIDER_FETCH) || fetch.bind(globalThis);
     this.timeoutMs = Math.min(10_000, options.timeoutMs || 10_000);
     this.startPage();
   }
@@ -100,7 +101,9 @@ export class CaptureTransport {
         observation.retrieved_at = stamp();
         return { value: parsed, prefix: retainPrefix ? raw : null, truncated: false, retainedBytes: retained, response, observation };
       } catch (error) {
-        const safe = error.code ? error : failure(controller.signal.aborted ? "collector_timeout" : "source_network", 502, "partial");
+        // Numeric DOMException codes must not bypass the safe source taxonomy.
+        const safe = controller.signal.aborted ? failure("collector_timeout", 502, "partial")
+          : typeof error?.code === "string" ? error : failure("source_network", 502, "partial");
         observation.code = safe.code; throw safe;
       } finally { clearTimeout(timer); this.observations.push(observation); }
     }
