@@ -4,7 +4,7 @@ const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done;})
 const parse=path=>{const [pathname,query='']=path.split('?');const params=Object.fromEntries(query.split('&').filter(Boolean).map(part=>{const [key,...value]=part.split('=');return [decodeURIComponent(key),decodeURIComponent(value.join('='))];}));return {pathname,params};};
 const envelope=(id,extra={})=>({data:{event:{id,title:'Match '+id,starts_at:'2026-10-12T12:00:00Z',status:'FINAL',home:{id:'home',name:'Home'},away:{id:'away',name:'Away'}},capabilities:{can_coach:true},...extra}});
 function fixture(createDetailFeatures,{role='owner',read,hydrate,panel}={}){
- const calls={reads:[],renders:[],panels:[],binds:0,hydrates:0};
+ const calls={reads:[],renders:[],panels:[],binds:0,hydrates:0,modals:[]};
  const body={classList:{toggle(){}},querySelector(){return null;}};
  const api={
   state:{active:true,routeEpoch:1,team:'team-a',season:'season-a',editorDirty:false,details:[],bootstrap:{teams:[],session:{role}}},
@@ -14,6 +14,8 @@ function fixture(createDetailFeatures,{role='owner',read,hydrate,panel}={}){
   transport:{async read(key,path){calls.reads.push({key,path});if(read)return read(key,path,api);return {discarded:false,data:envelope(decodeURIComponent(parse(path).pathname.split('/').at(-1)))};}},
   async hydrateModel(model){calls.hydrates++;return hydrate?hydrate(model,api):model;},
   setDetail(model){calls.renders.push(model);},
+  openModal(model){api.state.routeEpoch++;api.state.modal=model;calls.modals.push(model);},
+  closeModal(){api.state.routeEpoch++;api.state.modal=null;},
   notice(){},
  };
  const coach={
@@ -103,6 +105,34 @@ export async function runDetailCases({createDetailFeatures,assert,onCase}){
    const f=fixture(createDetailFeatures,{hydrate:async model=>{entered.resolve();await release.promise;return model;}});
    const pending=f.open('match-a');await entered.promise;f.api.state.routeEpoch++;release.resolve();await pending;
    assert.equal(f.calls.renders.length,0);assert.equal(f.api.state.detailModel,undefined);
+  }],
+  ['Pool counts can move forward and backward across modal epochs',async()=>{
+   const f=fixture(createDetailFeatures,{read:async(key,path)=>{const page=parse(path).params.pool_counts_cursor==='second'?'Second pool':'First pool';return {discarded:false,data:{data:{competition:{id:'competition-a',name:'Competition'},events:{items:[]},standings:{pool_counts:{items:[{id:page,name:page,total:3}],total:2,next_cursor:page==='First pool'?'second':null}}}}};}});
+   await f.open('competition-a',{kind:'competition',tab:'standings'});
+   await f.features.actions['standings-pools-more']({id:'competition-a'},f.api);
+   await f.features.actions['standings-pools-more']({id:'competition-a',cursor:'second'},f.api);
+   await f.features.actions['standings-pools-previous']({id:'competition-a'},f.api);
+   assert.equal(f.calls.modals.length,3);assert.ok(f.calls.modals[0].html.includes('First pool'));assert.ok(f.calls.modals[1].html.includes('Second pool'));assert.ok(f.calls.modals[2].html.includes('First pool'));
+  }],
+  ['Detail pagination resumes after opening and closing a modal on the same match',async()=>{
+   const f=fixture(createDetailFeatures,{read:async(key,path)=>({discarded:false,data:envelope('match-a',{players:{items:[{id:key==='detail-page'?'p2':'p1',name:key==='detail-page'?'Second player':'First player',minutes:10}],total:2},capabilities:{has_players:true}})})});
+   await f.open('match-a',{tab:'players'});f.api.openModal({kind:'settings'});f.api.closeModal();
+   await f.features.more({tab:'players',cursor:'second'},f.api);
+   const html=f.calls.renders.at(-1).bodyHTML;assert.ok(html.includes('First player'));assert.ok(html.includes('Second player'));assert.equal(f.calls.renders.length,2);
+  }],
+  ['A modal change still fences a pending pool-count response',async()=>{
+   const entered=deferred(),release=deferred();
+   const f=fixture(createDetailFeatures,{read:async(key)=>{if(key==='standing-pools'){entered.resolve();await release.promise;}return {discarded:false,data:{data:{competition:{id:'competition-a',name:'Competition'},events:{items:[]},standings:{pool_counts:{items:[{id:'p1',name:'Pool one',total:3}],total:1}}}}};}});
+   await f.open('competition-a',{kind:'competition',tab:'standings'});
+   const pending=f.features.actions['standings-pools-more']({id:'competition-a'},f.api);await entered.promise;f.api.openModal({kind:'settings',html:'Settings'});release.resolve();await pending;
+   assert.equal(f.calls.modals.length,1);assert.equal(f.calls.modals[0].kind,'settings');
+  }],
+  ['A modal change still fences pending detail pagination',async()=>{
+   const entered=deferred(),release=deferred();
+   const f=fixture(createDetailFeatures,{read:async(key)=>{if(key==='detail-page'){entered.resolve();await release.promise;}return {discarded:false,data:envelope('match-a',{players:{items:[{id:'p1',name:'Player',minutes:10}],total:2},capabilities:{has_players:true}})};}});
+   await f.open('match-a',{tab:'players'});const renders=f.calls.renders.length;
+   const pending=f.features.more({tab:'players',cursor:'second'},f.api);await entered.promise;f.api.openModal({kind:'settings'});release.resolve();await pending;
+   assert.equal(f.calls.renders.length,renders);
   }],
  ];
  const completed=[];

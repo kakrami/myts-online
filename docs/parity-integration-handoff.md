@@ -74,11 +74,19 @@ All 31 gates still require final-artifact receipts. Real provider updates and se
 | Group | Available result | Boundary |
 | --- | --- | --- |
 | Actual screen renderer/imports | 5/5 cases passed in Functions V8 | Synthetic DTOs; no DOM or visual rendering |
-| Actual detail controller/guarded reads/render imports | 9/9 cases passed in Functions V8 | Private Coach fixture and minimal host; no actual Coach service/HTTP/browser |
+| Actual detail controller/guarded reads/render imports | 13/13 cases passed in Functions V8 | Private Coach fixture and minimal host; no actual Coach service/HTTP/browser |
 | Actual spatial renderer/imports | 8/8 cases passed in Functions V8 | Native-kind synthetic coordinates; no browser image rendering |
-| Combined three changed modules | 22/22 runtime component cases passed | Same assembled source imports, not a native/application acceptance suite |
+| Combined three changed modules | 26/26 runtime component cases passed | Same assembled source imports, not a native/application acceptance suite |
 | Exact original analysis source oracle | 13/13 characterization cases passed | Original source with synthetic records; target inference remains unimplemented |
 | Regression controls | All 9 detail cases, first spatial box-touch case and first screen highlighting case reject unchanged 7.1.4 | Independent controls; no production observation claimed |
 | Node wrappers/full suite/native Worker/browser/build | Not run in this disconnected review environment | Must run on the combined candidate |
 
 The V8 checks used an ESM import adapter and Node-compatible assertion adapter. All unchanged web dependencies were loaded from the pinned base. Standard Node test wrappers are checked in for reproducible execution; their Node/TAP execution has not been claimed. These counts are component cases, not a count of accepted product gates.
+
+## Independent-review correction and remaining Coach integration risk
+
+The first review commit `4738a3a3c9c09c87e69a2214649d648a3e533198` passed its then-available 22 cases, but independent review found that its detail-open epoch incorrectly invalidated all later operations after a modal opened. It is superseded by the branch head. The correction separates stable detail identity/team/season/role from each operation's current epoch. Pool counts now page Next/Previous across modal epochs and detail paging resumes after modal close, while pending reads/hydration/private-panel work remain fenced.
+
+Four additional controller cases model the real main.openModal/closeModal epoch changes. Two fail against the first review commit and pass after correction; the two in-flight modal rejection cases also pass. The corrected combined runtime cases are 26/26 (screen 5, spatial 8, detail 13). Original-oracle characterization remains 13/13 separately.
+
+Actual `web/app/coach-features.js` command/reload callbacks have their own state and direct DOM writes. They are not exercised by the private Coach fixture in these controller cases. Its cleanup currently stops timer/interaction bindings without invalidating all pending commands, so combined-candidate testing must cover command/reload completion after another detail opens, logout or scope changes. Allocate that frontend file before changing it, and pair its generation fence with author-owned coaching/service validation. This isolated controller patch does not claim to fix those separate callbacks.
