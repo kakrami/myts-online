@@ -90,3 +90,17 @@ The first review commit `4738a3a3c9c09c87e69a2214649d648a3e533198` passed its th
 Four additional controller cases model the real main.openModal/closeModal epoch changes. Two fail against the first review commit and pass after correction; the two in-flight modal rejection cases also pass. The corrected combined runtime cases are 26/26 (screen 5, spatial 8, detail 13). Original-oracle characterization remains 13/13 separately.
 
 Actual `web/app/coach-features.js` command/reload callbacks have their own state and direct DOM writes. They are not exercised by the private Coach fixture in these controller cases. Its cleanup currently stops timer/interaction bindings without invalidating all pending commands, so combined-candidate testing must cover command/reload completion after another detail opens, logout or scope changes. Allocate that frontend file before changing it, and pair its generation fence with author-owned coaching/service validation. This isolated controller patch does not claim to fix those separate callbacks.
+
+## Applying the complete review patch
+
+The review branch contains the original parity change and its independent-review correction. Apply the complete deployed-base-to-reviewed-head diff or all commits after base `6326162d923aae5c2f2bfe109dfad6dc3b28d687`. Do not cherry-pick only the last follow-up commit: it depends on the first parity change.
+
+First freeze the lifecycle candidate, then use a separate integration branch. Verify the reviewed head against the handoff's returned SHA. One supported Git form after fetching the review branch is:
+
+```sh
+git cherry-pick 6326162d923aae5c2f2bfe109dfad6dc3b28d687..origin/myts-parity-render-review-20261012
+```
+
+Only the thirteen owned paths listed above change. Review any conflicts instead of overwriting the lifecycle author's files. Regenerate the final version/manifest and run combined acceptance before preparing deployment review.
+
+Independent read-only review verified the corrected source at `01b811ba632edb08f045d1e6dd34018c825976d2`: First → Second → First pool paging works, late pool replies after another modal opens are rejected, and no further direct blocker was found in the three-file change. This final handoff update changes documentation only; it adds no runtime delta.
