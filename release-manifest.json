@@ -5,8 +5,8 @@
   "files": [
     {
       "path": "README.md",
-      "bytes": 5651,
-      "sha256": "a4bcf79c0d013340978412ab7bb7910e8ed2f91de1dc08d3ea734065dad2d9b7"
+      "bytes": 5754,
+      "sha256": "3b8720461f80994a1238763720ce1e0cf828f06a1974c3375f4d22ebba939362"
     },
     {
       "path": "docs/acceptance-baseline.md",
@@ -30,8 +30,8 @@
     },
     {
       "path": "docs/deployment-verification.md",
-      "bytes": 5377,
-      "sha256": "4fac3a22f13109d7823ee67fba5887984a15376592a5db606902b230d6f57c6c"
+      "bytes": 6877,
+      "sha256": "4c76ea5b011180f1ed9429b952f4418541ffe8ee83d05ecb69cb04815abf0d80"
     },
     {
       "path": "docs/domain-contract.md",
@@ -45,8 +45,8 @@
     },
     {
       "path": "docs/fresh-deployment.md",
-      "bytes": 8724,
-      "sha256": "455eb2ad47417864b8e6dcca30f9817ad3c1f52a76b53e93c6fe244e51459f2b"
+      "bytes": 9654,
+      "sha256": "554d44a2396f2e054edc1d36d3decdaf373168aea43086d38cd2ce2c448119d9"
     },
     {
       "path": "docs/frontend-contract.md",
@@ -70,8 +70,8 @@
     },
     {
       "path": "docs/schema-comparison.md",
-      "bytes": 6708,
-      "sha256": "ca112d1fb16e8f312933a7f63f7eca8c4941ea61bd48d3d054620a4f9d5a99f1"
+      "bytes": 6861,
+      "sha256": "666f56eef3cddf96b546a14be6fc578108ed287accbb0436446a9dfb823d9a2f"
     },
     {
       "path": "docs/security-contract.md",
@@ -636,7 +636,7 @@
     {
       "path": "wrangler.jsonc",
       "bytes": 838,
-      "sha256": "4811e810153ace59943eacad7f3cd9dc42e29c11b460e81204e830abd8428f13"
+      "sha256": "7ea0d908e347eae03f494c065c3a43a542f0583185547b2379327bdd2b899ffb"
     }
   ]
 }

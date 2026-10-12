@@ -4,7 +4,7 @@ The existing `myts-v7` Worker can be retained. Its current database cannot direc
 
 ## Evidence and scope
 
-This comparison uses the actual schema source retrieved from GitHub's production `myts-v7` branch at commit `e5e92dccaecf741a88725b30e3bf068d93d048de` and the verified 7.1.0 release at review commit `37a043b03560b4d1664413930c472a3a853eafd1`. Dot reported 34 application tables in the existing database, including `installation`, `connections` and `jobs`, with no `setup_state`. The production schema source also defines exactly 34 tables. An independent live query of every deployed column and constraint has not been performed in this environment.
+This comparison uses the actual schema source retrieved from GitHub's production `myts-v7` branch at commit `e5e92dccaecf741a88725b30e3bf068d93d048de` and the verified 7.1.0 release at review commit `37a043b03560b4d1664413930c472a3a853eafd1`. Dot reported 34 application tables in the existing database, including `installation`, `connections` and `jobs`, with no `setup_state`. The production schema source also defines exactly 34 tables. The attached live sqlite_master export was subsequently compared object by object with the normalized production fixture: all 45 SQL definitions match exactly, with no missing, extra or different objects. This verifies live schema metadata, not personal rows, credentials or source-data accuracy.
 
 | Application objects | Production 7.0.1 schema | Release 7.1.0 schema |
 |---|---:|---:|
@@ -62,4 +62,4 @@ No existing rows are deleted by the recommended path. The new app begins empty; 
 
 The retained Durable Object namespace holds scheduler status/alarm bookkeeping, not the source data or credentials. Existing alarms must check the new installation's readiness before querying its job tables, and old cached scheduler status must not be treated as evidence of new synchronization.
 
-Before switching, Dot should confirm the actual live schema metadata with a read-only `sqlite_master` query and record the active Worker version, binding and UTC cutover time; the unchanged old database is retained for rollback. After deployment, initialization and real provider imports must be verified through normal screens, followed by server timestamps showing background progress with every myTS browser tab closed. Automated tests alone do not establish completion.
+The read-only live schema metadata is confirmed. Before switching, Dot should record the active Worker version, binding and UTC cutover time; the unchanged old database is retained for rollback. After deployment, initialization and real provider imports must be verified through normal screens, followed by server timestamps showing background progress with every myTS browser tab closed. Automated tests alone do not establish completion.

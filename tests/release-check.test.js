@@ -5,8 +5,9 @@ import {freshHarness} from './fresh-harness.js';
 import {parseJSONC,validateConfiguration,validateRemoteDatabase,schemaIdentity,requiredFiles,scanSecretText,stageRelease} from '../scripts/release-check.mjs';
 let config;
 test.before(async()=>{config=parseJSONC(await readFile('wrangler.jsonc','utf8'));});
-test('review build permits its placeholder but deployment rejects old resources and incomplete runtime bindings',()=>{
- assert.doesNotThrow(()=>validateConfiguration(config));assert.throws(()=>validateConfiguration(config,{deployment:true}),/placeholder/);
+test('configured release permits its fresh target but deployment rejects placeholders, old resources and incomplete bindings',()=>{
+ assert.doesNotThrow(()=>validateConfiguration(config));assert.doesNotThrow(()=>validateConfiguration(config,{deployment:true}));
+ const placeholder={...config,d1_databases:[{...config.d1_databases[0],database_id:'00000000-0000-0000-0000-000000000000'}]};assert.doesNotThrow(()=>validateConfiguration(placeholder));assert.throws(()=>validateConfiguration(placeholder,{deployment:true}),/placeholder/);
  const configured={...config,d1_databases:[{...config.d1_databases[0],database_id:'11111111-1111-4111-8111-111111111111'}]};assert.doesNotThrow(()=>validateConfiguration(configured,{deployment:true}));
  assert.throws(()=>validateConfiguration({...configured,d1_databases:[{...configured.d1_databases[0],database_id:'c3585493-4ad5-44f2-9484-816a615ee633'}]},{deployment:true}),/previous application/);
  assert.throws(()=>validateConfiguration({...configured,migrations:[]}),/without migrations/);assert.throws(()=>validateConfiguration({...configured,exports:{}}),/SQLite/);assert.throws(()=>validateConfiguration({...configured,name:'myts-review'}),/myts-v7/);

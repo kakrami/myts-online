@@ -16,50 +16,49 @@ Retain the existing runtime **ADMIN_KEY** unchanged. It initializes the new inst
 
 The existing Durable Object namespace stays. Old alarms must wait for valid initialization; old cached status is excluded from the new installation. This release implements and tests both conditions.
 
-## Dot: signed-in local Chrome actions before deployment
+## Preparation confirmed
 
-1. Record the active **myts-v7** deployment/version, Git commit, DB binding and SYNC namespace. GitHub production currently points to e5e92dccaecf741a88725b30e3bf068d93d048de; verify the actual active dashboard version rather than assuming it matches.
-2. Open **Storage & databases → D1 SQL database → myts-v7-data → Console**. Run the read-only schema query below and return the result. This reads definitions, not credentials or personal rows.
-3. In the D1 list, select **Create database**. Name it **myts-v7-rebuild-data**, in the same account as myts-v7. Copy and return its database UUID. If that name already exists, inspect it instead of creating a duplicate. A populated database is not automatically approved.
-4. Run the emptiness query below on the new database's Console. It must return no application tables. Do not import schema SQL; /admin initializes it.
-5. Cancel any queued/running builds for myts-v7 before cutover. Open **myts-v7 → Settings → Builds**. Confirm repository kakrami/myts-online; production branch myts-v7; root directory empty; build command `npm ci && npm run build`; deploy command `npm run deploy`. Keep nonproduction/review deployment disabled during cutover. Do not change production to myts-review.
-6. Inspect the selected Builds API token. Retain deployment permissions and, if absent, add **Account → D1 → Read**, scoped to the intended account. The guard queries D1 before deployment; the default generated Builds token omits D1. A permission failure must stop deployment. Do not share token values.
+The earlier read-only handoff is a historical snapshot. The user's subsequent confirmation establishes the following completed preparation:
 
-Existing schema metadata:
-
-```sql
-SELECT type, name, tbl_name, sql
-FROM sqlite_master
-WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'
-ORDER BY type, name;
-```
-
-New database emptiness:
-
-```sql
-SELECT name FROM sqlite_master
-WHERE type='table'
-  AND name NOT LIKE 'sqlite_%'
-  AND name NOT LIKE '_cf_%'
-  AND name <> 'd1_migrations';
-```
-
-**Do not manually change DB while 7.0.1 is running.** Its cron or a request can initialize the old schema in the fresh database. Code and binding must change together through the tested Wrangler deployment.
-
-## Final configuration and deployment
-
-Codex will insert the returned UUID in wrangler.jsonc, repeat release/build checks, and identify the final configured commit before promoting it to myts-v7. The current placeholder intentionally cannot deploy.
-
-| Resource | Required value after cutover |
+| Setting / evidence | Confirmed value |
 |---|---|
-| Worker / production branch | myts-v7 / myts-v7 |
-| DB | myts-v7-rebuild-data, returned new UUID |
-| SYNC | Existing myts-v7_SyncRuntime; class SyncRuntime |
-| Cron | Every minute: * * * * * |
-| Runtime secret | Existing ADMIN_KEY, unchanged |
-| Website | https://myts-v7.kiadesignenterprise.workers.dev |
+| Fresh D1 | myts-v7-rebuild-data |
+| Fresh D1 UUID | 60f77502-33d4-41d6-80d4-1c5577ebba76 |
+| Fresh D1 emptiness | No application tables returned |
+| Live old schema | 34 tables and 11 indexes; all 45 SQL definitions match the production fixture |
+| Production branch / root | myts-v7 / repository root (dashboard displays /) |
+| Build command | npm ci && npm run build |
+| Deploy command | npm run deploy |
+| Nonproduction builds | Disabled and verified after reload |
+| Selected Builds token | Existing D1 Edit access; no permission expansion needed |
+| Pending builds | None visible during preparation; recheck at cutover |
+| Old active version | Dashboard short ID e089fe2c, Ready, 100% traffic |
+| Last Git build lineage | e5e92dccaecf741a88725b30e3bf068d93d048de; dashboard secret-only versions followed |
+| Existing SYNC namespace | f0fb531d97f04f3c9d474d33eb8a0664 (myts-v7_SyncRuntime) |
+| Runtime secret / cron | Existing ADMIN_KEY, unchanged / every minute |
 
-The Git-triggered deploy first inspects remote D1 metadata. It accepts empty storage or this release's matching initialized schema. It rejects the old database ID, placeholder, foreign tables, wrong setup fingerprint, incomplete ready schema and unreadable remote metadata. No destructive SQL or migration runs. Dot must confirm the successful guard, exact approved commit and resulting bindings. Keep the production branch fixed during acceptance so a pending or unrelated build cannot overwrite the cutover.
+Only the UUID in wrangler.jsonc is changed from the tested review runtime. Configured checks and manifests are regenerated. The configured commit remains on myts-review, while myts-v7 production remains unchanged until cutover approval. Source runtime fingerprints do not establish the active dashboard-created version's source hash; the old active full version UUID and semantic health were not exposed by the prior read-only check.
+
+## Exact cutover instructions
+
+1. Review the exact configured commit identified in the accompanying release response. Approval is for publishing that commit to the existing myts-v7 Worker, with the fresh database and the data consequences above.
+2. Immediately before promotion, Dot should use the signed-in local Chrome session to confirm no queued/running builds, the existing DB still points to myts-v7-data, and the old version is still available for rollback. Record the old full version UUID from deployment details if exposed; e089fe2c is only the displayed short ID. Keep nonproduction builds disabled and production on myts-v7.
+3. After approval, Codex advances the myts-v7 Git branch to the exact configured review commit. That Git push triggers the existing build/deploy commands. Do not change the production branch setting to myts-review, edit the DB binding manually, or rotate ADMIN_KEY. **The Wrangler deployment publishes the new code and DB binding together.** Old code pointed at the empty new database can initialize the wrong schema.
+4. Dot should observe this build in Cloudflare. Require the log to report successful remote schema inspection, then successful deployment, and confirm its Git source is the approved configured commit. If the guard cannot read D1, sees unexpected tables, or deployment fails, stop and report the log; do not bypass it or reset either database. Keep the branch fixed during acceptance so another build cannot overwrite the cutover.
+5. Confirm the deployed resources in the dashboard:
+
+| Resource | Required value |
+|---|---|
+| Worker / branch | myts-v7 / myts-v7 |
+| DB | myts-v7-rebuild-data / 60f77502-33d4-41d6-80d4-1c5577ebba76 |
+| SYNC | Existing SyncRuntime namespace f0fb531d97f04f3c9d474d33eb8a0664 |
+| Cron / runtime secret | Every minute / existing ADMIN_KEY unchanged |
+| Website | https://myts-v7.kiadesignenterprise.workers.dev |
+| Preserved old database | myts-v7-data / c3585493-4ad5-44f2-9484-816a615ee633 |
+
+6. Open the website's /api/health and require version 7.1.1. Open /admin and initialize with the existing ADMIN_KEY. No schema import is needed. Perform real acceptance below before calling the rebuild complete.
+
+The deploy guard remains intact: it accepts empty storage or this release's matching initialized schema; it rejects the old ID, placeholder, foreign tables, wrong fingerprint, incomplete ready schema and unreadable remote metadata. Its local validator passes with the configured UUID; the actual remote guard runs during the approved Cloudflare build and is not claimed to have run from this environment.
 
 ## Real acceptance after deployment
 
