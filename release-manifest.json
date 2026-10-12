@@ -30,8 +30,8 @@
     },
     {
       "path": "docs/deployment-verification.md",
-      "bytes": 13433,
-      "sha256": "ea930491ad233c6b2b5b1ac468012598a439dd4af2b72fc52138e68050db5dd9"
+      "bytes": 18863,
+      "sha256": "792089493e1f6aebc84ee526a3047c893c8cbc74d6922701a06c03596a781cff"
     },
     {
       "path": "docs/domain-contract.md",
@@ -45,8 +45,8 @@
     },
     {
       "path": "docs/fresh-deployment.md",
-      "bytes": 12666,
-      "sha256": "6bd997c5d7ea27600fb603aad0e53915afa926d748d7df7f5585f191654267bc"
+      "bytes": 12955,
+      "sha256": "a0f32a95bf683f207f4064b5c1f9ee29b2e65720a10891368c80ee8ac9b29d36"
     },
     {
       "path": "docs/frontend-contract.md",
@@ -60,8 +60,8 @@
     },
     {
       "path": "docs/owner-initialization.md",
-      "bytes": 6183,
-      "sha256": "89951cba8a5ff1fec5274db3ed5784b5eda971266224620592c0c3948cf38c87"
+      "bytes": 6544,
+      "sha256": "2633cc8a19aeb701fc8fa6a5d7b408220642b6aa7d973920fd71c9a7e00e77cc"
     },
     {
       "path": "docs/provider-access.md",
@@ -115,8 +115,8 @@
     },
     {
       "path": "scripts/release-check.mjs",
-      "bytes": 14974,
-      "sha256": "2352619ed2dd5f6eff56a04139227e161deb77e6f3ea31d6f7d0497f0f3c4f3e"
+      "bytes": 15097,
+      "sha256": "16a5298564773874fd7a5ae2c69f2538f7af613953f33d878c9b1f8ed34bd8e7"
     },
     {
       "path": "src/analysis/native-facts.js",
@@ -690,8 +690,8 @@
     },
     {
       "path": "wrangler.jsonc",
-      "bytes": 863,
-      "sha256": "8f0bfd52abd69ced5acfa9e84d9da9404cd91e9ddd7dedb50607ddc08bfa53c8"
+      "bytes": 902,
+      "sha256": "4e3e465224885462cb3e88ad85a451e91e330d779c6cdbbbeabfb67748a452ff"
     }
   ]
 }

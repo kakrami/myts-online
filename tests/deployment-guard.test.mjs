@@ -48,13 +48,19 @@ if (args[0] === 'd1' && args[1] === 'execute' && args[2] === 'DB'
 }
 `;
 
-async function runPipeline(scenario, check) {
+async function runPipeline(scenario, check, amendConfig) {
   const fixture = await mkdtemp(path.join(tmpdir(), 'myts-deployment-guard-'));
   try {
     // Copy the actual release and its actual npm deploy script. Only the
     // isolated Wrangler CLI is substituted; there is no cloud authentication
     // or network access, and no application/runtime module is modified.
     await stageRelease(fixture, await requiredFiles());
+    if (amendConfig) {
+      const configPath = path.join(fixture, 'wrangler.jsonc');
+      const config = JSON.parse(await readFile(configPath, 'utf8'));
+      amendConfig(config);
+      await writeFile(configPath, JSON.stringify(config, null, 2) + '\n');
+    }
     const bin = path.join(fixture, 'node_modules/wrangler/bin');
     const npmBin = path.join(fixture, 'node_modules/.bin');
     await mkdir(bin, {recursive:true});
@@ -85,7 +91,11 @@ async function runPipeline(scenario, check) {
     });
     assert.ifError(result.error);
     assert.equal(result.signal, null);
-    const calls = (await readFile(trace, 'utf8')).trim().split('\n').map(JSON.parse);
+    const traceText = await readFile(trace, 'utf8').catch(error => {
+      if (error.code === 'ENOENT') return '';
+      throw error;
+    });
+    const calls = traceText.trim() ? traceText.trim().split('\n').map(JSON.parse) : [];
     const deployed = await readFile(sentinel, 'utf8').catch(error => {
       if (error.code === 'ENOENT') return null;
       throw error;
@@ -107,6 +117,22 @@ test('actual npm deploy awaits an empty remote database inspection before deploy
     assert.equal(deployed, 'deploy reached\n');
   });
 });
+
+for (const [label, amendConfig] of [
+  ['missing', config => { delete config.limits; }],
+  ['insufficient', config => { config.limits.cpu_ms = 10; }],
+  ['unreviewed increase', config => { config.limits.cpu_ms = 300000; }],
+]) {
+  test(`actual npm deploy rejects ${label} owner CPU budget before any remote query or publishing`, async () => {
+    await runPipeline('empty', ({result, output, calls, deployed}) => {
+      assert.notEqual(result.status, 0, output);
+      assert.match(output, /limits\.cpu_ms to 30000 explicitly/);
+      assert.doesNotMatch(output, /Deployment guard passed/);
+      assert.deepEqual(calls, []);
+      assert.equal(deployed, null);
+    }, amendConfig);
+  });
+}
 
 for (const [scenario, message] of [
   ['query-failure', /Remote database inspection failed/],

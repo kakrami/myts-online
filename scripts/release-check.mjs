@@ -23,6 +23,7 @@ export function parseJSONC(text){let out='',quoted=false,escaped=false;for(let i
 export function validateConfiguration(config,{deployment=false}={}){
  if(config.name!=='myts-v7'||config.main!=='worker.js')fail('Deploy this release to the existing myts-v7 Worker using worker.js.');
  if(config.preview_urls!==false)fail('Explicitly disable Preview URLs with preview_urls: false.');
+ if(config.limits?.cpu_ms!==30000)fail('Set limits.cpu_ms to 30000 explicitly for the portable owner password verifier.');
  if(config.assets?.directory!=='./web'||config.assets?.binding!=='ASSETS'||config.assets?.run_worker_first!==true)fail('The complete fresh web assets and ASSETS binding are required.');
  if(Object.hasOwn(config,'migrations')||config.exports?.SyncRuntime?.type!=='durable-object'||config.exports.SyncRuntime.storage!=='sqlite')fail('Use the fresh declarative SQLite SyncRuntime export without migrations.');
  if(!config.durable_objects?.bindings?.some(binding=>binding.name==='SYNC'&&binding.class_name==='SyncRuntime'))fail('The independent SYNC background runtime binding is required.');

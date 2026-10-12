@@ -4,6 +4,9 @@
   "main": "worker.js",
   "compatibility_date": "2026-09-09",
   "workers_dev": true,
+  "limits": {
+    "cpu_ms": 30000
+  },
   "assets": {
     "directory": "./web",
     "binding": "ASSETS",

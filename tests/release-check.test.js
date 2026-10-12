@@ -14,6 +14,13 @@ test('configured release permits its fresh target but deployment rejects placeho
  assert.throws(()=>validateConfiguration({...configured,migrations:[]}),/without migrations/);assert.throws(()=>validateConfiguration({...configured,exports:{}}),/SQLite/);assert.throws(()=>validateConfiguration({...configured,name:'myts-review'}),/myts-v7/);
 });
 test('JSONC parsing preserves quoted URLs and ignores only comments/trailing commas',()=>{assert.deepEqual(parseJSONC('{"url":"https://example.test/a//b",// comment\n"x":[1,2,],/* ignored */}'),{url:'https://example.test/a//b',x:[1,2]});});
+test('release validation requires the explicit reviewed 30000 ms owner verifier CPU budget',()=>{
+ assert.equal(config.limits.cpu_ms,30000);
+ for(const limits of [undefined,null,{}, {cpu_ms:10},{cpu_ms:29999},{cpu_ms:30001},{cpu_ms:300000},{cpu_ms:'30000'},{cpu_ms:NaN}]){
+  for(const deployment of [false,true])assert.throws(()=>validateConfiguration({...config,limits},{deployment}),/limits\.cpu_ms to 30000 explicitly/);
+ }
+ assert.doesNotThrow(()=>validateConfiguration({...config,limits:{cpu_ms:30000}},{deployment:true}));
+});
 test('required-only graph excludes the old application and credentials are rejected without printing values',async()=>{
  const files=await requiredFiles();assert.ok(files.includes('worker.js'));assert.ok(files.includes('src/security/index.js'));assert.ok(files.includes('web/app/data-files.js'));assert.ok(files.includes('web/assets/report-font.ttf'));assert.ok(files.includes('web/ui-original/shell-template.html') === false);assert.ok(files.includes('docs/team-features-contract.md'));assert.ok(!files.includes('web/ui-original/index.html'));
  for(const old of ['worker.review.js','src/auth.js','src/jobs.js','src/providers/trace.js','web/index.html','node_modules','tests/harness.js'])assert.ok(!files.includes(old));

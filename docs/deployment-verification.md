@@ -94,3 +94,36 @@ The required-only runtime graph contains 114 worker/src/web files, including the
 Exact promotion and no-reset live retry instructions are in owner-initialization.md and fresh-deployment.md. Preserve both databases, ADMIN_KEY, SYNC and the minute cron. This patch performs no data-loss operation. Full rebuild acceptance remains open until real provider sync and background persistence after all tabs close are observed.
 
 The required-only staged package independently passed owner initialization under the simulated native cap and the actual API login/password-rotation/credential-retention lifecycle (two selected tests, each passing). All 114 runtime files in the final package are byte-identical to that tested stage; only the final evidence documents were completed afterward.
+
+## Explicit owner CPU budget follow-up
+
+This follow-up starts from the exact myts-review commit 37b85063e6d1417abd71c0268800e8b00f085bd4. All 158 repository blobs and its Git tree (5aaa406fc002fa3f6796803a558a2f1265c92e0a) were hash-verified before editing. The source runtime, frontend, cryptographic implementation, package versions and lock remain byte-identical. The 114-file runtime fingerprint is still f1ab6c94561e5095b83622ee403b6099e68ba8531f28fc5c9bcf1b23c4129e76, and schema fingerprint remains e52ac3c69e4cdf8d5b30a8c4587b9080a6220436b3b6d421d72a45781420b003.
+
+wrangler.jsonc now explicitly sets limits.cpu_ms to the reviewed value 30000. The release validator rejects an omitted, lower, higher or nonnumeric budget before remote inspection or publication. Unit tests exercise both ordinary and deployment validation; isolated actual npm-deploy pipeline regressions assert that missing, insufficient and unreviewed larger budgets cannot even reach the Wrangler remote-query stub. The larger-budget rejection deliberately prevents an unreviewed quota change, not a claim that larger values are technically invalid.
+
+The only resource-configuration change is that explicit HTTP CPU budget. DB remains myts-v7-rebuild-data / 60f77502-33d4-41d6-80d4-1c5577ebba76. ADMIN_KEY, SYNC, minute cron and preview_urls:false are preserved, and no production query, write, deployment, schema replay or database reset was performed during this follow-up.
+
+Cloudflare documents that local development does not enforce this CPU limit. The existing account must support the setting, and the effective hosted budget plus actual initialization/login/rotation CPU must still be verified. An explicit configuration and local tests do not establish production acceptance. See [Wrangler limits](https://developers.cloudflare.com/workers/wrangler/configuration/#limits) and [Workers CPU limits](https://developers.cloudflare.com/workers/platform/limits/#cpu-time).
+
+### Current cloud verification, 2026-10-12 UTC
+
+The earlier 79/79 native and 3/3 browser receipts above belong to the preceding owner-fix run. They are historical evidence, not the outcome of this follow-up rerun. In particular, the earlier configuration byte-identity statement is superseded by the explicit CPU setting described here; only Worker/src/web runtime byte identity is retained.
+
+| Current check | Result |
+|---|---|
+| Clean pinned npm ci | PASS; 40 packages, unchanged lock and Wrangler 4.149.0; writable temporary npm cache used |
+| CPU budget and actual npm-deploy pipeline | PASS; exact-budget unit test and all 10 deployment-pipeline cases, including rejection before remote queries or publishing |
+| Complete native suite, one test file at a time | FAIL: 74/83 passed, 9 failed, 0 skipped, 0 cancelled; 923.400 seconds; Node 24.19.0 |
+| Password verifier/reference/provenance tests | PASS: all four verifier tests in the complete run |
+| Independent additional password reference comparisons | PASS: eight Node reference vectors, including 600,000 rounds, 64/65-byte HMAC boundaries, Unicode/NUL/lone surrogate and a 300-character password |
+| Source npm run build | PASS; Wrangler dry run, 27 assets, 1084.43 KiB Worker / 255.42 KiB gzip |
+| Extracted required-only ZIP | PASS: all 138 listed files match manifest byte counts and SHA-256 values; ready-schema owner initialization passed |
+| Extracted package lifecycle checks | FAIL: initial two-case run passed initialization and failed lifecycle on a local socket close; one later isolated lifecycle rerun failed after 36.093 seconds on a direct D1 credential read following successful initialization/login/rotation and stale-password rejection |
+| Browser rerun | BLOCKED before application execution; installed cloud Chromium aborts with local IPC socket EPERM, including the approved elevated launch; no browser rerun pass is claimed |
+| Independent CPU patch review | No blocking configuration, guard or regression-test defect found |
+
+The complete run used `node --test --test-concurrency=1 --test-reporter=tap tests/*.test.js tests/*.test.mjs`. The initial concurrent npm test run was stopped after failures; application and test timeouts were not changed to obtain a pass.
+
+Seven failures are local Miniflare/Undici `fetch failed` transport exceptions: the owner HTTP lifecycle, assembled reports, owner batch-fault/retry, committed-response retry, concurrent rotation loser, concurrent initialization winner and native login/rotation lifecycle. The failing operations vary between runs and include logout and direct D1 bridge reads, not only password derivation. Two further failures are bounded background-settlement timeouts: the greater-than-128-season fan-out and assembled public-connection workflow. These remain unresolved baseline/local verification failures; they are not a clean full-suite pass or proof of an application defect. Both affected native harnesses construct Miniflare inline and do not consume wrangler.jsonc, and this follow-up does not change their runtime code.
+
+The same complete run passed ready-database owner initialization, existing-vault preservation, stored-password authority, concurrent initialization, schema isolation, native alarm processing, and the full public-import 50-query ceiling. Those passes do not erase the failures above. Hosted owner/CPU and real-provider/background acceptance remain pending; no production promotion is claimed by this ledger.
