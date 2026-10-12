@@ -1,4 +1,4 @@
-import { escapeHTML as e, unwrap, icon, button, pageHead, empty, matchRow, teamIdentity, tableHTML, detailFacts, detailTabs, seg, formatDate, formatNumber as n, moreButton, settingsBody, pickerHTML, safeURL, kitIcon } from "./presentation.js";
+import { escapeHTML as e, highlight, unwrap, icon, button, pageHead, empty, matchRow, teamIdentity, tableHTML, detailFacts, detailTabs, seg, formatDate, formatNumber as n, moreButton, settingsBody, pickerHTML, safeURL, kitIcon } from "./presentation.js";
 import { lineupPitch, heatmapCard, eventMapSVG, positionProfile } from "./spatial.js";
 export { settingsBody };
 const items = value => Array.isArray(value) ? value : value?.items ?? [];
@@ -30,7 +30,7 @@ export function schedule(model) {
   return `<div class="compact-page-head"><h1>Schedule</h1>${seg([{value:"day",label:"Day"},{value:"season",label:"Season"}],mode,{action:"schedule-mode",label:"Schedule view"})}<div class="page-actions">${mode==="day" ? button("today","Today",{className:"text-action"})+button("calendar",e(m.month_label??"Choose date")+icon("calendar3"),{className:"text-action calendar-month",html:true}) : filters}</div></div><div class="schedule-navigation">${mode==="day" ? dateStrip(m.days??[],m.selected_day) : m.filter==="analyzed" ? `<p class="scope-caption">Analyzed games · ${e(m.season_label)}</p>` : seg([{value:"upcoming",label:"Upcoming"},{value:"past",label:"Past"}],m.period??"upcoming",{action:"schedule-period",label:"Event dates"})}</div><div class="schedule-day-surface"><div class="schedule-track"><div class="schedule-list" id="matchList">${rows.length ? rows.map(row=>matchRow(row,{timezone:tz(model)})).join("") : empty("No events for this selection.")}${moreButton(m.events,{data:{view:"schedule"}})}</div></div></div>${mode==="day" ? '<div class="schedule-day-legend"><span class="calendar-event-dot game"></span>Games <span class="calendar-event-dot practice"></span>Practices</div>' : ""}`;
 }
 const rosterColumns = [
-  {key:"name",label:"Player",render:(p,q)=>`<div class="player-cell"><span class="mini-avatar">${e(p.jersey??"—")}</span><span><b>${e(p.name)}</b><small>${e([p.jersey ? "#"+p.jersey : "",p.position].filter(Boolean).join(" · "))}</small></span></div>`},
+  {key:"name",label:"Player",render:(p,q)=>`<div class="player-cell"><span class="mini-avatar">${e(p.jersey??"—")}</span><span><b>${highlight(p.name,q)}</b><small>${e([p.jersey ? "#"+p.jersey : "",p.position].filter(Boolean).join(" · "))}</small></span></div>`},
   ...[{key:"apps",label:"Apps"},{key:"starts",label:"Starts"},{key:"minutes",label:"Min",digits:1},{key:"goals",label:"G"},{key:"assists",label:"A"},{key:"ga",label:"G+A"},{key:"ga_per_60",label:"G+A/60",digits:2}].map(c=>({...c,numeric:true})),
   {key:"attendance",label:"Attend.",numeric:true,render:p=>(p.attendance?.yes_pct??p.attendance_pct)==null ? "—" : n(p.attendance?.yes_pct??p.attendance_pct,0)+"%"},
 ];
@@ -59,8 +59,46 @@ export function matchHeader(event={},timezone="America/Los_Angeles") {
   const home=event.home??{id:event.home_id,name:event.home_name,logo:event.home_logo,kits:event.home_kits},away=event.away??{id:event.away_id,name:event.away_name,logo:event.away_logo,kits:event.away_kits},score=event.home_score!=null&&event.away_score!=null ? e(event.home_score)+"–"+e(event.away_score) : "vs";
   return `<div class="hero match-hero"><div class="match-hero-top"><div class="match-when"><span>${e(formatDate(event.starts_at??event.local_day,{timezone,year:"numeric"}))} · ${e(event.time_pending ? "Time TBD" : formatDate(event.starts_at,{timezone,hour:"numeric",minute:"2-digit",month:undefined,day:undefined}))}${event.format ? " · "+e(event.format)+"v"+e(event.format) : ""}</span></div><span class="event-status">${e(event.status_label??event.status)}</span></div><div class="scoreline"><div class="team">${teamIdentity(home)}</div><div class="big ${score==="vs" ? "versus" : ""}">${score}</div><div class="team">${teamIdentity(away)}</div></div><div class="match-context">${event.venue||event.address ? `<div class="match-location"><span>${icon("geo-alt")}${e([event.venue,event.field].filter(Boolean).join(" · "))}</span>${event.address?`<a class="text-action" href="${e('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(event.address))}" target="_blank" rel="noopener noreferrer">${e(event.address)}</a>`:''}</div>` : ""}${safeURL(event.official_url)?`<a class="text-action" href="${e(safeURL(event.official_url))}" target="_blank" rel="noopener noreferrer">${e(event.source_label??'Official source')}</a>`:''}${event.competition_name ? `<button type="button" class="competition-identity" data-action="competition" data-id="${e(event.competition_id)}">${icon("trophy")}${e(event.competition_name)}</button>` : ""}</div></div>`;
 }
+function matchWarnings(event={}) {
+  const warnings=[];
+  if(event.conditional)warnings.push("Conditional fixture · participants are not confirmed.");
+  if(event.identity_conflict||event.duplicate_review||event.possible_duplicate)warnings.push("Match identity needs review.");
+  if(event.result_conflict)warnings.push("Conflicting results require review.");
+  const labels={arrival:"arrival time",uniform:"uniform",notes:"notes",address:"address"};
+  const logistics=(event.logistics_conflicts??[]).filter(key=>Object.hasOwn(labels,key)).map(key=>labels[key]);
+  if(logistics.length)warnings.push("Conflicting "+logistics.join(", ")+" from connected sources.");
+  return warnings.map(message=>`<p class="source-note" role="status">${e(message)}</p>`).join("");
+}
+function statState(row,key) {
+  const state=row[key+"_state"];
+  if(state==="manual")return "Manual";
+  const labels={estimated:"Estimated",incomplete:"Incomplete",human_review:"Needs review",pending:"Pending",unsupported:"Unavailable"};
+  if(Object.hasOwn(labels,state))return labels[state];
+  const source=key==="minutes"||key==="position" ? row.source_provenance?.tracking : row.source_provenance?.moments;
+  return source==="file_import" ? "Imported" : state==="published" ? "Source" : "";
+}
+function statValue(row,key,digits=0) {
+  const value=n(row[key],digits),state=statState(row,key);
+  return `${state?`<span title="${e(state)}">${value}</span>`:value}${state&&state!=="Source"?`<small class="stat-note">${e(state)}</small>`:""}`;
+}
 function statsTable(players=[],eventId,sort={}) {
-  return tableHTML({columns:[{key:"name",label:"Player"},...[{key:"minutes",label:"Min",digits:1},{key:"gk_minutes",label:"GK",digits:1},{key:"goals",label:"G"},{key:"assists",label:"A"}].map(c=>({...c,numeric:true}))],rows:players,rowAction:"match-player",rowData:{match:eventId},sort});
+  const attacking=player=>player.attacking_third_pct??player.spatial?.attacking_third_pct;
+  const columns=[
+    {key:"name",label:"Player",render:p=>`<div class="player-cell"><span class="mini-avatar">${e(p.jersey??"—")}</span><span><b>${e(p.name)}</b>${["minutes","goals","assists","position"].some(key=>p[key+"_state"]==="manual")?'<span class="edited-mark">Edited</span>':""}<small>${e([p.jersey!=null?"#"+p.jersey:"",p.position].filter(Boolean).join(" · "))}</small></span></div>`},
+    {key:"minutes",label:"Min",numeric:true,render:p=>statValue(p,"minutes",1)},
+    {key:"started",label:"Start",sortable:false,render:p=>p.started===true||p.started===1?"Yes":p.started===false||p.started===0?"No":"—"},
+    {key:"gk_minutes",label:"GK",numeric:true,digits:1},
+    {key:"goals",label:"G",numeric:true,render:p=>statValue(p,"goals")},
+    {key:"assists",label:"A",numeric:true,render:p=>statValue(p,"assists")},
+    ...(players.some(p=>typeof attacking(p)==="number"&&Number.isFinite(attacking(p)))?[{key:"attacking_third_pct",label:"Attacking",numeric:true,sortable:false,render:p=>typeof attacking(p)==="number"&&Number.isFinite(attacking(p))?n(attacking(p),1)+"%":"—"}]:[])
+  ];
+  return tableHTML({columns,rows:players,rowAction:"match-player",rowData:{match:eventId},sort});
+}
+function headToHead(model={},timezone="America/Los_Angeles") {
+  const record=model.record??{},coverage=typeof model.coverage==="string"?model.coverage:model.coverage?.state;
+  const coverageLabels={saved_history:"Saved history",complete:"Complete history",partial:"Partial history",pending:"History is updating",unsupported:"History is unavailable"};
+  const note=model.note??model.coverage?.note;
+  return `${detailFacts([{label:"Games",value:record.games},{label:"Wins",value:record.wins},{label:"Draws",value:record.draws},{label:"Losses",value:record.losses},{label:"Goals for",value:record.goals_for},{label:"Goals against",value:record.goals_against}])}${coverage?`<p class="scope-caption">${e(coverageLabels[coverage]??coverage.replaceAll("_"," "))}</p>`:""}${note?`<p class="source-note">${e(note)}</p>`:model.history_complete===false?'<p class="source-note">Recorded meetings may not include all historical games.</p>':""}${items(model.events).map(row=>matchRow(row,{timezone})).join("")||empty("No saved meetings for these teams.")}${moreButton(model.events,{data:{tab:"h2h"}})}`;
 }
 export function attendance(model={}) {
   const a=model.totals??{},labels={yes:"Yes",no:"No",maybe:"Maybe",no_response:"No response"},extra={unknown:"Unavailable",unavailable:"Unavailable",conflicts:"Conflicts",untracked:"Untracked"};
@@ -69,8 +107,8 @@ export function attendance(model={}) {
 export function matchDetail(model,{tab="overview",panelHTML=""}={}) {
   const m=unwrap(model),f=m.event??{},caps=m.capabilities??{},tabs=[{id:"overview",label:"Overview"},...(caps.can_coach ? [{id:"coach",label:"Coach"}] : []),...(caps.has_players ? [{id:"players",label:"Players"}] : []),...(caps.has_h2h ? [{id:"h2h",label:"H2H"}] : []),...(caps.has_attendance ? [{id:"attendance",label:"Attendance"}] : [])];
   let content=panelHTML;
-  if(!content) content=tab==="players" ? statsTable(items(m.players),f.id,m.players?.sort??{})+moreButton(m.players,{data:{tab:"players",id:f.id}}) : tab==="attendance" ? attendance(m.attendance) : tab==="h2h" ? items(m.h2h?.events).map(row=>matchRow(row,{timezone:tz(model)})).join("")+moreButton(m.h2h?.events,{data:{tab:"h2h"}}) : tab==="coach" ? empty("Coach data is loading.") : `${detailFacts([{label:"Arrival time",value:f.arrival_label},{label:"Attendance",value:m.attendance_summary},{label:"Player stats",value:m.player_count}])}${f.uniform ? `<div class="card detail-facts"><div class="detail-fact"><span>Uniform</span><b>${kitIcon(f.uniform_kit??{name:f.uniform,color:''})} ${e(f.uniform)}</b></div></div>` : ""}${f.notes ? `<div class="card section"><div class="card-body">${e(f.notes)}</div></div>` : ""}${m.lineup ? lineupPitch({...m.lineup,event_id:f.id},{editable:false,action:"match-player",showMinutes:true}) : ""}${m.analytics ? traceAnalytics(m.analytics) : ""}`;
-  return `${matchHeader(f,tz(model))}${detailTabs(tabs,tab,{data:{id:f.id}})}<div class="entity-panel ui-tabs-panel">${content}</div>`;
+  if(!content) content=tab==="players" ? statsTable(items(m.players),f.id,m.players?.sort??{})+moreButton(m.players,{data:{tab:"players",id:f.id}}) : tab==="attendance" ? attendance(m.attendance) : tab==="h2h" ? headToHead(m.h2h??{},tz(model)) : tab==="coach" ? empty("Coach data is loading.") : `${detailFacts([{label:"Arrival time",value:f.arrival_label},{label:"Attendance",value:m.attendance_summary},{label:"Player stats",value:m.player_count}])}${f.uniform ? `<div class="card detail-facts"><div class="detail-fact"><span>Uniform</span><b>${kitIcon(f.uniform_kit??{name:f.uniform,color:''})} ${e(f.uniform)}</b></div></div>` : ""}${f.notes ? `<div class="card section"><div class="card-body">${e(f.notes)}</div></div>` : ""}${m.lineup ? lineupPitch({...m.lineup,event_id:f.id},{editable:false,action:"match-player",showMinutes:true}) : ""}${m.analytics ? traceAnalytics(m.analytics) : ""}`;
+  return `${matchHeader(f,tz(model))}${matchWarnings(f)}${detailTabs(tabs,tab,{data:{id:f.id}})}<div class="entity-panel ui-tabs-panel">${content}</div>`;
 }
 export function traceAnalytics(model={}) {
   const published=model.published??{},comparison=Array.isArray(model.comparison)?model.comparison:[],kinds=[['passes_all','All passes'],['passes_complete','Completed passes'],['passes_incomplete','Incomplete passes'],['shots','Shots'],['turnovers_all','All turnovers'],['turnovers_won','Possession won'],['turnovers_lost','Possession lost'],['box_touches','Box touches'],['player_touches','Touches']],available=model.team_choices?.length||model.maps?.length||model.spatial;
@@ -81,7 +119,7 @@ export function traceAnalytics(model={}) {
 export function playerDetail(model,{tab="overview",panelHTML=""}={}) {
   const m=unwrap(model),p=m.player??{},s=m.stats??{},sp=m.spatial;
   const hero=`<div class="profile-card card"><div class="profile-hero"><div class="profile-avatar">${e(p.jersey??p.name?.slice(0,1)??"—")}</div><div class="profile-name"><h2>${e(p.name)}</h2><p>${e(m.season_label)}</p></div><div class="profile-tools"><div class="profile-number">${p.jersey ? "#"+e(p.jersey) : ""}</div>${m.capabilities?.can_edit ? button("player-edit",icon("pencil")+"Edit",{className:"btn small profile-edit-btn",data:{id:p.id},html:true}) : ""}</div></div></div>`;
-  const metrics=`<div class="profile-metrics">${[["Apps",s.apps],["Starts",s.starts],["Minutes",s.minutes],["Goals",s.goals],["Assists",s.assists],["G+A / 60",s.ga_per_60]].map(([label,value])=>metric(label,n(value,["Minutes","G+A / 60"].includes(label) ? 1 : 0))).join("")}</div>`;
+  const values=[["Apps",s.apps],["Starts",s.starts],["Minutes",s.minutes],["Goals",s.goals],["Assists",s.assists],["G+A / 60",s.ga_per_60??s.g_plus_a_per_60]],metrics=`<div class="profile-metrics">${values.map(([label,value])=>metric(label,n(value,["Minutes","G+A / 60"].includes(label)?1:0))).join("")}${typeof sp?.tracked_distance_m==="number"&&Number.isFinite(sp.tracked_distance_m)?metric("Tracked distance",n(sp.tracked_distance_m/1000,1)+" km"):""}${typeof sp?.attacking_third_pct==="number"&&Number.isFinite(sp.attacking_third_pct)?metric("Attacking third",n(sp.attacking_third_pct,1)+"%"):""}${typeof s.attendance_pct==="number"&&Number.isFinite(s.attendance_pct)?metric("Attendance",n(s.attendance_pct,0)+"%"):""}</div>`;
   const log=`<div class="card"><div class="leader-list">${items(m.matches).map(row=>`<button type="button" class="leader-row" data-action="match-player" data-id="${e(p.id)}" data-match="${e(row.id)}"><span class="rank">${e(formatDate(row.starts_at??row.local_day,{timezone:tz(model)}))}</span><span class="leader-name"><b>${e(row.opponent_name)}</b><small>${n(row.minutes,1)} min · ${row.started ? "Started" : "Appearance"}</small></span><span class="leader-value">${n(row.ga)}<small>G+A</small></span></button>`).join("") || empty("No matches recorded for this player.")}</div></div>${moreButton(m.matches,{data:{id:p.id,tab:"matches"}})}`;
   return `${hero}${detailTabs([{id:"overview",label:"Overview"},{id:"matches",label:"Matches"},{id:"attendance",label:"Attendance"}],tab,{data:{id:p.id}})}<div class="entity-panel">${panelHTML || (tab==="matches" ? log : tab==="attendance" ? attendance(m.attendance) : `${metrics}${sp ? `<div class="two-col section">${heatmapCard(sp,"Season heat map")}${positionProfile(sp)}</div>` : ""}${m.capabilities?.can_coach ? '<div data-coach-profile></div>' : ""}`)}</div>`;
 }
