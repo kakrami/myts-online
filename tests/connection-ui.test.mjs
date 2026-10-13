@@ -1178,3 +1178,20 @@ uiTest('blank provider game titles get one shared accessible fallback without ch
   await ui.app.action('match',{id:'live-game'});assert.equal(ui.query('#entityTitle').textContent,'White vs Albion');assert.equal(ui.query('[data-action="bookmark"]').dataset.id,'live-game');assert.equal(ui.calls.filter(call=>call.method==='PUT').length,0);
  });
 });
+
+uiTest('Schedule date-strip click changes the pressed date and loads the next practice',async()=>{
+ await withUI({teams:[team()],resolve:call=>{
+  if(call.path==='/api/calendar')return {data:{days:[{day:'2026-10-14',total:1,kinds:['practice']}]}};
+  if(call.path==='/api/schedule'){
+   const selection=Object.fromEntries(call.url.searchParams),items=selection.date==='2026-10-14'?[{id:'next-practice',type:'practice',title:'Practice',starts_at:'2026-10-14T18:00:00Z',status:'SCHEDULED'}]:[];
+   return {selection,data:{items,total:items.length}};
+  }
+ }},async ui=>{
+  await ui.app.action('nav',{view:'schedule'});await ui.app.action('day',{day:'2026-10-13'});
+  assert.equal(ui.query('[data-action="day"][aria-pressed="true"]').dataset.day,'2026-10-13');
+  ui.query('[data-action="day"][data-day="2026-10-14"]').click();
+  await until(()=>ui.query('[data-action="day"][aria-pressed="true"]')?.dataset.day==='2026-10-14','next date selection');
+  assert.ok(ui.query('[data-action="match"][data-id="next-practice"]'));
+  assert.equal(ui.calls.filter(c=>c.path==='/api/schedule').at(-1).url.searchParams.get('date'),'2026-10-14');
+ });
+});

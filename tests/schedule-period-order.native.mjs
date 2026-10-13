@@ -5,7 +5,7 @@ import {materializationHarness} from './fixtures/connection-materialization-harn
 import {eventPresentation} from '../src/domain/presentation.js';
 
 // Full local Workerd/D1 installation and real owner HTTP reads. Synthetic saved
-// projections have no source attachment or background/provider work to execute.
+// projections carry saved source membership but enqueue no background/provider work.
 test('native owner Schedule API orders and paginates Past, Upcoming, Day and Analyzed',async()=>{
   const h=await freshHarness();try {
     await h.initialize();
@@ -19,6 +19,8 @@ test('native owner Schedule API orders and paginates Past, Upcoming, Day and Ana
       insert('team_read_state',{app_team_id:team,content_revision:1,status_revision:1,pending:0}),
       insert('team_projection_runs',{id:run,app_team_id:team,team_season_id:season,input_revision:1,state:'published',created_at:at}),
       insert('team_projection_state',{team_season_id:season,app_team_id:team,published_run_id:run,pending:0}),
+      insert('source_teams',{id:'schedule-source-team',provider:'gotsport',scope:'public',native_id:'schedule-team',name:'Synthetic Schedule team',name_authority:1,archived:0,evidence:'{}',content_hash:'schedule-team',observed_at:at}),
+      insert('team_source_attachments',{id:'schedule-attachment',app_team_id:team,team_season_id:season,source_team_id:'schedule-source-team'}),
     ]);
     const events=[['past-old',-3,'12'],['past-early',-2,'08'],['past-a',-2,'18'],['past-b',-2,'18'],['next-a',2,'08'],['next-b',2,'08'],['next-late',2,'18'],['next-last',3,'12'],['past-tbd',-2,null],['next-tbd',2,null],['undated-a',null,null],['undated-b',null,null]];
     for(const [id,offset,hour] of events) {
@@ -27,6 +29,8 @@ test('native owner Schedule API orders and paginates Past, Upcoming, Day and Ana
         insert('events',{id,created_at:at}),
         insert('source_events',{id:source,provider:'gotsport',scope:'public',native_id:id,starts_at,local_day,time_precision:starts_at?'instant':local_day?'day':'pending',type:'game',status:'SCHEDULED',conditional:0,home_label:'Us',away_label:'Them',title:id,venue:'Synthetic field',evidence:'{}',content_hash:id,observed_at:at}),
         insert('team_event_rows',{run_id:run,app_team_id:team,team_season_id:season,event_id:id,starts_at,local_day,type:'game',status:'SCHEDULED',conditional:0,own_side:'home',home_name:'Us',away_name:'Them',title:id,venue:'Synthetic field',source_ids:JSON.stringify([source]),schedule_source_id:source,result_source_id:source}),
+        insert('source_event_teams',{source_team_id:'schedule-source-team',source_event_id:source,side:'home'}),
+        insert('event_source_links',{source_event_id:source,event_id:id,reason:'native',evidence:'{}'}),
       ]);
     }
     for(const id of ['past-old','past-b','past-tbd'])await h.db.batch([insert('match_analysis',{app_team_id:team,team_season_id:season,event_id:id,active_run:'analysis-'+id,state:'ready',source_revision:1,mutation_revision:0,projected_at:at,player_count:0,unresolved_goals:0,unresolved_assists:0,tracking_complete:0,over_capacity:0,evidence:'{}',input_hash:id})]);

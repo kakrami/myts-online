@@ -1,6 +1,6 @@
 {
   "service": "myTS",
-  "version": "7.2.18",
+  "version": "7.2.19",
   "review": true,
   "files": [
     {
@@ -57,6 +57,11 @@
       "path": "docs/attendance-throughput-repair.md",
       "bytes": 10899,
       "sha256": "6eba92fc61244c6d61f995a49c1ed1ff10b25674f1ee811dd59ffc895de2ba96"
+    },
+    {
+      "path": "docs/bookmarks-native-read-repair.md",
+      "bytes": 3616,
+      "sha256": "440ccd91fbfb3b4ee83ffbc2f140934b79d7b1ea13faf3122ab5d97918983194"
     },
     {
       "path": "docs/change-driven-reconciliation-native-map.json",
@@ -411,12 +416,12 @@
     {
       "path": "package-lock.json",
       "bytes": 49487,
-      "sha256": "ac31f14493a04fc98f7ee1a221af726695938c0ff8e65ad8ddf855762bb35fd0"
+      "sha256": "c161d8f300c793115f89f4f9cfbb5ac4d0336d360b5ff3ec48dcad9a72249c59"
     },
     {
       "path": "package.json",
       "bytes": 636,
-      "sha256": "6f992fdd312e29848b51623e5a0f59b4152bfbe4004d6fc2a25de67f5ee7e10e"
+      "sha256": "fb5d792fe06c0bd7926ecf7110174f6b0bd2dc10f3b9b80ffedf8b65961ab16d"
     },
     {
       "path": "scripts/release-check.mjs",
@@ -645,8 +650,8 @@
     },
     {
       "path": "src/application/team-features.js",
-      "bytes": 36888,
-      "sha256": "fcce2788add760fad13bf68606bd80c582b88512946947db8a72dfe53f147969"
+      "bytes": 37280,
+      "sha256": "94983a2d02fe96b5ccf64c469393ba10093dd15c32f64f97248bdd8dd4e1e47b"
     },
     {
       "path": "src/application/team-game-decisions.js",
@@ -686,7 +691,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 31,
-      "sha256": "2d423a7a6e0d50eeb0675c3afd96a9acd4b509d1dcac451165fe0793a2799bc7"
+      "sha256": "a1cd479cbaf271446221353f484fd427ebd6c55b061d57542641dce4ce72864d"
     },
     {
       "path": "src/coaching/routes.js",
