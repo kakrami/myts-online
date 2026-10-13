@@ -11,7 +11,7 @@ const password='deployment-test-owner-password-123';
 const stale={state:'complete',started_at:'2026-10-10T00:00:00Z',finished_at:'2026-10-10T00:01:00Z',queries:42};
 
 async function harness(){
-  const modules={},files=['worker.js','web/app/coach-tactics.js',...(await readdir(path.join(root,'src'),{recursive:true})).filter(f=>f.endsWith('.js')).map(f=>'src/'+f)];
+  const modules={},files=['worker.js','web/app/coach-tactics.js','web/app/schedule-query.js',...(await readdir(path.join(root,'src'),{recursive:true})).filter(f=>f.endsWith('.js')).map(f=>'src/'+f)];
   for(const file of files)modules[file]={type:'esm',contents:await readFile(path.join(root,file),'utf8')};
   // Test instrumentation only: the assembled production Worker/runtime handles
   // every ordinary request, wake and native alarm without a runner endpoint.

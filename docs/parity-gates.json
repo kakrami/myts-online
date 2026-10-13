@@ -533,9 +533,9 @@
       ">40 jobs and >128 affected memberships: all relevant work and eventual progress visible; no first-page-only refresh signature.",
       "Separate attempted/fetched/saved/completed, collection vs projection, auth vs missing native key, uncertainty vs backlog.",
       "Fail/rate-limit one provider and show correct recovery while others proceed; diagnostics bounded and secret-free.",
-      "Use expired/restricted/rate-limited/internal-error providers and compare actual renderer fields/actions; restore intended D1 comparison rather than label raw usage output equivalent."
+      "Use expired/restricted/rate-limited/internal-error providers and compare actual renderer fields/actions; keep diagnostic counters bounded, secret-free and labeled according to what they measure."
     ],
-    "consultation_reconciliation": "Sol review adds provider help/error DTO-renderer mismatch and missing D1 comparison. Existing usage action fetches /api/usage and prints JSON, not the original comparison workflow; exact status field mismatch needs fixture confirmation.",
+    "consultation_reconciliation": "Provider help/error DTO-renderer consistency still requires concrete workflow evidence. The original Compare D1 queries action benchmarked two obsolete Trace-manifest table/query plans as a developer diagnostic; it is not a missing rebuilt user workflow. Current request_* usage counters are honestly labeled. No placeholder or replacement benchmark is required.",
     "integration_checkpoint": {
       "as_of": "2026-10-12T19:05:00Z",
       "status": "Progress distinguishes collection, reconciliation, projection, analysis and unresolved evidence.",

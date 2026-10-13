@@ -13,7 +13,7 @@ let loadedSourceFingerprint=null;
 // every production statement/collector remain unchanged.
 export async function materializationHarness(){
   const root=path.resolve('.'),modules={};
-  for(const file of ['worker.js','web/app/coach-tactics.js',...(await readdir('src',{recursive:true})).filter(f=>f.endsWith('.js')).map(f=>'src/'+f)])modules[file]={type:'esm',contents:await readFile(file,'utf8')};
+  for(const file of ['worker.js','web/app/coach-tactics.js','web/app/schedule-query.js',...(await readdir('src',{recursive:true})).filter(f=>f.endsWith('.js')).map(f=>'src/'+f)])modules[file]={type:'esm',contents:await readFile(file,'utf8')};
   const sourceFingerprint=createHash('sha256').update(Object.keys(modules).sort().map(name=>name+'\0'+modules[name].contents).join('\0')).digest('hex');
   if(loadedSourceFingerprint&&loadedSourceFingerprint!==sourceFingerprint)throw Error('Production source changed between native fixtures; rerun one frozen candidate.');
   loadedSourceFingerprint=sourceFingerprint;

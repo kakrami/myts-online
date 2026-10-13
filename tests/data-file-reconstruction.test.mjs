@@ -19,7 +19,7 @@ const replacement=Object.fromEntries(names.slice(0,2).map(name=>{
 async function harness(){
  const root=path.resolve('.'),modules={};
  for(const file of(await readdir(path.join(root,'src'),{recursive:true})).filter(file=>file.endsWith('.js')))modules['src/'+file]={type:'esm',contents:await readFile(path.join(root,'src',file),'utf8')};
- modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};
+ modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};modules['web/app/schedule-query.js']={type:'esm',contents:await readFile(path.join(root,'web/app/schedule-query.js'),'utf8')};
  modules['transfer-proof.js']={type:'esm',contents:`
   import {UPGRADE_DDL,JOURNAL_GUARDS,tableGuards,wrapDatabase,INSTALLATION_EPOCH} from './src/application/installation-epoch.js';
   import {BudgetDB} from './src/sync/budget.js';

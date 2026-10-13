@@ -20,7 +20,7 @@ let mf,db,nativeDb,repo,security,cookie,maxQueries=0,maxRetryQueries=0,nextNativ
 test.before(async()=>{
   const root=path.resolve('.'),modules={};
   for(const file of (await readdir('src',{recursive:true})).filter(file=>file.endsWith('.js'))){const name='src/'+file;modules[name]={type:'esm',contents:await readFile(name,'utf8')};}
-  modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile('web/app/coach-tactics.js','utf8')};
+  modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile('web/app/coach-tactics.js','utf8')};modules['web/app/schedule-query.js']={type:'esm',contents:await readFile('web/app/schedule-query.js','utf8')};
   modules['attendance-retry-worker.js']={type:'esm',contents:`
     import {applicationRoutes} from './src/application/routes.js';
     import {errorResponse} from './src/application/http.js';

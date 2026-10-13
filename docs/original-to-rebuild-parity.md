@@ -557,7 +557,7 @@ The coordinated sequence is: (1) finish lifecycle and preserve installation, (2)
 
 **Current review:** Code present; lifecycle repair introduces additional status dimensions needing end-to-end proof.
 
-**Full-scope audit reconciliation:** Sol review adds provider help/error DTO-renderer mismatch and missing D1 comparison. Existing usage action fetches /api/usage and prints JSON, not the original comparison workflow; exact status field mismatch needs fixture confirmation.
+**Full-scope audit reconciliation:** Provider help/error DTO-renderer consistency still requires concrete workflow evidence. The original Compare D1 queries action benchmarked two obsolete Trace-manifest table/query plans as a developer diagnostic; it is not a missing rebuilt user workflow. Current request_* usage counters are honestly labeled. No placeholder or replacement benchmark is required.
 
 **Acceptance checks:**
 
@@ -567,7 +567,7 @@ The coordinated sequence is: (1) finish lifecycle and preserve installation, (2)
 
 - Fail/rate-limit one provider and show correct recovery while others proceed; diagnostics bounded and secret-free.
 
-- Use expired/restricted/rate-limited/internal-error providers and compare actual renderer fields/actions; restore intended D1 comparison rather than label raw usage output equivalent.
+- Use expired/restricted/rate-limited/internal-error providers and compare actual renderer fields/actions; keep diagnostic counters bounded, secret-free and labeled according to what they measure.
 
 
 ### 28. Browser-closed processing

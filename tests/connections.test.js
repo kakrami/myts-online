@@ -21,7 +21,7 @@ let mf,db,repo,security,cookie,maxQueries=0,maxRequestQueries=0;
 test.before(async()=>{
   const root=path.resolve('.'),modules={};
   for(const file of (await readdir('src',{recursive:true})).filter(file=>file.endsWith('.js'))){const name='src/'+file;modules[name]={type:'esm',contents:await readFile(name,'utf8')};}
-  modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};
+  modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};modules['web/app/schedule-query.js']={type:'esm',contents:await readFile(path.join(root,'web/app/schedule-query.js'),'utf8')};
   modules['connection-test-worker.js']={type:'esm',contents:`
     import {applicationRoutes} from './src/application/routes.js';
     import {errorResponse} from './src/application/http.js';

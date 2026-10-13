@@ -1,6 +1,8 @@
-# myTS 7.2.4
+# myTS 7.2.5
 
-This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.2.4**. This package is not a production deployment.
+This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.2.5**. This package is not a production deployment.
+
+The 7.2.5 Schedule repair restores newest-first Past and Analyzed lists, chronological Upcoming and Day lists, known kickoffs before TBD within each local day, and historical-season selection without losing the current-season period preference. See [the query policy and verification](docs/schedule-order-repair.md). This update does not restart provider collection.
 
 The 7.2.4 attendance repair uses validated event/member identities within the connected TeamSnap account and team. It corrects the numeric availability-ID assumption confirmed by live diagnostics and official provider fixtures. See [the identity contract, migration and recovery](docs/attendance-identity-repair.md). Real attendance completion still requires the deployed retry.
 

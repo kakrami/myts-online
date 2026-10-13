@@ -998,3 +998,92 @@ uiTest('TeamSnap status distinguishes recent attendance scans from verified full
   if(call.path==='/api/status')return {data:{summary:{total:1,ready:1},providers:[],jobs:{items:[{id:'attendance-job',provider:'teamsnap',component:'attendance',state:'ready',coverage:'partial',refresh_mode:'recent',last_complete_at:Date.parse('2026-10-12T20:00:00Z'),last_full_completed_at:Date.parse('2026-10-11T23:00:00Z')}],total:1}}};
  }},async ui=>{await ui.app.action('status-open',{});await until(()=>ui.query('[data-history-refresh]'));const body=ui.query('#accountBody').textContent;assert.match(body,/All history checked:/);assert.match(body,/Latest scan covers recent and upcoming events/);assert.match(body,/past 30 days and next 90 days/);assert.match(body,/Older edits are checked when the scheduled full-history scan completes/);assert.match(body,/Last finished scan:/);assert.doesNotMatch(body,/All history checked: Never/);});
 });
+
+uiTest('Schedule derives direction for period, filter and Day transitions instead of retaining stale asc',async()=>{
+ await withUI({teams:[team()],resolve:call=>{
+   if(call.path==='/api/schedule')return {selection:Object.fromEntries(call.url.searchParams),data:{items:[],total:0}};
+   if(call.path==='/api/calendar')return {data:{days:[]}};
+ }},async ui=>{
+   const query=()=>Object.fromEntries(ui.calls.filter(call=>call.path==='/api/schedule').at(-1).url.searchParams);
+   await ui.app.action('nav',{view:'schedule',period:'past',filter:'games'});
+   assert.equal(query().direction,'desc');assert.equal(query().period,'past');
+   assert.ok(ui.query('[data-action="schedule-period"][data-value="past"][aria-pressed="true"]'));
+   await ui.app.action('schedule-filter',{value:'practices'});assert.equal(query().direction,'desc');assert.equal(query().type,'practices');
+   await ui.app.action('schedule-period',{value:'upcoming'});assert.equal(query().direction,'asc');
+   await ui.app.action('schedule-filter',{value:'analyzed'});assert.equal(query().direction,'desc');assert.equal(query().period,'all');
+   await ui.app.action('schedule-filter',{value:'all'});assert.equal(query().direction,'asc');assert.equal(query().period,'upcoming');
+   await ui.app.action('schedule-period',{value:'past'});await ui.app.action('schedule-mode',{value:'day'});
+   assert.equal(query().direction,'asc');assert.equal(query().mode,'day');assert.equal(query().period,'all');
+   assert.ok(ui.query('.schedule-date-strip'));
+ });
+});
+
+uiTest('Schedule historical season and restored history use effective Past while preserving current preference',async()=>{
+ const row=team();row.seasons.push({id:'historical-season',label:'2024–2025',year:2024,start_day:'2024-06-01',end_day:'2025-06-01'});
+ await withUI({teams:[row],resolve:call=>{
+   if(call.path==='/api/schedule')return {selection:Object.fromEntries(call.url.searchParams),data:{items:[],total:0}};
+   if(call.path==='/api/calendar')return {data:{days:[]}};
+ }},async ui=>{
+   const query=()=>Object.fromEntries(ui.calls.filter(call=>call.path==='/api/schedule').at(-1).url.searchParams);
+   await ui.app.action('nav',{view:'schedule',period:'upcoming'});assert.equal(query().direction,'asc');
+   await ui.app.action('season-select',{value:'historical-season'});
+   assert.equal(query().period,'past');assert.equal(query().direction,'desc');assert.equal(ui.app.state.filters.period,'upcoming');
+   await ui.app.action('calendar');const calendarQuery=ui.calls.filter(call=>call.path==='/api/calendar').at(-1).url.searchParams;assert.equal(calendarQuery.get('period'),'past');assert.equal(calendarQuery.get('direction'),'desc');assert.equal(ui.app.state.filters.period,'upcoming');assert.equal(ui.app.state.modal.kind,'calendar');await ui.app.action('close-modal');
+   await ui.app.action('season-select',{value:row.seasons[0].id});assert.equal(query().period,'upcoming');assert.equal(query().direction,'asc');
+   const route={...ui.app.captureRoute(),filters:{...ui.app.state.filters,mode:'season',period:'past',direction:'asc'}};
+   const count=ui.calls.filter(call=>call.path==='/api/schedule').length;
+   ui.dom.window.dispatchEvent(new ui.dom.window.PopStateEvent('popstate',{state:{mytsUi:true,route}}));
+   await until(()=>ui.calls.filter(call=>call.path==='/api/schedule').length>count&&!ui.query('#root').hasAttribute('aria-busy'),'restored Past rendering');
+   assert.equal(query().period,'past');assert.equal(query().direction,'desc');
+   await ui.app.action('schedule-mode',{value:'day'});await ui.app.action('season-select',{value:'historical-season'});
+   assert.equal(query().mode,'day');assert.equal(query().period,'all');assert.equal(query().direction,'asc');
+ });
+});
+
+uiTest('Schedule pagination appends in query order and reversal/filter/season changes fence stale pages',async()=>{
+ const held=deferred(),row=team();row.seasons.push({id:'historical-season',label:'2024–2025',year:2024,start_day:'2024-06-01',end_day:'2025-06-01'});
+ await withUI({teams:[row],resolve:call=>{
+   if(call.path==='/api/calendar')return {data:{days:[]}};
+   if(call.path==='/api/schedule'){
+     const q=Object.fromEntries(call.url.searchParams),id=q.cursor?'older':q.period==='past'?'newest':'upcoming';
+     const result={selection:q,data:{items:[{id,starts_at:'2026-10-12T12:00:00Z',status:'UNKNOWN',type:'game',title:id,home:{name:'Team'},away:{name:id}}],total:2,next_cursor:q.cursor?null:'page-two'}};
+     if(q.cursor==='held')return held.promise;return result;
+   }
+ }},async ui=>{
+   await ui.app.action('nav',{view:'schedule',period:'past'});await ui.app.action('more',{cursor:'page-two',view:'schedule'});
+   assert.deepEqual(ui.app.state.model.data.items.map(e=>e.id),['newest','older']);
+   assert.ok(ui.app.state.model.data.items.every(e=>e.status==='UNKNOWN'));
+   const pending=ui.app.action('more',{cursor:'held',view:'schedule'});await until(()=>ui.calls.some(c=>c.url.searchParams.get('cursor')==='held'));
+   await ui.app.action('schedule-period',{value:'upcoming'});
+   held.resolve(response({selection:{period:'past',direction:'desc'},data:{items:[{id:'late-old'}],total:3}}));await pending;
+   assert.deepEqual(ui.app.state.model.data.items.map(e=>e.id),['upcoming']);
+   for(const [name,data]of [['schedule-filter',{value:'practices'}],['schedule-mode',{value:'day'}],['season-select',{value:'historical-season'}]]){
+     await ui.app.action(name,data);const last=ui.calls.filter(c=>c.path==='/api/schedule').at(-1);
+     assert.equal(last.url.searchParams.has('cursor'),false);assert.equal(ui.app.state.model.data.items.length,1);
+   }
+ });
+});
+
+uiTest('Schedule safely restarts an old-order cursor without accepting it under the new policy',async()=>{
+ const late=deferred();
+ await withUI({teams:[team()],resolve:call=>{
+   if(call.path==='/api/calendar')return {data:{days:[]}};
+   if(call.path==='/api/schedule'){
+     if(call.url.searchParams.get('cursor')==='late-old')return late.promise;
+     if(call.url.searchParams.has('cursor'))return failure('cursor_selection','The cursor belongs to another selection.',400);
+     return {selection:Object.fromEntries(call.url.searchParams),data:{items:[{id:'saved-game',status:'UNKNOWN',type:'game',title:'Saved game',starts_at:'2026-10-12T12:00:00Z',home:{name:'Home'},away:{name:'Away'}}],total:1,next_cursor:null}};
+   }
+ }},async ui=>{
+   await ui.app.action('nav',{view:'schedule',period:'past'});
+   await ui.app.action('more',{cursor:'old-order-token',view:'schedule'});
+   const calls=ui.calls.filter(c=>c.path==='/api/schedule');assert.equal(calls.length,3);
+   assert.equal(calls[1].url.searchParams.get('cursor'),'old-order-token');assert.equal(calls[2].url.searchParams.has('cursor'),false);
+   assert.equal(calls[2].url.searchParams.get('direction'),'desc');assert.deepEqual(ui.app.state.model.data.items.map(e=>e.id),['saved-game']);
+   assert.equal(ui.app.state.model.data.items[0].status,'UNKNOWN');assert.match(ui.query('#toast').textContent,/Reloading this selection/);
+   assert.doesNotMatch(ui.query('#root').textContent,/another selection/);
+   const pending=ui.app.action('more',{cursor:'late-old',view:'schedule'});await until(()=>ui.calls.some(c=>c.url.searchParams.get('cursor')==='late-old'));
+   await ui.app.action('schedule-period',{value:'upcoming'});const count=ui.calls.filter(c=>c.path==='/api/schedule').length;
+   late.resolve(failure('cursor_selection','The cursor belongs to another selection.',400));await pending;
+   assert.equal(ui.calls.filter(c=>c.path==='/api/schedule').length,count);assert.equal(ui.app.state.model.selection.period,'upcoming');
+ });
+});

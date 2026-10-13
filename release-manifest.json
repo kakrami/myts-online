@@ -1,12 +1,12 @@
 {
   "service": "myTS",
-  "version": "7.2.4",
+  "version": "7.2.5",
   "review": true,
   "files": [
     {
       "path": "README.md",
-      "bytes": 8744,
-      "sha256": "da94ecf4fd6a48e941187c0ce7a37e7deb819e083b8bf81d4c04ff41a67f4802"
+      "bytes": 9112,
+      "sha256": "8a33f10791391da77e081a55c96e9d52aa66eb71ec631922b6fa5f4db988bc6b"
     },
     {
       "path": "docs/acceptance-baseline.md",
@@ -50,8 +50,8 @@
     },
     {
       "path": "docs/deployment-verification.md",
-      "bytes": 36356,
-      "sha256": "f5a508f2d64b70c056484a14ff234304d4aa68b0e8503776933b0888e1320d50"
+      "bytes": 36893,
+      "sha256": "8e2b6d813dc55f07da36a09652e832f7568dfbfb68ccbcb633c2654a1a0c0bef"
     },
     {
       "path": "docs/domain-contract.md",
@@ -90,8 +90,8 @@
     },
     {
       "path": "docs/original-to-rebuild-parity.md",
-      "bytes": 49032,
-      "sha256": "1ea14b7ca512cd5dfb9daf8a19ebb5ef09b23c39e2613ac2269d7e964bc1a96f"
+      "bytes": 49170,
+      "sha256": "43b9d2c6d973fe28a6a44073eff8593aacc1c5a35c24f729741643e2b8e88de2"
     },
     {
       "path": "docs/owner-initialization.md",
@@ -105,8 +105,8 @@
     },
     {
       "path": "docs/parity-gates.json",
-      "bytes": 58752,
-      "sha256": "334f834b2385563e589b7b3d27036dba9a246b9ee9e265f1a24fa8efcd1ddda1"
+      "bytes": 58890,
+      "sha256": "ae5d444357d4934a42ea7ffca9bcc475d9b3b821dd52ef974f5a7efe1ab02378"
     },
     {
       "path": "docs/parity-integration-handoff.md",
@@ -127,6 +127,11 @@
       "path": "docs/reports-original-workflow-handoff.md",
       "bytes": 9973,
       "sha256": "4c00c834ce0c7d692b0ceb50516a9563a246950f5d153b625d7f225f4de36b19"
+    },
+    {
+      "path": "docs/schedule-order-repair.md",
+      "bytes": 7154,
+      "sha256": "d5687762787921acbbf2fee0b326417976dd366a3ad88f60678ca71463d708a3"
     },
     {
       "path": "docs/schema-comparison.md",
@@ -196,12 +201,12 @@
     {
       "path": "package-lock.json",
       "bytes": 49485,
-      "sha256": "a8b05a5889c0d0dd28c1f81e8d261f20277714c29cafbda67af49b960265390b"
+      "sha256": "8aef1dc7ecec6adecc273610dd071d0da7a317a98a683daa313849b5b8725071"
     },
     {
       "path": "package.json",
       "bytes": 635,
-      "sha256": "0726d1b35477072ccfa9d822171cbc6fa206ad3875017a158e12620513b107d8"
+      "sha256": "87c9bdf3c8755f9c106634470072d33957f59b24ae4997acc332a37013a9d789"
     },
     {
       "path": "scripts/release-check.mjs",
@@ -431,7 +436,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 30,
-      "sha256": "6cffd5952742650c3290999babfe266b60e5261f9206147d98ef99b6f604cc69"
+      "sha256": "2f73c2c634a76d91cadb3c827880cf9fb8d030cd2dddbe0502c5657e6bbd4160"
     },
     {
       "path": "src/coaching/routes.js",
@@ -600,8 +605,8 @@
     },
     {
       "path": "src/read-model/repository.js",
-      "bytes": 8961,
-      "sha256": "8b6e033c4209648ae58f4478f370a5c9f337d6a7b419d2212107a581d1f354c7"
+      "bytes": 12826,
+      "sha256": "3831ee0d84ee94dbd7c9374a18c7fa9102da2d5fe3802803941891cda26bb047"
     },
     {
       "path": "src/read-model/roster-provenance.js",
@@ -910,8 +915,8 @@
     },
     {
       "path": "web/app/main.js",
-      "bytes": 79459,
-      "sha256": "8962df8035334e1e43826f821398afdc60a219cc4d6afb393b4347ba2956402a"
+      "bytes": 79764,
+      "sha256": "f662609421ef2113c57d08ad7e87baab215d3dc7a672b229d808d90b530eb929"
     },
     {
       "path": "web/app/public-history.js",
@@ -922,6 +927,11 @@
       "path": "web/app/reports.js",
       "bytes": 7195,
       "sha256": "162d34db14e49a72170d9fabfb6120bf6a76389ebb8d6f6faee82ead4e77e53e"
+    },
+    {
+      "path": "web/app/schedule-query.js",
+      "bytes": 896,
+      "sha256": "cfa97f35b1cae1a1961db458130027562137c79f15aa79e9fa89a71c8c77863c"
     },
     {
       "path": "web/app/security-features.js",

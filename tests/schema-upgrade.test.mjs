@@ -15,7 +15,7 @@ async function harness({mode}={}){
  const root=path.resolve(process.env.MYTS_TEST_PACKAGE_ROOT||'.'),modules={};
  for(const file of(await readdir(path.join(root,'src'),{recursive:true})).filter(file=>file.endsWith('.js')))modules['src/'+file]={type:'esm',contents:await readFile(path.join(root,'src',file),'utf8')};
  modules['worker.js']={type:'esm',contents:await readFile(path.join(root,'worker.js'),'utf8')};
- modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};
+ modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};modules['web/app/schedule-query.js']={type:'esm',contents:await readFile(path.join(root,'web/app/schedule-query.js'),'utf8')};
  modules['upgrade-test-worker.js']={type:'esm',contents:`
   import app,{SyncRuntime} from './worker.js';
   export {SyncRuntime};

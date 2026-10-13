@@ -1,3 +1,7 @@
+# myTS 7.2.5 Schedule order repair
+
+See [the shared query policy and acceptance](schedule-order-repair.md). This read/UI-only update restores the original Past/Upcoming/Day ordering, known-kickoff-before-TBD local-day ordering and historical-season behavior. It preserves the schema, source jobs, attendance recovery and all saved data. No source refresh or account reconnection is needed. Existing cursors whose effective selection changes are rejected and the browser reloads the first page. Earlier sections are historical receipts.
+
 # myTS 7.2.4 TeamSnap attendance identity repair
 
 See [the evidence-directed repair and acceptance](attendance-identity-repair.md). This code-only update preserves the schema, bindings, CPU budget, credentials, connection/job identities and all saved records. Attendance changes its pagination identity to the validated event/member pair; old attendance identity checkpoints safely begin one full revalidation. Events and their retained full-history/recent receipts are unchanged. After health reports 7.2.4, use TeamSnap Manage → Retry attendance once for the failed job. Earlier sections are historical receipts.

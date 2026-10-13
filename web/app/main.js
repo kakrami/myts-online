@@ -5,6 +5,7 @@ import * as screens from "../ui-original/screens.js";
 import * as forms from "../ui-original/forms.js";
 import { escapeHTML as e, button, icon, empty, pickerHTML, moreButton, formatDate, unwrap, safeImageURL } from "../ui-original/presentation.js";
 import { bindSwipe, animateDateView } from "../ui-original/interactions.js";
+import { scheduleQuery } from "./schedule-query.js";
 
 const defaultRoutes = {
   bootstrap:"/api/bootstrap", overview:"/api/overview", schedule:"/api/schedule", calendar:"/api/calendar", revisions:"/api/revisions",
@@ -92,6 +93,7 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
   async function teamsPage(cursor=null,trail=[]){requireOwner();const epoch=state.routeEpoch,result=await transport.read('team-catalog',routes.teams+'?'+new URLSearchParams({limit:'50',...(cursor?{cursor}:{}),...(state.team?{preferred_team_id:state.team}:{})}));if(!guarded(epoch,result))return false;const model=unwrap(result.data),selected=selectedTeam(),pin=model.preferred_team?{...model.preferred_team,seasons:selected?.seasons??[]}:selected,teams=(model.items??[]).map(t=>t.id===pin?.id?{...t,...pin}:{...t,seasons:[]});if(pin&&!teams.some(t=>t.id===pin.id))teams.push(pin);state.bootstrap.teams=teams;state.teamCatalog={total:model.total,revision:model.revision,next_cursor:model.next_cursor,cursor,trail,has_previous:trail.length>0};await hydrateCatalog();updateShell(host,shellModel());return true;}
   async function seasonsPage(cursor=null,trail=[]){const loaded=await readSeasons(state.team,{cursor,trail});if(!loaded)return;selectedTeam().seasons=loaded.rows;state.seasonCatalog=loaded.catalog;updateShell(host,shellModel());}
   function selection(){return {...context(),...state.filters};}
+  function scheduleSelection(){return scheduleQuery(state.filters,{seasonEnd:selectedSeason()?.end_day,today:localDay(selectedTeam()?.timezone)});}
   function captureRoute(){return {team:state.team,season:state.season,view:state.view,filters:{...state.filters},scroll:root()?.scrollTop??0};}
   function scopeMatches(route){return route.team===state.team&&route.season===state.season;}
   async function restoreDetailOrigin(detail){const origin=detail?.origin;if(!origin||scopeMatches(origin))return;const prepared=await prepareContext(origin.team,origin.season);if(!prepared)return;installContext(prepared);state.view=origin.view;state.filters={...state.filters,...origin.filters};await renderView();root().scrollTop=origin.scroll??0;void refresh.start(pathFor(routes.revisions));}
@@ -153,7 +155,7 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     state.filters.date=day;state.filters.mode="day";state.filters.type="all";state.filters.period="all";return true;
   }
   function scheduleModel(envelope,calendarEnvelope=null,neighbors={}){
-    const page=unwrap(envelope),selection=envelope.selection??selection(),calendarData=unwrap(calendarEnvelope),counts=new Map((calendarData.days??[]).map(day=>[day.day,day]));
+    const page=unwrap(envelope),selection=envelope.selection??{...context(),...scheduleSelection()},calendarData=unwrap(calendarEnvelope),counts=new Map((calendarData.days??[]).map(day=>[day.day,day]));
     const date=selection.date??state.filters.date,bounds=selectedSeason(),days=[];let previous=false,next=false;
     for(let i=-3;i<=3;i++){const day=addDays(date,i);if(bounds?.start_day&&day<bounds.start_day){if(!previous)days.push({label:"Previous",season_id:neighbors.previous?.id,available:!!neighbors.previous,boundary:"end"});previous=true;continue;}if(bounds?.end_day&&day>=bounds.end_day){if(!next)days.push({label:"Next",season_id:neighbors.next?.id,available:!!neighbors.next,boundary:"start"});next=true;continue;}const count=counts.get(day);days.push({day,today:day===localDay(selection.timezone),kinds:count?.kinds??[],total:count?.total??0});}
     return {...envelope,data:{mode:selection.mode,filter:selection.type,period:selection.period,selected_day:date,month_label:formatDate(date,{month:"short",day:undefined}),season_label:selectedSeason()?.label,days,events:page}};
@@ -171,7 +173,7 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     try{
       const route=routes[state.view];
       if(!route){root().innerHTML=empty("This dashboard section is unavailable.");return;}
-      const params={...(state.view==="schedule" ? state.filters : {}),...(handlers.viewParams?.(state.view,api)??{}),...(cursor?{cursor}:{})};
+      const params={...(state.view==="schedule" ? scheduleSelection() : {}),...(handlers.viewParams?.(state.view,api)??{}),...(cursor?{cursor}:{})};
       const result=await transport.read("view",pathFor(route,params));if(!guarded(epoch,result)||!scopeMatches(captured))return;
       let envelope=await hydrateModel(result.data);if(!guarded(epoch,result))return;
       if(append && state.model){if(handlers.append)envelope=handlers.append(state.view,state.model,envelope,api);else{const old=unwrap(state.model),page=unwrap(envelope);if(!Array.isArray(old.items)||!Array.isArray(page.items))throw new AppError("This saved list cannot load a further page.","page_contract");envelope={...envelope,data:{...page,items:[...old.items,...page.items]}};}}
@@ -179,7 +181,7 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
       if(handlers.present?.[state.view]){const markup=await handlers.present[state.view](envelope,api);if(!guarded(epoch,result))return;root().innerHTML=markup;}
       else if(state.view==="overview")root().innerHTML=screens.overview({...envelope,data:{...unwrap(envelope),team_name:selectedTeam()?.name}});
       else if(state.view==="schedule"){
-        const range={from:addDays(state.filters.date,-3),to:addDays(state.filters.date,4)},cal=await transport.read("calendar-counts",pathFor(routes.calendar,{...state.filters,...range}));if(!guarded(epoch,cal))return;
+        const range={from:addDays(state.filters.date,-3),to:addDays(state.filters.date,4)},cal=await transport.read("calendar-counts",pathFor(routes.calendar,{...scheduleSelection(),...range}));if(!guarded(epoch,cal))return;
         const neighbors=await scheduleNeighbors();if(!neighbors||!guarded(epoch,cal))return;root().innerHTML=screens.schedule(scheduleModel(envelope,cal.data,neighbors));root().classList.toggle("schedule-day-view",state.filters.mode==="day");
         const gestures=[".schedule-day-surface",".schedule-date-window"].map(selector=>root().querySelector(selector)).filter(Boolean).map(node=>bindSwipe(node,{onStep:direction=>void action("day",{day:addDays(state.filters.date,direction)})}));gestureCleanup=()=>gestures.forEach(cleanup=>cleanup());
       }else if(screens[state.view])root().innerHTML=screens[state.view](envelope);
@@ -188,7 +190,7 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
       updateShell(host,shellModel());applyCapabilities();handlers.afterRender?.(state.view,api);
       if(unwrap(envelope).windowed)root().insertAdjacentHTML('afterbegin',`<p class="scope-caption">Showing the latest 200 loaded rows. Full totals cover this selection. ${button('list-restart','Return to first page',{className:'text-action'})}</p>`);
       if(envelope.projection_pending)root().insertAdjacentHTML("afterbegin",'<p class="scope-caption" role="status">Saved data is updating in the background.</p>');
-    }catch(error){if(epoch!==state.routeEpoch)return;if(error.code==="cursor_restart"&&cursor){notice("The list changed. Reloading this selection.");return renderView();}showError(error,{target:root()});}
+    }catch(error){if(epoch!==state.routeEpoch)return;if(cursor&&(error.code==="cursor_restart"||state.view==="schedule"&&error.code==="cursor_selection")){notice("The list changed. Reloading this selection.");return renderView();}showError(error,{target:root()});}
     finally{if(epoch===state.routeEpoch)root()?.removeAttribute("aria-busy");}
   }
   function openModal({title="",html="",kind="custom",data={},connection:connectionModal=false}){
@@ -391,7 +393,7 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     openModal({title:model.queued?'Connected · Import queued':'Team connected',kind:'connection-progress',html:`<p class="modal-copy">${model.queued?'Your team is connected. Available data will appear as the server imports it; this page can be closed.':'Your team is already connected. Its saved data and background status are available.'}</p><div class="action-row">${button('status-open','View import progress',{className:'btn primary'})}${button('close-modal','View team')}</div>`});
   }
   async function calendar(){
-    const epoch=state.routeEpoch,range=fullCalendarRange(state.filters.date),result=await transport.read("calendar-modal",pathFor(routes.calendar,{...state.filters,...range}));if(!guarded(epoch,result))return;
+    const epoch=state.routeEpoch,range=fullCalendarRange(state.filters.date),result=await transport.read("calendar-modal",pathFor(routes.calendar,{...scheduleSelection(),...range}));if(!guarded(epoch,result))return;
     const data=unwrap(result.data),counts=new Map((data.days??[]).map(d=>[d.day,d]));
     openModal({title:"Choose schedule date",kind:"calendar",html:screens.calendar({label:formatDate(state.filters.date,{month:"long",year:"numeric",day:undefined}),days:Array.from({length:42},(_,i)=>{const day=addDays(range.from,i),count=counts.get(day);return {day,selected:day===state.filters.date,today:day===localDay(selectedTeam()?.timezone),other_month:day.slice(0,7)!==state.filters.date.slice(0,7),kinds:count?.kinds??[],total:count?.total??0};})})});
     modalGestureCleanup=bindSwipe(host.querySelector("#accountBody .calendar-grid"),{disabled:()=>state.modal?.kind!=="calendar",onStep:direction=>void action("calendar-month",{offset:direction})});
