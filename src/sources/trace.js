@@ -257,7 +257,9 @@ function radarAnalysis(radar, args, accountId) {
 }
 
 function assetURL(value, base) {
-  const u = new URL(value, base?.startsWith("https:") ? base.replace(/\/?$/, "/") : APP + "/");
+  const directory = new URL(base || "/", APP + "/");
+  directory.pathname = directory.pathname.replace(/\/?$/, "/");
+  const u = new URL(value, directory);
   requireValue(u.protocol === "https:" && !u.username && !u.password && (u.hostname === "traceup.com" || u.hostname.endsWith(".traceup.com")), "Trace asset URL is unsupported.", "contract_violation");
   return u.href;
 }

@@ -95,7 +95,10 @@ function insertJobs(guard, refresh=false, publicParents=false, choices='') {
   // current input is already being served. Preserve that attempt's watermark,
   // cursor and lease. Explicit owner refreshes retain normal restart semantics.
   const continuingAnalysis = "sync_jobs.provider='analysis' AND sync_jobs.component='match' AND sync_jobs.state IN('queued','running','retrying') AND COALESCE(json_extract(excluded.args,'$.automatic'),0)=1";
-  const ordinaryReset = `sync_jobs.state='disabled' OR (sync_jobs.args<>excluded.args AND NOT ((${continuingConnection}) OR (${continuingAnalysis}))) OR sync_jobs.authorization_generation<>excluded.authorization_generation`;
+  // New provider metadata is not authorization to repeat a denied request.
+  // Explicit refresh and changed account authorization retain their own paths.
+  const deniedSource = "sync_jobs.state='blocked' AND sync_jobs.last_error_code='source_access_denied'";
+  const ordinaryReset = `sync_jobs.state='disabled' OR (sync_jobs.args<>excluded.args AND NOT ((${continuingConnection}) OR (${continuingAnalysis}) OR (${deniedSource}))) OR sync_jobs.authorization_generation<>excluded.authorization_generation`;
   const preserve=publicParents?`EXISTS(SELECT 1 FROM ph_existing WHERE id=sync_jobs.id)`:'0';
   const freshPublic=publicParents?`(SELECT restart FROM ph_existing WHERE id=sync_jobs.id)`:'0';
   const reset=publicParents?`(CASE WHEN ${preserve} THEN ${freshPublic} ELSE (${ordinaryReset}) END)`:ordinaryReset;
@@ -121,6 +124,8 @@ export const ORDINARY_SERVICE_CYCLE = Object.freeze([0,1,5,3,4,2,2]);
 // surrounding eligible CTE still enforces account, root, lifecycle and leases.
 // Root age is durable across its pages, so a due prerequisite retains its turn
 // until reconciliation completes instead of losing to each fresh source page.
+// Inputs for the current publication retain the input turn even for older games.
+// Otherwise historical match analysis gets a turn while its prerequisites do not.
 const ordinaryServiceClass = at => `CASE
  WHEN j.provider='domain' AND j.component='connection' AND j.stage='projection' AND EXISTS(
   SELECT 1 FROM team_source_connections root WHERE root.id=j.resource_key AND root.id=json_extract(j.args,'$.connectionId') AND root.app_team_id=j.scope AND root.app_team_id=json_extract(j.args,'$.teamId') AND root.generation=json_extract(j.args,'$.generation') AND root.active=1 AND root.input_revision>root.reconciled_revision AND (julianday(COALESCE(root.last_reconciled_at,root.created_at))-2440587.5)*86400000<=${at-60_000}
@@ -132,7 +137,11 @@ const ordinaryServiceClass = at => `CASE
   SELECT 1 FROM source_events event JOIN source_event_teams member ON member.source_event_id=event.id JOIN source_teams own ON own.id=member.source_team_id
   WHERE event.provider='trace' AND event.provenance='provider' AND own.provenance='provider' AND j.resource_key=j.scope AND substr(j.scope,1,length('trace:'||event.native_id||':trace:'||own.native_id||':'))='trace:'||event.native_id||':trace:'||own.native_id||':' AND event.scope=j.account_id AND event.account_id=j.account_id AND event.native_id=CAST(json_extract(j.args,'$.game_id') AS TEXT)
   AND own.provider='trace' AND own.scope=j.account_id AND own.account_id=j.account_id AND own.native_id=CAST(json_extract(j.args,'$.team_id') AS TEXT)
-  AND (julianday(COALESCE(event.starts_at,event.local_day))-2440587.5)*86400000 BETWEEN ${at-60*86400000} AND ${at+30*86400000}
+  AND ((julianday(COALESCE(event.starts_at,event.local_day))-2440587.5)*86400000 BETWEEN ${at-60*86400000} AND ${at+30*86400000}
+   OR EXISTS(SELECT 1 FROM sync_job_subscribers demand JOIN team_projection_state published ON published.app_team_id=demand.app_team_id
+    JOIN team_game_source_rows saved ON saved.run_id=published.published_run_id AND saved.app_team_id=published.app_team_id AND saved.team_season_id=published.team_season_id
+    WHERE demand.job_id=j.id AND demand.kind='team' AND saved.provider='trace' AND saved.account_id=j.account_id
+    AND saved.source_event_id=event.id AND saved.connected_source_team_id=own.id))
  )) THEN 4 ELSE 2 END`;
 
 export class JobCoordinator {

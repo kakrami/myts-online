@@ -3,7 +3,7 @@ import {ownerFormat} from './manual-format.js';
 import {resolveMatchAnalysis,RESOLVER_VERSION} from './resolver/resolve.js';
 import {normalizePosition} from './resolver/lineup.js';
 import {nativeSpatial} from './spatial.js';
-export const ANALYSIS_ALGORITHM_VERSION='shared-match/'+RESOLVER_VERSION+'/adapter-2';
+export const ANALYSIS_ALGORITHM_VERSION='shared-match/'+RESOLVER_VERSION+'/adapter-3';
 export const parse=v=>typeof v==='string'?JSON.parse(v||'{}'):v||{};
 const finite=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0?v:null;
 const present=(v,k)=>Object.hasOwn(v,k)&&v[k]!==null&&v[k]!==undefined;
@@ -40,7 +40,9 @@ export function resolveSnapshot(c){
   const members=scopedMembers.filter(m=>m.player_id===id),gids=[...new Set(members.map(v=>v.gid).filter(Boolean))],manual=parse(c.overrides.find(v=>v.kind==='player_match'&&v.player_id===id)?.fields),season=parse(c.overrides.find(v=>v.kind==='player_season'&&v.player_id===id)?.fields);
   const selected=usableNative?factRows(c.summaries,members,assignedSources):[],full=selected.filter(v=>v.period==='full'),native=nativeState(full,gids,members),summaries=native.state==='ready'?full.map(v=>parse(v.summary)):[],nativeTotal=fn=>summaries.length&&summaries.every(v=>fn(v)!==null)?summaries.reduce((n,v)=>n+fn(v),0):null;
   const maps=usableNative?factRows(c.heatmaps,members,assignedSources):[],map=maps.filter(v=>v.period==='full'),spatial=map.length===1?nativeSpatial(map[0]):null;
-  const tracking=usableNative?c.tracking.filter(t=>gids.includes(t.gid)):[],trackingComplete=halves.length===2&&gids.length>0&&gids.every(gid=>halves.every(h=>c.coverage.some(v=>v.kind==='tracking'&&v.scope===c.scope+':'+gid+':'+h.id&&v.complete)));
+  // Collection completeness is independent of radar-derived playing windows.
+  // Missing radar still leaves calculated minutes unknown in the resolver.
+  const tracking=usableNative?c.tracking.filter(t=>gids.includes(t.gid)):[],trackingComplete=usableNative&&gids.length>0&&[1,2].every(half=>clips.some(clip=>clip.half===half)&&gids.every(gid=>c.coverage.some(v=>v.kind==='tracking'&&v.scope===c.scope+':'+gid+':'+half&&v.complete)));
   const credited=usableNative?c.credited.find(v=>v.player_id===id):null,reported={match:{},halves:{}};if(usableNative&&c.momentsComplete){reported.match.goals=credited?.goals||0;reported.match.assists=credited?.assists||0;}if((credited?.goals||0)+(credited?.assists||0)>0)reported.match.appearance=true;
   const positions=[...new Set(members.map(m=>supported(m.position)).filter(Boolean))];if(usableNative&&positions.length===1)reported.match.position=positions[0];
   const layer={match:manualLayer(manual),halves:{}};
