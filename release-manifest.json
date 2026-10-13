@@ -1,6 +1,6 @@
 {
   "service": "myTS",
-  "version": "7.2.10",
+  "version": "7.2.11",
   "review": true,
   "files": [
     {
@@ -77,6 +77,21 @@
       "path": "docs/frontend-contract.md",
       "bytes": 28709,
       "sha256": "698a51c4ee7d480c114f44bdcb1006e633f1d1f8c239289626bf6b23945a4ead"
+    },
+    {
+      "path": "docs/gotsport-root-refresh-interrupted-aggregate.json",
+      "bytes": 201,
+      "sha256": "a1567e3ac4e871fd4d1cb083f3fba3fa02ecfbf1de7e10ddff5fae70d71510fb"
+    },
+    {
+      "path": "docs/gotsport-root-refresh-native-receipt.json",
+      "bytes": 250244,
+      "sha256": "6a30200254c2bc7b2c44324d5ef15c1fef399e23b1fc861d6d73b94bf852fcaf"
+    },
+    {
+      "path": "docs/gotsport-root-refresh-repair.md",
+      "bytes": 8200,
+      "sha256": "a92d89815eb72911ea9d9927cba6bc29f766aadb33014003ec4efe140b92afe3"
     },
     {
       "path": "docs/integration-checkpoint.md",
@@ -239,6 +254,16 @@
       "sha256": "bb150981c612ac1fcd2c75d4a1d41168647b1187ec77707b773fd6606d0cada5"
     },
     {
+      "path": "docs/trace-status-refresh-native-receipt.json",
+      "bytes": 21267,
+      "sha256": "9463eb7d931530a58b83a84822a6fb4d64d4a66e399e21a44e5d527db8203a5b"
+    },
+    {
+      "path": "docs/trace-status-refresh-repair.md",
+      "bytes": 5595,
+      "sha256": "884dd9e2869ebab68783bca0bd35b50e4938c1b6a4d1477307a08556f609bdd7"
+    },
+    {
       "path": "docs/tracking-capture-contract.md",
       "bytes": 6453,
       "sha256": "506c8a0181c6ced2854993e2f3b6667fbbc226cdd58440b567b6606e015aded0"
@@ -251,12 +276,12 @@
     {
       "path": "package-lock.json",
       "bytes": 49487,
-      "sha256": "d85d03dc77f037cbad8a435464fa797dd4cdc234520c260f03b6f6652a123089"
+      "sha256": "4d614b08b6c7884353a2e741e16d75e29fd52d75c4bbc5d3458e9cabfeeb504e"
     },
     {
       "path": "package.json",
       "bytes": 636,
-      "sha256": "4f67259691d7569951184dcff40a77fb91d998c217a557d4937000a2c7c6ba47"
+      "sha256": "47358124bb04d10eda9198eab7141960f0bc68ee0a7036cf560a5ffa36d6c98a"
     },
     {
       "path": "scripts/release-check.mjs",
@@ -486,7 +511,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 31,
-      "sha256": "f8be645ec0b46586b6796b2ea140d050a6c24ddafd1154a2810e9f223ada6d33"
+      "sha256": "d1f5cdc07b9536bd540e47b2e578edcd5b9c4921199249fbd018b6047606f18c"
     },
     {
       "path": "src/coaching/routes.js",
@@ -510,8 +535,8 @@
     },
     {
       "path": "src/domain/auxiliary.js",
-      "bytes": 32561,
-      "sha256": "271bc155233a857376d4bda1a308b2d75574d373d9179faf6589d6cc88e4522f"
+      "bytes": 33646,
+      "sha256": "cbd0b52168a0ca0f98004f628f5c4e1bcf044481e8ae7732a2d94ee4ba839534"
     },
     {
       "path": "src/domain/calendar.js",
@@ -585,8 +610,8 @@
     },
     {
       "path": "src/domain/repository.js",
-      "bytes": 66366,
-      "sha256": "8081ffdc5d6b8c240c706ba63bdacfbf1b0cec277bead1b14fd1f6dbeff47372"
+      "bytes": 68964,
+      "sha256": "097b0ef58f09b5b12ed16d66893dfde434ac88fbd4681c8d1611d7553fd92730"
     },
     {
       "path": "src/domain/schema.js",

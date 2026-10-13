@@ -82,6 +82,16 @@ function teamSnapRefreshCoverage(page,coverage,accountId) {
   return {recent,terminal,full:refresh.full};
 }
 
+// A new partial provider scan is progress, not revocation of its last accepted
+// complete receipt. The job checkpoint/observations retain the current scan.
+// Generic coverage and file imports cannot claim this collector-only contract.
+function retainedPublicCoverage(page,coverage) {
+  return (page.provenance??'provider')==='provider'&&page.accountId==null&&coverage.account_id==null&&page.provider==='gotsport'&&coverage.provider==='gotsport'&&
+    ['division','standings'].includes(page.component)&&coverage.kind===(page.component==='division'?'division_schedule':'standings')&&
+    coverage.scope===page.resourceKey&&coverage.division_id===coverage.scope&&/^gotsport:[A-Za-z0-9._-]+$/.test(coverage.scope)&&
+    coverage.complete===false&&page.complete===false&&page.checkpoint?.finished!==true;
+}
+
 /** Build bounded native writes; the caller combines these with its lease fence,
  * account generation and source input CAS in one transaction. */
 export async function buildAuxiliaryPage(repo,page) {
@@ -227,7 +237,7 @@ export async function buildAuxiliaryPage(repo,page) {
   for(const c of sourceCoverage) if(c.kind==='division_schedule') {
     const source_division_id=ref(c.division_id||c.scope),id=`${c.provider}|${source_division_id}`;
     const prior=await repo.db.prepare('SELECT complete,record_count FROM source_division_coverage WHERE id=?').bind(id).first();
-    if(prior&&prior.complete===+c.complete&&prior.record_count===Number(c.count||0))continue;
+    if(prior?.complete===1&&retainedPublicCoverage(page,c)||prior&&prior.complete===+c.complete&&prior.record_count===Number(c.count||0))continue;
     changed=true;divisionIds.add(source_division_id);
     add('INSERT INTO source_division_coverage(id,provider,source_division_id,complete,record_count,scan_id,observed_at) SELECT ?,?,?,?,?,?,? WHERE $FENCE ON CONFLICT(id) DO UPDATE SET complete=excluded.complete,record_count=excluded.record_count,scan_id=excluded.scan_id,observed_at=excluded.observed_at',id,c.provider,source_division_id,+c.complete,Number(c.count||0),String(scanId),c.observed_at||instant());
   }
@@ -235,7 +245,7 @@ export async function buildAuxiliaryPage(repo,page) {
     const division=ref(c.division_id||c.scope);requireValue(['pending','published','unpublished'].includes(c.availability),'Standings publication state is missing.');
     // The write predicate preserves the exact row clock for archives without
     // turning a retrieval timestamp into a change to report evidence.
-    add('INSERT INTO source_standings_coverage SELECT ?,?,?,?,?,? WHERE $FENCE ON CONFLICT(source_division_id) DO UPDATE SET complete=excluded.complete,record_count=excluded.record_count,availability=excluded.availability,observed_at=excluded.observed_at WHERE source_standings_coverage.complete IS NOT excluded.complete OR source_standings_coverage.record_count IS NOT excluded.record_count OR source_standings_coverage.availability IS NOT excluded.availability',division,c.provider,+c.complete,Number(c.count||0),c.availability,c.observed_at||instant());
+    add(`INSERT INTO source_standings_coverage SELECT ?,?,?,?,?,? WHERE $FENCE ON CONFLICT(source_division_id) DO UPDATE SET complete=excluded.complete,record_count=excluded.record_count,availability=excluded.availability,observed_at=excluded.observed_at WHERE (source_standings_coverage.complete IS NOT excluded.complete OR source_standings_coverage.record_count IS NOT excluded.record_count OR source_standings_coverage.availability IS NOT excluded.availability) AND NOT(source_standings_coverage.complete=1 AND ${+retainedPublicCoverage(page,c)})`,division,c.provider,+c.complete,Number(c.count||0),c.availability,c.observed_at||instant());
   }
   const componentCoverage=sourceCoverage.filter(c=>c.kind!=='division_schedule').map(c=>{
     requireValue(c.provider&&c.kind&&c.scope&&typeof c.complete==='boolean'&&(!c.account_id||c.account_id===accountId),'Component coverage scope is invalid.');
@@ -247,6 +257,7 @@ export async function buildAuxiliaryPage(repo,page) {
     const updates=[];
     for(const c of componentCoverage){
       const saved=prior.find(p=>p.id===c.id),refresh=teamSnapRefreshCoverage(page,c,accountId);
+      if(saved?.complete===1&&sourceCoverage.some(raw=>raw.kind===c.kind&&raw.scope===c.scope&&retainedPublicCoverage(page,raw)))continue;
       // A recent window is not an all-history receipt. Its count, freshness and
       // current progress are retained by the source job's validated checkpoint.
       if(refresh?.recent)continue;

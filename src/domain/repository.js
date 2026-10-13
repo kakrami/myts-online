@@ -220,6 +220,38 @@ export class DomainRepository {
           row.club_key=row.club_key||previous.club_key;
           row.season_label=row.season_label||previous.season_label;
         }
+        // The team-history endpoint omits flight context. It is not an
+        // authoritative removal of the division discovered by flight_matches.
+        // Carry only that enrichment across the exact same native identities;
+        // dates, results, participants and every other source fact remain new.
+        if(table==='source_events'&&previous&&provenance==='provider'&&previous.provenance==='provider'&&page.provider==='gotsport'&&page.component==='history'&&row.provider==='gotsport') {
+          const incoming=parse(row.evidence),saved=parse(previous.evidence);
+          if(row.division_key===null&&previous.division_key&&row.competition_key===previous.competition_key&&
+            ['event_id','bracket_id','schedule_id'].every(key=>incoming[key]!=null&&incoming[key]===saved[key])&&
+            incoming.division_id===null&&incoming.group_id===null&&incoming.context===null&&
+            saved.division_id&&saved.group_id&&previous.division_key===auxiliaryKey(saved.division_id)&&
+            saved.division_id===`gotsport:${saved.group_id}`) {
+            row.division_key=previous.division_key;
+            row.evidence=bounded({...incoming,division_id:saved.division_id,group_id:saved.group_id,context:saved.context,
+              source_url:saved.source_url});
+          }
+        }
+        // RICH_GAME_QUERY does not select status. A detailed header can update
+        // dates, participants and reported scores, but cannot clear the status
+        // observed by TEAM_GAMES_QUERY. Only this typed provider header inherits
+        // that one field; discovery still owns explicit changes and clears.
+        if(table==='source_events'&&previous&&provenance==='provider'&&previous.provenance==='provider'&&
+          page.provider==='trace'&&page.component==='game'&&row.provider==='trace'&&previous.provider==='trace'&&
+          row.account_id===previous.account_id&&row.native_id===previous.native_id&&
+          page.checkpoint?.protocol==='trace-game-semantics-v1'&&page.checkpoint.stage==='members'&&page.checkpoint.offset===0) {
+          const incoming=parse(row.evidence),saved=parse(previous.evidence);
+          if(incoming.provider_status===''&&typeof saved.provider_status==='string') {
+            row.evidence=bounded({...incoming,provider_status:saved.provider_status});
+            const status=saved.provider_status.toLowerCase();
+            if(['cancelled','canceled'].includes(status))row.status='CANCELLED';
+            else if(status==='postponed')row.status='POSTPONED';
+          }
+        }
         row.content_hash=await hash({...row,evidence:parse(row.evidence),content_hash:undefined});
       }
       rows[table]=list.filter(r=>!byId.has(r.id)||!(provenance==="file_import"&&byId.get(r.id).provenance==="provider")&&(byId.get(r.id).provenance==="file_import"&&provenance==="provider"||byId.get(r.id).content_hash!==r.content_hash&&r.observed_at>=byId.get(r.id).observed_at));
@@ -253,7 +285,7 @@ export class DomainRepository {
     }
     if(entitlementAdds.length)add("INSERT OR IGNORE INTO account_source_teams SELECT ?,value FROM json_each(?) WHERE $FENCE",accountId,JSON.stringify(entitlementAdds));
     if (roster.length) add(`INSERT INTO source_roster_memberships SELECT json_extract(value,'$.source_team_id'),json_extract(value,'$.source_player_id'),json_extract(value,'$.active'),json_extract(value,'$.scan_id'),json_extract(value,'$.provenance') FROM json_each(?) WHERE $FENCE ON CONFLICT(source_team_id,source_player_id) DO UPDATE SET active=excluded.active,scan_id=excluded.scan_id,provenance=excluded.provenance`,JSON.stringify(roster));
-    if (allLinks.length) add(`INSERT INTO source_team_links SELECT json_extract(value,'$.a'),json_extract(value,'$.b'),json_extract(value,'$.kind'),json_extract(value,'$.evidence') FROM json_each(?) WHERE $FENCE ON CONFLICT(a,b) DO UPDATE SET evidence=excluded.evidence`,JSON.stringify(allLinks));
+    if (allLinks.length) add(`INSERT INTO source_team_links SELECT json_extract(value,'$.a'),json_extract(value,'$.b'),json_extract(value,'$.kind'),json_extract(value,'$.evidence') FROM json_each(?) WHERE $FENCE ON CONFLICT(a,b) DO UPDATE SET evidence=excluded.evidence WHERE source_team_links.evidence IS NOT excluded.evidence`,JSON.stringify(allLinks));
     if (rows.source_events.length) {
       const data=JSON.stringify(rows.source_events);
       const canonical=await Promise.all(rows.source_events.filter(r=>PUBLIC.has(r.provider)).map(async r=>({source_id:r.id,id:await nativeCanonicalId('event',r.id)})));
