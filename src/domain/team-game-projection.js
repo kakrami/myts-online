@@ -1,7 +1,7 @@
 /** Bounded team-local projection adapter. Native/global identities and owner rows
  * are inputs only. An unpublished decision is never retention authority. */
 import {hash} from '../sources/common.js';
-import {JOB_FIELDS,controlWitness,gameReceiptsSQL,controlSnapshotSQL,decodeControlSnapshot,mergeControlSnapshot,controlSnapshotAssertion} from './team-game-control-witness.js';
+import {JOB_FIELDS,controlWitness,acceptedControlWitness,validAcceptedControlProof,controlAcquisitionAssertion,gameReceiptsSQL,controlSnapshotSQL,decodeControlSnapshot,mergeControlSnapshot,controlSnapshotAssertion} from './team-game-control-witness.js';
 import {loadTeamGameCandidates} from './team-game-candidates.js';
 import {resolveUserGameGroups,TEAM_GAME_ALGORITHM} from './team-game-resolver.js';
 import {eventPresentation,localEventDay} from './presentation.js';
@@ -98,7 +98,7 @@ async function nativeRows(db,teamId,seasonId,ids,aliases){
 
 const conjunction=parts=>parts.length===1?parts[0]:`(${conjunction(parts.slice(0,Math.ceil(parts.length/2)))}) AND (${conjunction(parts.slice(Math.ceil(parts.length/2)))})`;
 function receiptPredicate(p='p'){
-  const value=`json_extract(p.fence,'$.version') IN(1,2)
+  const value=`json_extract(p.fence,'$.version') IN(1,2,3)
  AND NOT EXISTS(SELECT 1 FROM json_each(p.fence,'$.source_universe') captured WHERE NOT EXISTS(SELECT 1 FROM source_events e JOIN event_source_links l ON l.source_event_id=e.id JOIN canonical_event_ids c ON c.input_id=l.event_id WHERE e.id=json_extract(captured.value,'$.id') AND e.content_hash=json_extract(captured.value,'$.hash') AND l.revision=json_extract(captured.value,'$.link_revision') AND c.canonical_id=json_extract(captured.value,'$.canonical_id')))
  AND NOT EXISTS(SELECT 1 FROM source_events e JOIN source_event_teams own ON own.source_event_id=e.id JOIN json_each(p.fence,'$.source_scopes') scope ON e.provider=json_extract(scope.value,'$.provider') AND e.account_id IS json_extract(scope.value,'$.account_id') AND own.source_team_id=json_extract(scope.value,'$.source_team_id') WHERE e.type='game' AND NOT EXISTS(SELECT 1 FROM json_each(p.fence,'$.source_universe') captured WHERE e.id=json_extract(captured.value,'$.id')) AND EXISTS(SELECT 1 FROM json_each(p.fence,'$.windows') w WHERE julianday(e.starts_at) BETWEEN julianday(json_extract(w.value,'$.from'))-0.000000012 AND julianday(json_extract(w.value,'$.to'))+0.000000012 OR(julianday(e.starts_at) IS NULL AND(e.local_day IS NULL OR e.local_day BETWEEN date(json_extract(w.value,'$.from'),'-1 day') AND date(json_extract(w.value,'$.to'),'+1 day')))))
  AND NOT EXISTS(SELECT 1 FROM event_source_links l JOIN canonical_event_ids c ON c.input_id=l.event_id WHERE c.canonical_id IN(SELECT json_extract(value,'$.canonical_id') FROM json_each(p.fence,'$.source_universe')) AND NOT EXISTS(SELECT 1 FROM json_each(p.fence,'$.source_universe') captured WHERE l.source_event_id=json_extract(captured.value,'$.id')))
@@ -110,7 +110,7 @@ function receiptPredicate(p='p'){
    ...['source_revision','mutation_revision'].map(k=>`json_type(p.fence,'$.${k}')='integer' AND json_extract(p.fence,'$.${k}') BETWEEN 0 AND 9007199254740991`),
    `json_type(p.fence,'$.owner_revision')='null' OR(json_type(p.fence,'$.owner_revision')='integer' AND json_extract(p.fence,'$.owner_revision') BETWEEN 1 AND 9007199254740991)`,
    `json_type(p.fence,'$.valid_until')='null' OR(json_type(p.fence,'$.valid_until') IN('integer','real') AND json_extract(p.fence,'$.valid_until') BETWEEN 0 AND 9007199254740991)`,
-   `json_extract(p.fence,'$.version')<>2 OR(json_type(p.fence,'$.jobs') IS NULL AND json_type(p.fence,'$.coverage') IS NULL)`,
+   `json_extract(p.fence,'$.version')=1 OR(json_type(p.fence,'$.jobs') IS NULL AND json_type(p.fence,'$.coverage') IS NULL)`,
    arrayShape('source_universe',{id:['text'],hash:['text'],link_revision:['integer'],canonical_id:['text']},["json_extract(member.value,'$.link_revision')>0"]),
    arrayShape('source_scopes',{provider:['text'],account_id:['text','null'],source_team_id:['text']}),
    arrayShape('windows',{from:['text'],to:['text']},["julianday(json_extract(member.value,'$.from'))<=julianday(json_extract(member.value,'$.to'))"]),
@@ -122,9 +122,19 @@ function receiptPredicate(p='p'){
 }
 async function receipt(candidate){
   const {fence,connectionSnapshot}=candidate;
+  const coverage=candidate.sourceSnapshot.coverage;
+  // This marker is issued only after the typed, scope/window-specific coverage
+  // validator actually succeeds. A last-complete clock is never success proof.
+  const accepted=!candidate.overflow&&!candidate.reasons.includes('acquisition_fence_changed')&&coverage.length>0&&coverage.every(c=>c.complete===true);
+  const full_scope=accepted&&connectionSnapshot.connections.every(c=>c.basis==='root')&&coverage.every(c=>c.scope_complete===true);
+  // Full traversal evidence belongs to the exact rooted source scope, not to
+  // one page's window or a collector scan clock. Legacy attachments and a TS
+  // proof outside an active recent window remain window-scoped.
+  const meaning=unique(coverage.map(c=>JSON.stringify({...Object.fromEntries(['connection_id','attachment_id','attachment_generation','generation','provider','source_team_id','complete'].map(k=>[k,c[k]??null])),...(full_scope?{}:{from:c.from,to:c.to})}))).map(parse);
+  const accepted_evidence=accepted?{version:1,complete:true,full_scope,scope_digest:await digest(fence.scope),coverage_count:meaning.length,coverage_digest:await digest(meaning)}:null;
   const scopes=connectionSnapshot.connections.flatMap(c=>[{provider:c.provider,account_id:c.account_id,scope:c.provider==='teamsnap'?'teamsnap:'+c.native_id:c.native_id},...connectionSnapshot.aliases.filter(a=>a.connection_id===(c.basis==='root'?c.id:null)&&a.attachment_id===(c.basis==='legacy_attachment'?c.id:null)).map(a=>({provider:a.provider,account_id:null,scope:a.native_id}))]);
   const expiration=fence.scope.links.map(l=>parse(l.evidence)).flatMap(p=>[Date.parse(p.expires_at),...(p.observations??[]).map(o=>Date.parse(o.at)+6*3600000)]).filter(Number.isFinite);
-  return {version:2,control_witness:await controlWitness({jobs:fence.jobs.map(j=>Object.fromEntries(JOB_FIELDS.map(k=>[k,j[k]]))),coverage:fence.coverage,subscribers:fence.subscribers}),source_revision:fence.context.source_revision,mutation_revision:fence.context.mutation_revision,source_universe:candidate.rawRows.map(e=>({id:e.id,hash:e.content_hash,link_revision:e.canonical_revision,canonical_id:e.canonical_id})),source_scopes:connectionSnapshot.connections.flatMap(c=>[{provider:c.provider,account_id:c.account_id,source_team_id:c.source_team_id},...connectionSnapshot.aliases.filter(a=>a.connection_id===(c.basis==='root'?c.id:null)&&a.attachment_id===(c.basis==='legacy_attachment'?c.id:null)).map(a=>({provider:a.provider,account_id:null,source_team_id:a.source_team_id}))]),windows:candidate.sourceSnapshot.windows,demands:connectionSnapshot.connections.map(c=>({key:c.basis==='root'?'connection:'+c.id:c.id,generation:c.basis==='root'?c.generation:c.attachment_generation})),coverage_scopes:scopes,valid_until:expiration.length?Math.min(...expiration):null};
+  return {version:accepted?3:2,...(accepted?{accepted_evidence}:{}),control_witness:await (accepted?acceptedControlWitness:controlWitness)({jobs:fence.jobs.map(j=>Object.fromEntries(JOB_FIELDS.map(k=>[k,j[k]]))),coverage:fence.coverage,subscribers:fence.subscribers}),source_revision:fence.context.source_revision,mutation_revision:fence.context.mutation_revision,source_universe:candidate.rawRows.map(e=>({id:e.id,hash:e.content_hash,link_revision:e.canonical_revision,canonical_id:e.canonical_id})),source_scopes:connectionSnapshot.connections.flatMap(c=>[{provider:c.provider,account_id:c.account_id,source_team_id:c.source_team_id},...connectionSnapshot.aliases.filter(a=>a.connection_id===(c.basis==='root'?c.id:null)&&a.attachment_id===(c.basis==='legacy_attachment'?c.id:null)).map(a=>({provider:a.provider,account_id:null,source_team_id:a.source_team_id}))]),windows:candidate.sourceSnapshot.windows,demands:connectionSnapshot.connections.map(c=>({key:c.basis==='root'?'connection:'+c.id:c.id,generation:c.basis==='root'?c.generation:c.attachment_generation})),coverage_scopes:scopes,valid_until:expiration.length?Math.min(...expiration):null};
 }
 function semanticAssessment(p){const e=p.evidence??{};const {coverage,source_revision,connection_revision,source_content,...rest}=e;return {...p,own_sides:p.own_sides?.map(({account_generation,...side})=>side),evidence:{...rest,source_content:source_content?.map(({content_hash,...source})=>source),coverage:unique((coverage??[]).map(c=>JSON.stringify({connection_id:c.connection_id??null,attachment_id:c.attachment_id??null,attachment_generation:c.attachment_generation??null,provider:c.provider,source_team_id:c.source_team_id,generation:c.generation,complete:c.complete,from:c.from,to:c.to}))).map(parse)}};}
 
@@ -158,11 +168,42 @@ async function resolveNeighborhoods(input){
   return {...results[0],groups:results.flatMap(r=>r.groups),assessments:results.flatMap(r=>r.assessments),state_holds:[...new Map(results.flatMap(r=>r.state_holds).map(h=>[h.event_id,h])).values()],reasons:unique(results.flatMap(r=>r.reasons))};
 }
 
-export async function prepareTeamGameProjection(db,{team,season,runId,ids,maps,batch=null,holdMoves=false,frame=null}){
+export async function prepareTeamGameProjection(db,{team,season,runId,ids,maps,batch=null,holdMoves=false,frame=null,acceptedControls=null}){
   frame??=await teamGameBuildFrame(db,team.id,season.id,runId,batch);
   const saved=await heads(db,team.id,ids),candidate=await loadTeamGameCandidates(db,{teamId:team.id,seasonId:season.id,canonicalEventIds:ids,acceptedAssociations:saved.accepted,limits:{closureQueries:2}});
+  if(candidate.reasons.includes('acquisition_fence_changed')){
+    if(candidate.acquisitionScopeChanged)throw fail('Game scope changed during projection acquisition.','team_game_projection_changed');
+    const controlSnapshot=await mergeControlSnapshot(frame.controlSnapshot,[],candidate.acquisitionControl,team.id,runId);
+    if(!controlSnapshot.valid)throw fail('Game controls changed during projection acquisition.','team_game_projection_changed');
+    return {deferred:true,controlSnapshot,refreshFrame:candidate.acquisitionClocksChanged};
+  }
+  // A preceding page may have validated a complete traversal of these exact
+  // typed roots. Root input clocks cover provider facts/participants; their
+  // exact scope digest and the job/subscriber/coverage meaning must still match.
+  // Each new neighborhood is nevertheless reacquired and SQL-fenced normally.
+  // Never promote a legacy or outside-active-window proof to full traversal.
+  if(!candidate.overflow&&!candidate.reasons.includes('acquisition_fence_changed')&&candidate.connectionSnapshot.connections.length&&candidate.connectionSnapshot.connections.every(c=>c.basis==='root')){
+    const scopeDigest=await digest(candidate.fence.scope),witness=await acceptedControlWitness({jobs:candidate.fence.jobs,coverage:candidate.fence.coverage,subscribers:candidate.fence.subscribers});
+    const proofs=[...(validAcceptedControlProof(acceptedControls)&&acceptedControls.run_id===runId?[acceptedControls]:[]),...(frame.controlSnapshot?.valid?frame.controlSnapshot.receipts.map(p=>parse(p.fence)).filter(r=>r.version===3):[])];
+    const prior=proofs.find(r=>r.accepted_evidence?.full_scope===true&&r.accepted_evidence.scope_digest===scopeDigest&&JSON.stringify(canonical(r.control_witness))===JSON.stringify(canonical(witness)));
+    if(prior){
+      candidate.sourceSnapshot.coverage=candidate.sourceSnapshot.coverage.map(c=>({...c,complete:true,scope_complete:true,pending_jobs:[],reasons:[]}));
+      candidate.reasons=candidate.reasons.filter(r=>r!=='source_neighborhood_incomplete');
+      candidate.complete=candidate.sourceSnapshot.complete=!candidate.reasons.length;
+    }
+  }
+  // No prior proof authorizes this new neighborhood while its provider is
+  // actively collecting. Preserve the hidden cursor and let that dependency
+  // finish. Terminal failures/unsupported coverage use ordinary safe fallback.
+  const unresolved=candidate.sourceSnapshot.coverage.filter(c=>!c.complete);
+  if(!candidate.overflow&&unresolved.length&&unresolved.every(c=>c.pending_jobs?.length)){
+    const controlSnapshot=await mergeControlSnapshot(frame.controlSnapshot,[],candidate.fence,team.id,runId);
+    if(!controlSnapshot.valid)throw fail('Game controls changed during projection acquisition.','team_game_projection_changed');
+    return {deferred:true,controlSnapshot};
+  }
   const allIds=unique([...ids,...candidate.canonicalGroups.map(g=>g.event_id)]),native=await nativeRows(db,team.id,season.id,allIds,candidate.connectionSnapshot.aliases),bySource=new Map(native.map(e=>[e.id,e]));
   const state=await ownerState(db,team.id,allIds),currentReceipt=await receipt(candidate);
+  const acceptedProof=currentReceipt.accepted_evidence?.full_scope?{version:1,run_id:runId,accepted_evidence:currentReceipt.accepted_evidence,control_witness:currentReceipt.control_witness}:null;
   if(saved.overflow||!state.complete||!currentReceipt.control_witness||bytes(currentReceipt)>16000){candidate.sourceSnapshot.complete=false;candidate.sourceSnapshot.overflow=true;}
   if(ids.length>1&&(saved.overflow||!state.complete||!currentReceipt.control_witness||bytes(currentReceipt)>15000))return {smallerPage:true};
   const result=await resolveNeighborhoods({teamId:team.id,seasonId:season.id,timezone:team.timezone,...candidate,ownerDecisions:saved.owner,acceptedAssociations:saved.accepted,manualState:state.manual});
@@ -188,7 +229,7 @@ export async function prepareTeamGameProjection(db,{team,season,runId,ids,maps,b
     (SELECT json_group_array(json_array(source_division_id,division_id)) FROM division_source_links WHERE source_division_id IN(SELECT value FROM json_each(?))) divisions`).bind(team.id,JSON.stringify(unique(groups.map(g=>g.event_id))),team.id,season.id,JSON.stringify(allIds),runId,JSON.stringify(unique(groups.flatMap(g=>g.source_ids))),runId,JSON.stringify(unique(native.map(e=>e.competition_key).filter(Boolean))),JSON.stringify(unique(native.map(e=>e.division_key).filter(Boolean)))).first();
   const corrections=parse(support.corrections),memberships=parse(support.memberships),existing=parse(support.existing),existingPublications=new Set(parse(support.publications));
   maps??={competitionIds:new Map(parse(support.competitions)),divisionIds:new Map(parse(support.divisions))};
-  const output={rows:[],members:[],associations:[],revisions:[],headUpdates:[],publications:[],state,receipt:currentReceipt,saved,diagnostics:unique([...candidate.reasons,...result.reasons]),moves:[],deferredMoves:false};
+  const output={rows:[],members:[],associations:[],revisions:[],headUpdates:[],publications:[],state,receipt:currentReceipt,saved,diagnostics:unique([...candidate.reasons,...result.reasons]),moves:[],deferredMoves:false,acceptedControls:acceptedProof};
   for(const group of groups){
     const sources=group.source_ids.map(id=>bySource.get(id)).filter(Boolean);if(!sources.length)continue;
     const matches=existing.filter(e=>group.source_ids.includes(e.source_event_id));
@@ -285,6 +326,7 @@ export async function prepareTeamGameProjection(db,{team,season,runId,ids,maps,b
   output.controlSnapshot=await mergeControlSnapshot(frame.controlSnapshot,output.publications,{jobs:candidate.fence.jobs,coverage:candidate.fence.coverage,subscribers:candidate.fence.subscribers},team.id,runId);
   if(output.controlSnapshot.overflow)throw fail('Saved game controls exceed the bounded publication envelope.','team_game_control_bound');
   if(!output.controlSnapshot.valid)throw fail('Game controls changed during projection acquisition.','team_game_projection_changed');
+  if(acceptedProof)output.controlProofAssertion=await controlAcquisitionAssertion({jobs:candidate.fence.jobs,coverage:candidate.fence.coverage,subscribers:candidate.fence.subscribers},team.id,runId,currentReceipt);
   return output;
 }
 
@@ -296,10 +338,10 @@ export function stageTeamGameProjection(add,page,teamId,runId,batch=null){
   insert(add,'team_event_rows',page.rows);insert(add,'team_game_publications',page.publications);insert(add,'team_game_source_rows',page.members);
   // New Coach/manual state or a receipt change between acquisition and stage
   // rolls the whole page back, including allocated decision heads.
-  addTeamGamePublicationAssertions(add,teamId,runId,batch,page.controlSnapshot);
+  addTeamGamePublicationAssertions(add,teamId,runId,batch,page.controlSnapshot,page.controlProofAssertion);
 }
 
-function publicationChecks(teamId,runId,batch=null,snapshot=null,acquire=false){
+function publicationChecks(teamId,runId,batch=null,snapshot=null,acquire=false,proofAssertion=null){
   const checks=[],assert=(ignored,sql,...params)=>checks.push({sql,params});
   assert(null,`NOT EXISTS(SELECT 1 FROM team_event_rows e WHERE e.run_id=? AND (json_array_length(e.source_ids)=0 OR e.source_ids IS NOT(SELECT json_group_array(source_event_id) FROM(SELECT source_event_id FROM team_game_source_rows m WHERE m.run_id=e.run_id AND m.app_team_id=e.app_team_id AND m.team_season_id=e.team_season_id AND m.target_event_id=e.event_id ORDER BY source_event_id))))`,runId);
   assert(null,`NOT EXISTS(SELECT 1 FROM team_game_source_rows m LEFT JOIN source_events e ON e.id=m.source_event_id LEFT JOIN event_source_links l ON l.source_event_id=m.source_event_id LEFT JOIN team_source_connections c ON c.id=m.connection_id LEFT JOIN team_connection_seasons cm ON cm.connection_id=c.id AND cm.team_season_id=m.team_season_id LEFT JOIN team_source_attachments a ON a.id=m.attachment_id LEFT JOIN provider_accounts pa ON pa.id=m.account_id WHERE m.run_id=? AND (e.id IS NULL OR e.content_hash IS NOT m.source_hash OR e.account_id IS NOT m.account_id OR l.revision IS NOT m.event_link_revision OR(m.account_id IS NOT NULL AND pa.generation IS NOT m.account_generation) OR NOT EXISTS(SELECT 1 FROM source_event_teams own WHERE own.source_event_id=m.source_event_id AND own.source_team_id=m.participant_source_team_id) OR(m.participant_source_team_id<>m.connected_source_team_id AND NOT EXISTS(SELECT 1 FROM source_team_links b WHERE b.kind='provider_external_key' AND ((b.a=m.connected_source_team_id AND b.b=m.participant_source_team_id) OR(b.b=m.connected_source_team_id AND b.a=m.participant_source_team_id)) AND julianday(json_extract(b.evidence,'$.expires_at'))>julianday('now') AND NOT EXISTS(SELECT 1 FROM json_each(json_extract(b.evidence,'$.observations')) observation WHERE julianday(json_extract(observation.value,'$.at'))<julianday('now','-6 hours')))) OR a.active IS NOT 1 OR a.generation IS NOT m.attachment_generation OR(m.entitlement_kind='root' AND(c.active IS NOT 1 OR c.generation IS NOT m.connection_generation OR c.input_revision IS NOT m.connection_input_revision OR cm.active IS NOT 1 OR cm.excluded IS NOT 0 OR cm.generation IS NOT m.membership_generation)) OR(m.entitlement_kind='legacy_attachment' AND EXISTS(SELECT 1 FROM team_source_connections c WHERE c.app_team_id=m.app_team_id AND c.source_team_id=m.connected_source_team_id))))`,runId);
@@ -312,9 +354,10 @@ function publicationChecks(teamId,runId,batch=null,snapshot=null,acquire=false){
   assert(null,`NOT EXISTS(WITH current_state AS MATERIALIZED(${teamGameOwnerStateSQL("SELECT p.app_team_id,roots.value canonical_id FROM team_game_publications p JOIN json_each(p.state_scope_roots) roots WHERE p.run_id=? AND p.state_refs_complete=1")}) SELECT 1 FROM team_game_publications p WHERE p.run_id=? AND p.state_refs_complete=1 AND ((SELECT COUNT(*) FROM current_state s JOIN canonical_event_ids c ON c.input_id=s.event_id WHERE s.app_team_id=p.app_team_id AND c.canonical_id IN(SELECT value FROM json_each(p.state_scope_roots)))<>json_array_length(p.state_refs) OR EXISTS(SELECT 1 FROM json_each(p.state_refs) saved WHERE NOT EXISTS(SELECT 1 FROM current_state s WHERE s.app_team_id=p.app_team_id AND s.event_id=json_extract(saved.value,'$.event_id') AND s.season_id IS json_extract(saved.value,'$.seasonId') AND s.kind=json_extract(saved.value,'$.kind') AND s.state_id=json_extract(saved.value,'$.state_id') AND s.revision IS json_extract(saved.value,'$.revision')))))`,runId,runId);
   assert(null,`NOT EXISTS(SELECT 1 FROM team_game_publications p JOIN team_game_publications other ON other.app_team_id=p.app_team_id AND other.association_id=p.association_id AND other.team_season_id<>p.team_season_id JOIN team_projection_state s ON s.published_run_id=other.run_id WHERE p.run_id=? AND p.disposition='accepted' AND other.disposition IN('accepted','review','pending')${batch?' AND NOT(p.publish_batch_id=? AND p.association_id=? AND other.run_id IS ?)':''}) AND NOT EXISTS(SELECT 1 FROM team_game_publish_batches b WHERE b.app_team_id=? AND b.state IN('preparing','ready') AND EXISTS(SELECT 1 FROM team_projection_runs r WHERE r.id=? AND r.team_season_id IN(b.from_team_season_id,b.to_team_season_id))${batch?' AND NOT(b.batch_id=? AND b.generation=? AND ? IN(b.from_build_run_id,b.to_build_run_id))':''})`,runId,...(batch?[batch.batch_id,batch.association_id,batch.from_expected_run_id]:[]),teamId,runId,...(batch?[batch.batch_id,batch.generation,runId]:[]));
   if(!acquire){const controls=controlSnapshotAssertion(snapshot,teamId,runId);assert(null,controls.sql,...controls.params);}
+  if(proofAssertion)assert(null,proofAssertion.sql,...proofAssertion.params);
   return {sql:`(WITH game_receipts AS MATERIALIZED(${gameReceiptsSQL}),${checks.map((c,i)=>`game_check_${i} AS MATERIALIZED(SELECT (${c.sql}) valid)`).join(',')} SELECT ${checks.map((_,i)=>`game_check_${i}.valid`).join(' AND ')} FROM ${checks.map((_,i)=>`game_check_${i}`).join(' CROSS JOIN ')})`,params:[runId,...checks.flatMap(c=>c.params)]};
 }
-export function addTeamGamePublicationAssertions(add,teamId,runId,batch=null,snapshot=null){const check=publicationChecks(teamId,runId,batch,snapshot);teamGameAssert(add,check.sql,...check.params);}
+export function addTeamGamePublicationAssertions(add,teamId,runId,batch=null,snapshot=null,proofAssertion=null){const check=publicationChecks(teamId,runId,batch,snapshot,false,proofAssertion);teamGameAssert(add,check.sql,...check.params);}
 export async function teamGamePublicationCurrent(db,teamId,runId){const check=publicationChecks(teamId,runId,null,null,true),row=await db.prepare(`SELECT ${check.sql} AS current,(WITH game_receipts AS MATERIALIZED(${gameReceiptsSQL}) ${controlSnapshotSQL}) control_snapshot`).bind(...check.params,runId).first();return row.current===1&&(await decodeControlSnapshot(row.control_snapshot,teamId,runId)).valid;}
 export function pinTeamGameAccepted(add,teamId,runId){add(`UPDATE team_game_associations SET accepted_revision=(SELECT p.decision_revision FROM team_game_publications p WHERE p.run_id=? AND p.app_team_id=team_game_associations.app_team_id AND p.association_id=team_game_associations.association_id AND p.disposition='accepted') WHERE app_team_id=? AND EXISTS(SELECT 1 FROM team_game_publications p WHERE p.run_id=? AND p.app_team_id=team_game_associations.app_team_id AND p.association_id=team_game_associations.association_id AND p.disposition='accepted' AND p.decision_revision>COALESCE(team_game_associations.accepted_revision,0)) AND $FENCE`,runId,teamId,runId);}
 

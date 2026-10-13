@@ -91,7 +91,8 @@ function overlaps(a,b) {return a.from<=b.to&&b.from<=a.to;}
 async function coverageRows(scopes,control,windows,revision,now) {
   const out=[];
   for(const s of scopes)for(const window of windows) {
-    const {connection:c}=s,scope=s.provider==='teamsnap'?'teamsnap:'+s.native_id:s.native_id,rows=control.coverage.filter(v=>v.provider===s.provider&&v.account_id===s.account_id&&v.scope===scope),related=control.jobs.filter(j=>j.provider===s.provider&&j.account_id===s.account_id&&parse(j.demands).includes(c.basis==='root'?'connection:'+c.id:c.id)),direct=related.filter(j=>String(parse(j.args).team_id)===s.native_id&&j.scope===scope&&j.resource_key===scope),reasons=[],receipts=[];
+    const {connection:c}=s,scope=s.provider==='teamsnap'?'teamsnap:'+s.native_id:s.native_id,rows=control.coverage.filter(v=>v.provider===s.provider&&v.account_id===s.account_id&&v.scope===scope),related=control.jobs.filter(j=>j.provider===s.provider&&j.account_id===s.account_id&&parse(j.demands).includes(c.basis==='root'?'connection:'+c.id:c.id)),direct=related.filter(j=>String(parse(j.args).team_id)===s.native_id&&j.scope===scope&&j.resource_key===scope),reasons=[],receipts=[],pending=[];
+    let scopeComplete=true,waitable=true;
     if(s.provider==='teamsnap') {
       const jobs=direct.filter(j=>j.component==='events');if(jobs.length!==1)reasons.push('events_job_unproven');
       for(const j of jobs){const cp=parse(j.checkpoint),r=cp.refresh,b=r?.binding,args=parse(j.args),full=rows.find(v=>v.kind==='events');
@@ -104,11 +105,18 @@ async function coverageRows(scopes,control,windows,revision,now) {
         // ingestion intentionally does not persist *_recent coverage rows.
         // Its separately retained full receipt still proves older scope.
         const terminal=cp.finished===true&&cp.protocol==='teamsnap-refresh-v1'&&r?.active===null&&['ready','disabled'].includes(j.state)&&j.coverage===(r?.recent?'partial':'complete')&&validInt(j.last_complete_at)&&j.last_complete_at>=Math.max(r?.full?.completed_at??0,r?.recent?.completed_at??0);
+        scopeComplete&&=terminal;
         if(!terminal){const active=r?.active,range=active?.mode==='recent'?{from:teamGameInstant(active.filters?.started_after),to:teamGameInstant(active.filters?.started_before)}:null;
           // An absent/unvalidated checkpoint cannot delimit unfinished work.
           const validActive=bound&&cp.protocol==='teamsnap-pages-v1'&&cp.finished!==true&&active?.mode==='recent'&&validInt(active.started_at)&&JSON.stringify(active.filters)===JSON.stringify({started_after:iso(Math.max(0,active.started_at-30*86400000)),started_before:iso(active.started_at+90*86400000)});
           if(!validActive||overlaps(window,range))reasons.push('source_work_unresolved');
         }
+        // Only a well-bound active traversal (or a claimed retained terminal
+        // receipt) has a dependency that can release an evidence wait. Corrupt
+        // bindings and unsupported/terminal outcomes are not refresh waits.
+        const active=r?.active,activeScan=bound&&cp.protocol==='teamsnap-pages-v1'&&cp.finished!==true&&validInt(active?.started_at)&&(['full','recent'].includes(active?.mode))&&JSON.stringify(active.filters)===JSON.stringify(active.mode==='full'?{}:{started_after:iso(Math.max(0,active.started_at-30*86400000)),started_before:iso(active.started_at+90*86400000)});
+        const claimed=bound&&cp.finished===true&&cp.protocol==='teamsnap-refresh-v1'&&r?.active===null&&validReceipt(r?.full,'full');
+        if(['queued','running','retrying'].includes(j.state)&&(activeScan||claimed))pending.push(j.id);else if(!terminal)waitable=false;
         if(c.account_active===1&&j.authorization_generation!==c.account_generation)reasons.push('account_receipt_generation_changed');
         receipts.push({job_id:j.id,scan_id:j.scan_id,authorization_generation:j.authorization_generation,full:r?.full??null,recent:r?.recent??null,active:r?.active??null});
       }
@@ -123,10 +131,21 @@ async function coverageRows(scopes,control,windows,revision,now) {
       // GotSport history is explicitly past-only. Future neighborhoods require
       // complete competition discovery and every child; both are required above.
       for(const component of required)if(!rows.some(v=>v.kind===component&&v.complete===1))reasons.push('public_coverage_unproven:'+component);
+      scopeComplete=related.every(terminalJob);
+      waitable=required.every(component=>direct.filter(j=>j.component===component).length===1)&&related.filter(j=>!terminalJob(j)).every(j=>['queued','running','retrying'].includes(j.state));
+      pending.push(...related.filter(j=>!terminalJob(j)&&['queued','running','retrying'].includes(j.state)).map(j=>j.id));
       receipts.push(...related.map(j=>({job_id:j.id,scan_id:j.scan_id,generation:j.generation,last_complete_at:j.last_complete_at,checkpoint:parse(j.checkpoint)})));
     }
     const ref={...entitlement(c),generation:generation(c),provider:s.provider,source_team_id:s.source_team_id,source_revision:revision,complete:reasons.length===0,from:iso(window.from),to:iso(window.to)};
-    out.push({...ref,id:await hash({ref,receipts}),reasons:unique(reasons),receipt_ids:unique(receipts.map(r=>r.job_id)),receipt_hash:await hash(receipts)});
+    // Missing initial coverage is waitable only when its own uniquely bound
+    // component job is active. An unrelated refresh cannot supply that proof.
+    const refreshReasons=s.provider==='teamsnap'?reasons.every(r=>['full_receipt_unproven','source_work_unresolved'].includes(r)):reasons.every(r=>{
+      if(r==='public_source_work_unresolved'||r.startsWith('public_discovery_unproven:'))return true;
+      if(!r.startsWith('public_coverage_unproven:'))return false;
+      const jobs=direct.filter(j=>j.component===r.slice('public_coverage_unproven:'.length));
+      return jobs.length===1&&['queued','running','retrying'].includes(jobs[0].state);
+    });
+    out.push({...ref,scope_complete:ref.complete&&scopeComplete,pending_jobs:!ref.complete&&waitable&&refreshReasons?unique(pending):[],id:await hash({ref,receipts}),reasons:unique(reasons),receipt_ids:unique(receipts.map(r=>r.job_id)),receipt_hash:await hash(receipts)});
   }return out;
 }
 function terminalJob(j) {return j.state==='ready'&&j.coverage==='complete'&&parse(j.checkpoint).finished===true&&validInt(j.last_complete_at);}
@@ -176,5 +195,6 @@ export async function loadTeamGameCandidates(db,{teamId,seasonId,canonicalEventI
   const connectionSnapshot={teamId,seasonId,revision:connectionRevision,connections:scope.connections,aliases:scope.aliases};
   const sourceSnapshot={teamId,seasonId,revision:sourceRevision,connection_revision:connectionRevision,complete:!overflow&&!reasons.length,overflow,windows:windows.map(w=>({from:iso(w.from),to:iso(w.to)})),coverage,events};
   const fence={teamId,seasonId,context:scope.context,scope:scope.raw,source_rows:rows.map(r=>({id:r.id,content_hash:r.content_hash,canonical_id:r.canonical_id,native_event_id:r.native_event_id,canonical_revision:r.canonical_revision})),jobs:initialControl.jobs,coverage:initialControl.coverage,subscribers:initialControl.subscribers,accepted_associations_hash:await hash(acceptedAssociations)};
-  return {connectionSnapshot,sourceSnapshot,canonicalGroups,rawRows:rows,requested_event_ids:requested,complete:sourceSnapshot.complete,overflow,reasons:unique(reasons),fence,fence_hash:await hash(fence),metrics:{rows:rows.length,bytes:bytes(rows),iterations}};
+  const semanticScope=s=>({...s,context:Object.fromEntries(Object.entries(s.context).filter(([k])=>!['source_revision','mutation_revision'].includes(k)))});
+  return {connectionSnapshot,sourceSnapshot,canonicalGroups,rawRows:rows,requested_event_ids:requested,complete:sourceSnapshot.complete,overflow,reasons:unique(reasons),fence,fence_hash:await hash(fence),acquisitionControl:control,acquisitionScopeChanged:JSON.stringify(semanticScope(scope))!==JSON.stringify(semanticScope(after)),acquisitionClocksChanged:scope.context.source_revision!==after.context.source_revision||scope.context.mutation_revision!==after.context.mutation_revision,metrics:{rows:rows.length,bytes:bytes(rows),iterations}};
 }

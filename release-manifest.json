@@ -1,6 +1,6 @@
 {
   "service": "myTS",
-  "version": "7.2.14",
+  "version": "7.2.15",
   "review": true,
   "files": [
     {
@@ -177,6 +177,16 @@
       "path": "docs/progressive-root-service-proof.md",
       "bytes": 4618,
       "sha256": "a0b8494acdf79ead5f2fff0d802f42d401de122a51a068c56f7c6721219489e0"
+    },
+    {
+      "path": "docs/projection-control-lifetime-native-map.json",
+      "bytes": 81055,
+      "sha256": "f11a88e0478bddde14e28b534160ebdef1d8b6c078ed35b0d893c1b938df4290"
+    },
+    {
+      "path": "docs/projection-control-lifetime.md",
+      "bytes": 13194,
+      "sha256": "25e35e01f2544b3cbcc2c40328fe65e2139015a9c916d94d09cc577d9b3dcadc"
     },
     {
       "path": "docs/projection-control-native-map.json",
@@ -361,12 +371,12 @@
     {
       "path": "package-lock.json",
       "bytes": 49487,
-      "sha256": "809a049745de0f3ae16955503bd8d2bb232bc269120b58b0db3ed9ef53a36ea9"
+      "sha256": "c86d255342ef48673b2dbaf17ca1d56ee301220d602897f29b859f78e4b74051"
     },
     {
       "path": "package.json",
       "bytes": 636,
-      "sha256": "f4d96e88783e7db42eb81331a9c6e279bd0fe26e88b2b7be8cc0d2a5a2227d90"
+      "sha256": "41fa0c1ea7fc414d0709cd34dd589cfb9940052c81a2710447107e44e02450a2"
     },
     {
       "path": "scripts/release-check.mjs",
@@ -585,8 +595,8 @@
     },
     {
       "path": "src/application/sync-service.js",
-      "bytes": 48981,
-      "sha256": "1ad3c89317891e5aeb91c6a3a293d56a558eb6eb8c57bc44d359fd6b421aeebc"
+      "bytes": 49070,
+      "sha256": "023c25f0f7da0dbede05ed034387fbd528953a8b4baba8c5c0ccb4ed8abb2ba7"
     },
     {
       "path": "src/application/team-catalog.js",
@@ -636,7 +646,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 31,
-      "sha256": "ac8d770f60bf9164e659f416c1bd4c382a18178c9b25a3b41e85a950da89a74d"
+      "sha256": "99b70b8c460e5c957171e026efc1aded9f99403b231bd81d0df835a0e0966971"
     },
     {
       "path": "src/coaching/routes.js",
@@ -730,8 +740,8 @@
     },
     {
       "path": "src/domain/projector.js",
-      "bytes": 28484,
-      "sha256": "b1b0d1a32aad5471af15a09dece2588555e66b1f4e0b8c4c7615185c89f07840"
+      "bytes": 29199,
+      "sha256": "aefa2f1fbd3c23ce28784fe9601182e7aa4f41b2f48f9a0460b2d267f6dc990f"
     },
     {
       "path": "src/domain/repository.js",
@@ -755,8 +765,8 @@
     },
     {
       "path": "src/domain/team-game-candidates.js",
-      "bytes": 31029,
-      "sha256": "4962f96d3059d8bd1d03d619fdcdfd1a3c94ed523fabeab9f450ffb542157f03"
+      "bytes": 33565,
+      "sha256": "1d5e2c4a2874bdc46e84030f4abe83a0398bca96a9cadfba8fd4d8f4097baca3"
     },
     {
       "path": "src/domain/team-game-command-fence.js",
@@ -765,8 +775,8 @@
     },
     {
       "path": "src/domain/team-game-control-witness.js",
-      "bytes": 13750,
-      "sha256": "de57a4feaa5ed7cfb9132c1e3952cc4e46025ca76d6721c2b58dd0719809a33b"
+      "bytes": 15990,
+      "sha256": "0232881a694937e205a2391f965cd7e9a0e0400e006b448ab213bd2bbadaa68d"
     },
     {
       "path": "src/domain/team-game-projection-batch.js",
@@ -780,8 +790,8 @@
     },
     {
       "path": "src/domain/team-game-projection.js",
-      "bytes": 61339,
-      "sha256": "15a5703ecd58cd8aa67bec74aea7f47a6835d5c62520f51088fbf8fd9b9899dd"
+      "bytes": 66128,
+      "sha256": "56d2c289531d448dd29a04071b5704bd325e4c7aceb8999cff76e6bccb9a175f"
     },
     {
       "path": "src/domain/team-game-resolver.js",
@@ -1045,8 +1055,8 @@
     },
     {
       "path": "src/sync/coordinator.js",
-      "bytes": 73495,
-      "sha256": "5a6acc3279089f386d5d414feeca53a7de687b4a265bfb5be5238a4e24ef1daa"
+      "bytes": 73852,
+      "sha256": "8ebc20d1b250e3be758b53f6569f810c0a65b91488b27077100bc34c4e9bbd27"
     },
     {
       "path": "src/sync/errors.js",

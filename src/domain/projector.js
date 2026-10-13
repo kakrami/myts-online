@@ -147,21 +147,24 @@ export async function buildProjectionPage(repo,teamId,seasonId,checkpoint={},opt
     const page=connectionManaged?(await repo.db.prepare(`${roots} SELECT DISTINCT c.canonical_id AS id FROM source_events e JOIN event_source_links l ON l.source_event_id=e.id JOIN canonical_event_ids c ON c.input_id=l.event_id JOIN team_event_season_resolutions resolution ON resolution.event_id=c.canonical_id AND resolution.app_team_id=? AND resolution.team_season_id=? WHERE ${SELECTED} AND c.canonical_id>? UNION ${retained} ORDER BY id LIMIT ${cp.gamePageSize??pageSize}`).bind(teamId,seasonId,teamId,seasonId,cp.cursor||'',teamId,seasonId,cp.cursor||'').all()).results:(await repo.db.prepare(`${roots} SELECT DISTINCT l.event_id AS id FROM source_events e JOIN event_source_links l ON l.source_event_id=e.id WHERE ${SELECTED} AND (${nativeWindow} OR EXISTS(SELECT 1 FROM domain_overrides o WHERE o.app_team_id=? AND o.kind='event' AND o.entity_id=l.event_id)) AND l.event_id>? UNION ${retained} ORDER BY id LIMIT ${cp.gamePageSize??pageSize}`).bind(teamId,seasonId,...seasonWindow(season),teamId,cp.cursor||'',teamId,seasonId,cp.cursor||'').all()).results;
 
     if(!page.length){cp={...cp,phase:'players',cursor:''};return response(false,{recoveryRequired:false});}
-    const frame=await teamGameBuildFrame(repo.db,teamId,seasonId,cp.runId,batch),frameIdentity=await teamGameFrameIdentity(frame);
+    let frame=await teamGameBuildFrame(repo.db,teamId,seasonId,cp.runId,batch);const frameIdentity=await teamGameFrameIdentity(frame);
     if(frame.saved_valid!==1||cp.gameFrame&&cp.gameFrame!==frameIdentity) {
       add("UPDATE team_projection_runs SET state='obsolete' WHERE id=? AND $FENCE",cp.runId);
       cp={};return response(false,{recoveryRequired:false});
     }
-    cp={...cp,gameFrame:frameIdentity};teamGameFrameAssertion(add,teamId,seasonId,frame);
+    cp={...cp,gameFrame:frameIdentity};
     // The requested native page bounds output only. The adapter loads every
     // reciprocal neighbor before deciding, even beyond this cursor/page.
     let selected=page,prepared;
-    try{prepared=await prepareTeamGameProjection(repo.db,{team,season,runId:cp.runId,ids:selected.map(e=>e.id),batch,holdMoves:cp.holdMoves,frame});}
+    try{prepared=await prepareTeamGameProjection(repo.db,{team,season,runId:cp.runId,ids:selected.map(e=>e.id),batch,holdMoves:cp.holdMoves,frame,acceptedControls:cp.acceptedControls});}
     catch(error){if(error.code==='team_game_projection_changed'){add("UPDATE team_projection_runs SET state='obsolete' WHERE id=? AND $FENCE",cp.runId);cp={};return response(false,{recoveryRequired:false});}if(error.code!=='team_game_native_bound'||selected.length===1)throw error;prepared={smallerPage:true};}
+    if(prepared.refreshFrame){frame=await teamGameBuildFrame(repo.db,teamId,seasonId,cp.runId,batch);if(frame.saved_valid!==1||cp.gameFrame!==await teamGameFrameIdentity(frame)){add("UPDATE team_projection_runs SET state='obsolete' WHERE id=? AND $FENCE",cp.runId);cp={};return response(false,{recoveryRequired:false});}prepared.controlSnapshot=frame.controlSnapshot;}
+    teamGameFrameAssertion(add,teamId,seasonId,frame);
+    if(prepared.deferred){addTeamGamePublicationAssertions(add,teamId,cp.runId,batch,prepared.controlSnapshot??frame.controlSnapshot);return response(false,{recoveryRequired:false,projectionDeferred:'source_evidence'});}
     if(prepared.smallerPage){cp={...cp,gamePageSize:Math.max(1,Math.floor(selected.length/2))};return response(false,{recoveryRequired:false});}
     if(prepared.moves.length){cp={...cp,phase:'move_prepare',move:{...prepared.moves.sort((a,b)=>a.association_id.localeCompare(b.association_id))[0],source_revision:frame.source_revision,mutation_revision:frame.mutation_revision}};return response(false,{recoveryRequired:false});}
     stageTeamGameProjection(add,prepared,teamId,cp.runId,batch);
-    cp={...cp,cursor:selected.at(-1).id,deferredMoves:cp.deferredMoves||prepared.deferredMoves};return response(false,{recoveryRequired:false,deferredMoves:cp.deferredMoves});
+    cp={...cp,cursor:selected.at(-1).id,deferredMoves:cp.deferredMoves||prepared.deferredMoves,...(prepared.acceptedControls?{acceptedControls:prepared.acceptedControls}:{})};return response(false,{recoveryRequired:false,deferredMoves:cp.deferredMoves});
   }
 
   if(cp.phase==='publish') {

@@ -92,7 +92,7 @@ export async function collectApplicationJob({db,env,lease,args,checkpoint}, opti
       publishedSeasons.every(id=>typeof id==='string'&&id.length>0&&id.length<=240),'Invalid published season boundary.');
     const children=(projection.affectedTeams||[]).slice(0,Math.min(127,128-publishedSeasons.length)).map(affected=>projectionSpec(affected.app_team_id,affected.team_season_id));
     for(const seasonId of publishedSeasons)children.push(analysisCatalogSpec(args.teamId,seasonId,args.requestId));
-    return {statements:projection.statements,checkpoint:projection.checkpoint,children,complete:projection.complete,recoveryRequired:projection.recoveryRequired,coverage:projection.complete?'complete':'partial',publishContent:false,rowsSaved:projection.rowsSaved||0};
+    return {statements:projection.statements,checkpoint:projection.checkpoint,children,complete:projection.complete,recoveryRequired:projection.recoveryRequired,coverage:projection.complete?'complete':'partial',publishContent:false,rowsSaved:projection.rowsSaved||0,...(projection.projectionDeferred?{projectionDeferred:projection.projectionDeferred}:{})};
   }
   const transport = options.transportFactory ? options.transportFactory(env) : new SourceTransport(env);
   try {
