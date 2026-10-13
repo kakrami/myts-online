@@ -12,6 +12,9 @@ import {ApplicationSyncService,collectApplicationJob} from '../src/application/s
 import {BudgetDB} from '../src/sync/budget.js';
 import {SyncError} from '../src/sync/errors.js';
 import {ANALYSIS_SCHEMA} from '../src/analysis/schema.js';
+import {REPORT_SCHEMA} from '../src/reporting/schema.js';
+import {COACH_SCHEMA} from '../src/coaching/schema.js';
+import {TEAM_FEATURE_SCHEMA} from '../src/application/team-features.js';
 import {NativeTrackService} from '../src/analysis/tracks.js';
 
 const collection=rows=>({collection:{items:rows.map(row=>({data:Object.entries(row).map(([name,value])=>({name,value}))})),links:[]}});
@@ -66,7 +69,7 @@ async function applicationFixture() {
     }
     return new MfResponse(JSON.stringify(value),{status:200,headers:{'Content-Type':'application/json'}});
   }}},exports:{SyncRuntime:{type:'durable-object',storage:'sqlite'}}}}]});
-  try{await mf.ready;const db=await mf.getD1Database('DB','application-test');await initializeDomain(db);await installSecuritySchema(db);await installSyncSchema(db);await db.batch(ANALYSIS_SCHEMA.map(sql=>db.prepare(sql)));
+  try{await mf.ready;const db=await mf.getD1Database('DB','application-test');await initializeDomain(db);await installSecuritySchema(db);await installSyncSchema(db);await db.batch([...ANALYSIS_SCHEMA,...REPORT_SCHEMA,...COACH_SCHEMA,...TEAM_FEATURE_SCHEMA].map(sql=>db.prepare(sql)));
   const repo=new DomainRepository(db),security=new SecurityStore(db,{bootstrapPassword:'isolated-native-test-password'});await security.initializeOwner('isolated-native-test-password');
   const account=await repo.registerAccount({provider:'teamsnap',nativeId:'99',name:'Native fixture account'});await security.storeAccountCredential(account.id,'synthetic-teamsnap-token',{generation:account.generation});
   async function action(path,body) {const response=await mf.dispatchFetch('http://localhost'+path,{method:'POST',body:JSON.stringify(body)});const result=await response.json();assert.equal(response.status,200,JSON.stringify(result));return result;}
@@ -201,6 +204,11 @@ test('owner track refresh queues only the selected attached private match and ac
     const children=await tracks.sourceChildren({...context,member});
     assert.equal(children.length,5);assert.equal(new Set(children.map(c=>c.resourceKey)).size,5,'five distinct native resources');assert.equal(children.filter(c=>c.component==='tracking').length,2);assert.equal(children.filter(c=>c.component==='analytics').length,3);
     assert.ok(children.every(c=>c.args.analysis_source_proof?.source_event_id===context.source.id&&c.args.analysis_source_proof?.member_id===member.id));
+    assert.equal(context.game.pending,true,'new native observations await publication');
+    const pendingService=new ApplicationSyncService(h.db,{}, {wake:async()=>{}});
+    await assert.rejects(()=>pendingService.enqueueTrackSource({teamId:team.id,seasonId:team.season_id,eventId:event.event_id,sourceChildren:children}),/expected_input=actual_input/);
+    assert.equal((await h.db.prepare('SELECT COUNT(*) n FROM sync_jobs').first()).n,0,'pending publication cannot grant private job demand');
+    await h.repo.projectTeam(team.id,team.season_id);
     // Preserve this test's admission-only budget boundary: source ingestion and
     // child generation are setup; reserve20 accounts for preceding route work.
     const db=new BudgetDB(h.db,48);db.reserve(20);const service=new ApplicationSyncService(db,{}, {wake:async()=>{}});
@@ -260,5 +268,13 @@ test('more than 128 shared seasons finish all bounded projection pages through n
     assert.deepEqual(await h.db.prepare("SELECT count(*) total,min(pages_saved) minimum_pages,max(pages_saved) maximum_pages,sum(pages_saved) pages,sum(failures) failures FROM sync_jobs WHERE provider='domain' AND component='projection'").first(),{total:131,minimum_pages:6,maximum_pages:6,pages:786,failures:0},'fan-out remains exactly six bounded pages per season, without rescans or retries');
     assert.equal((await h.db.prepare('SELECT COUNT(*) count FROM app_teams').first()).count,131,'automatic local recovery never adds app teams');
     console.log(JSON.stringify({large_projection_fanout:'PASS',affected_seasons:131,inline_projection_children:126,native_scheduled_events:0,native_alarms:budget.count,max_native_statements:budget.max,alarm_projection_admissions:budget.projection_admissions,browser_open:false,manual_runner_requests:0}));
+  }finally{await h.dispose();}
+});
+
+test('application fixture installs every table required by configured scheduler preferences',async()=>{
+  const h=await applicationFixture();try{
+    // Empty queue still compiles the actual configured Reports/dependency SQL.
+    const jobs=new JobCoordinator(h.db,{publicHistory:true,reportTurn:true,ordinaryTurn:4,dependencyFairness:true});
+    assert.equal(await jobs.claim(),null);
   }finally{await h.dispose();}
 });

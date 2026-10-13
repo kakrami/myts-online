@@ -12,7 +12,7 @@ import {fixture,AT,INPUT,HOME} from './fixtures/head-to-head-harness.mjs';
 let loadedModules;
 async function harness(){
  const root=path.resolve(process.env.MYTS_TEST_PACKAGE_ROOT||'.'),modules={},prior=getGlobalDispatcher(),agent=new Agent({pipelining:0});setGlobalDispatcher(agent);
- if(!loadedModules){loadedModules={};for(const file of(await readdir(path.join(root,'src'),{recursive:true})).filter(file=>file.endsWith('.js')))loadedModules['src/'+file]={type:'esm',contents:await readFile(path.join(root,'src',file),'utf8')};loadedModules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};loadedModules['web/app/schedule-query.js','web/app/reporting/encoders.js','web/app/reporting/font-metrics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/schedule-query.js'),'utf8')};console.log(JSON.stringify({native_public_history_source:createHash('sha256').update(Object.keys(loadedModules).sort().map(name=>name+'\0'+loadedModules[name].contents).join('\0')).digest('hex')}));}Object.assign(modules,loadedModules);
+ if(!loadedModules){loadedModules={};for(const file of(await readdir(path.join(root,'src'),{recursive:true})).filter(file=>file.endsWith('.js')))loadedModules['src/'+file]={type:'esm',contents:await readFile(path.join(root,'src',file),'utf8')};loadedModules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};for(const name of ['web/app/schedule-query.js','web/app/reporting/encoders.js','web/app/reporting/font-metrics.js'])loadedModules[name]={type:'esm',contents:await readFile(path.join(root,name),'utf8')};console.log(JSON.stringify({native_public_history_source:createHash('sha256').update(Object.keys(loadedModules).sort().map(name=>name+'\0'+loadedModules[name].contents).join('\0')).digest('hex')}));}Object.assign(modules,loadedModules);
  modules['public-history-proof.js']={type:'esm',contents:`
   import {FreshInstallation} from './src/application/fresh-install.js';
   import {SCHEMA,SEED} from './src/application/installation-schema.js';
@@ -55,8 +55,14 @@ test('native generic and typed public admission, claim and atomic child receipts
   await h.call({op:'enqueue',spec,subscribers});console.log('generic enqueue compiled');let lease=(await h.call({op:'claim'})).result;assert.equal(lease.provider,'analysis');assert.equal((await h.call({op:'commit',lease,result:{statements:[],complete:true}})).result.committed,true);
   const request=(await h.call({op:'request'})).result;assert.equal(request.progress.total,4);
   lease=(await h.call({op:'claim'})).result;assert.equal(lease.provider,'gotsport');
-  const result={statements:[],complete:true,children:[{provider:'gotsport',component:'event',scope:'fixture-event',resourceKey:'fixture-event',args:{event_id:'fixture-event'},subscriberMode:'inherit',recurring:false},{provider:'domain',component:'projection',stage:'projection',scope:'team',resourceKey:'season',args:{},subscriberMode:'projection',subscribers:[{kind:'team',key:'projection-fixture',teamId:'team',generation:1}]}]};
+  const result={statements:[],complete:true,children:[{provider:'gotsport',component:'event',scope:'fixture-event',resourceKey:'fixture-event',args:{event_id:'fixture-event'},subscriberMode:'inherit',recurring:false},{provider:'domain',component:'projection',stage:'projection',scope:'team',resourceKey:'season',args:{},recurring:false,subscriberMode:'projection',subscribers:[{kind:'team',key:'projection-fixture',teamId:'team',generation:1}]}]};
+  await h.sql('UPDATE team_projection_state SET pending=1');
+  await assert.rejects(h.call({op:'commit',lease,result,spend:40}),error=>error.code==='invocation_budget'&&error.used===40);
+  assert.equal((await h.sql("SELECT COUNT(*) n FROM sync_jobs WHERE provider='domain'"))[0].n,0,'budget rejection cannot partially admit local projections');
+  assert.equal((await h.sql('SELECT COUNT(*) n FROM public_history_jobs'))[0].n,4);
   assert.equal((await h.call({op:'commit',lease,result})).result.committed,true);
+  assert.equal((await h.sql("SELECT COUNT(*) n FROM sync_jobs WHERE provider='domain' AND component='projection'"))[0].n,1);
+  assert.equal((await h.sql("SELECT COUNT(*) n FROM public_history_jobs WHERE provider='domain'"))[0].n,0,'local projections do not consume public receipt authority');
   assert.equal((await h.sql('SELECT COUNT(*) n FROM public_history_jobs'))[0].n,5);
   for(let i=0;i<5;i++){lease=(await h.call({op:'claim'})).result;if(!lease)break;assert.equal((await h.call({op:'commit',lease,result:{statements:[],complete:true}})).result.committed,true);}
   assert.equal((await h.call({op:'status'})).result.state,'complete');assert.equal((await h.call({op:'next'})).result,null);assert.ok(Math.max(...h.used)<=48);console.log(JSON.stringify({native_public_history_depth:true,maxStatements:Math.max(...h.used)}));

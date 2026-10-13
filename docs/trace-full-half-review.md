@@ -68,11 +68,12 @@ Validation commands/results:
   `table team_projection_runs has 7 columns but 6 values were supplied`; three are
   workflow timeouts. Direct failing analysis-catalog and typed-source-projection
   cases also fail on unchanged baseline9175ec5 with the identical SQL error.
-  The remaining failures are unresolved, not claimed to be caused or fixed here.
+  This records the earlier review result. All six are now resolved and individually
+  classified in [acceptance-suite-repair.md](acceptance-suite-repair.md).
 
 ## Required before production acceptance
 
-Review/triage the six broader-suite failures and authorize an exact release separately.
+The six broader-suite failures are resolved locally; authorize an exact release separately.
 No schema import, reset, credential change, cron change, denied retry or deployment
 is part of this review. Preserve current configuration, namespace and data.
 

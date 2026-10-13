@@ -431,7 +431,7 @@ export class DomainRepository {
     if(correspondence.reviews.length)add("UPDATE source_event_correspondences SET status='review',proof=(SELECT json_extract(value,'$.proof') FROM json_each(?) WHERE json_extract(value,'$.a')=source_event_correspondences.a) WHERE a IN(SELECT json_extract(value,'$.a') FROM json_each(?)) AND $FENCE",JSON.stringify(correspondence.reviews),JSON.stringify(correspondence.reviews));
     if (digest!==previous.projection_hash) {
       const runId=id();
-      add("INSERT INTO team_projection_runs SELECT ?,?,?,?,'published',? WHERE $FENCE",runId,teamId,seasonId,previous.input_revision,stamp());
+      add("INSERT INTO team_projection_runs(id,app_team_id,team_season_id,input_revision,state,created_at) SELECT ?,?,?,?,'published',? WHERE $FENCE",runId,teamId,seasonId,previous.input_revision,stamp());
       for (const [table,list] of [["team_player_rows",roster],["team_event_rows",fixtures]]) if(list.length) {
         const data=list.map(r=>({run_id:runId,...r})),columns=Object.keys(data[0]);
         add(`INSERT INTO ${table}(${columns.join(",")}) SELECT ${columns.map((c)=>`json_extract(value,'$.${c}')`).join(",")} FROM json_each(?) WHERE $FENCE`,JSON.stringify(data));
