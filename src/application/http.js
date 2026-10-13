@@ -1,0 +1,4 @@
+export function json(value,status=200,headers={}){return new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});}
+export function errorResponse(error){const status=Number.isInteger(error?.status)&&error.status>=400&&error.status<=599?error.status:500;return json({error:{code:status===500?'internal_error':error.code??'request_failed',message:status===500?'The request could not be completed. Try again.':error.message??'The request failed.',...(status===409&&error.code==='club_choice_required'?{details:error.details}:{})}},status);}
+export function input(url){return Object.fromEntries(url.searchParams);}
+export function actor(principal){return principal.role==='owner'?{owner:true}:{owner:false,teamId:principal.team_id,categories:principal.categories};}

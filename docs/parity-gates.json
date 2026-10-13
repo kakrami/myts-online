@@ -1,0 +1,629 @@
+[
+  {
+    "id": 1,
+    "gate": "Shell and navigation",
+    "original_evidence": "6.20.133 APP_HTML: navigation shell; initializeUiHistory:2456, openEntity:2461, navigateView:2471, bindCommon:2475. Original views are Overview, Schedule, Competitions, Team and Bookmarks; reports are reached through Settings.",
+    "rebuild_evidence": "web/ui-original/shell.js; web/ui-original/interactions.js; web/app/main.js. Original primary CSS block (114,632 characters) is present verbatim inside original.css, but reconstructed markup and controllers are not identical.",
+    "review_status": "Code present; visual and interaction parity not accepted merely by copied CSS.",
+    "acceptance_checks": [
+      "Compare original and rebuilt populated desktop and 320/390px layouts side by side, including all themes, navigation placement, density and sheets.",
+      "Traverse all five sections, open nested details, dismiss, Back/Forward, restore origin and scroll; confirm keyboard and focus behavior."
+    ],
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T20:10:00Z",
+      "status": "DOM components and current navigation flows pass; final visual/device traversal pending.",
+      "evidence_boundary": "Final frozen653/653 deterministic/DOM/SQLite aggregate, zero skips; physical touch, orientation, lock/reopen and deployed visual traversal remain unverified.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 2,
+    "gate": "Team contexts",
+    "original_evidence": "groupTeams:597, selectTeamContext:623, teamForYear:649 and setSelectors:957; original user explicitly requested preserving the established frontend. Astra final clarifies native source identity and verified continuity, rather than unsafe original name-family grouping.",
+    "rebuild_evidence": "application/connections.js, domain/repository.js, application/team-catalog.js, web/app/connection-flow.js. Deployed 7.1.4 created one season at team creation; only ensureSeason definition existed, with no runtime caller. New connection roots/materializer are work in progress.",
+    "review_status": "Confirmed deployed lifecycle gap; repair in progress. Original name-based merging is not a security/identity requirement.",
+    "acceptance_checks": [
+      "Ordinary Add team \u2192 provider \u2192 sign-in/search \u2192 select team creates/reuses one logical team without season prompt or preseeded seasons.",
+      "Additional-provider Manage attaches to current logical team. Same-name unrelated teams remain separate; exact native identity can reuse only an unambiguous destination.",
+      "A source spanning several seasons yields selectable seasons; an unknown source can remain a real zero-season team with usable status and Settings."
+    ],
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T21:22:00Z",
+      "status": "Automatic logical-team/zero-season and observed-history lifecycle are locally verified; real deployed flow remains pending.",
+      "evidence_boundary": "Core 14/14 native cases; final independent lifecycle 6/6 including 101 memberships, scope changes, unlink and historical roster; unchanged 131-season/786-page retry 1/1.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 3,
+    "gate": "Owner setup and TeamSnap sign-in",
+    "original_evidence": "showLogin:2925, beginOAuth and one-time TeamSnap Client ID; original chat corrected the proposal to move Client ID into deployment configuration.",
+    "rebuild_evidence": "application/fresh-install.js, security, application/auth-routes.js, web/app/main.js. One-time Client ID/auth recovery code exists; final live account flow not established by synthetic tests.",
+    "review_status": "Code present; real TeamSnap OAuth and empty-install traversal remain live acceptance gates.",
+    "acceptance_checks": [
+      "Use empty database and ordinary UI only: owner setup, required Client ID once, OAuth, selection, cancel, retry and expired session.",
+      "Returning owner login must not require reentering Client ID; credentials remain protected and URLs cannot select a different team accidentally."
+    ],
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T21:22:00Z",
+      "status": "Owner initialization, login and vault/session rotation pass native tests; actual private-provider consent and deployed owner traversal remain separate.",
+      "evidence_boundary": "Frozen native: 12 auth, 9 owner/vault/rotation and 4 verifier cases; repaired assembled 731-statement initialization and exact-schema foreign rejection pass.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 4,
+    "gate": "Account and source management",
+    "original_evidence": "sourceState:976, sourceHelp:1001, renderSourceDetails:1016, openSourceDetails:1024, renderAccountBody:2812, openAccount:2814; compact provider rows with Manage.",
+    "rebuild_evidence": "web/app/features.js and main.js; application/routes.js, sync-service.js and team-lifecycle.js. New root lifecycle and pending UI are being integrated.",
+    "review_status": "Basic flow present; root-wide versus one-season unlink is a new explicit acceptance dependency.",
+    "acceptance_checks": [
+      "Compare familiar named provider Manage sheets and statuses; distinguish account sign-in, team connection, seasonal exclusion, root unlink, account disconnect and team removal.",
+      "Cancel or lose the connection response and retry without duplicate/orphan teams; reconnect must preserve fixed scope and existing data.",
+      "Remove one source while another continues; stale in-flight work cannot recreate removed demand.",
+      "Open Settings before any jobs and after mixed source/projection/analysis work; all three real providers remain available and internal jobs never get provider sign-in actions. Cycle theme while Settings is open and verify every original control remains."
+    ],
+    "consultation_reconciliation": "Independently confirmed additional gaps: feature bridge settings() maps model.providers (job providers) into Manage rows, so unavailable providers can disappear and Analysis/Projection/Live may get inappropriate Manage actions. main.js theme-cycle calls reduced settings() rather than feature settings, dropping the complete sheet controls.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T21:22:00Z",
+      "status": "Named connection/account reuse, fixed scope and root unlink are implemented and locally verified.",
+      "evidence_boundary": "Final native scope/history 4/4; first-useful/all-101 scale 2/2; durable-command/Manage DOM and original Trace file entry receipts.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 5,
+    "gate": "TeamSnap and attendance",
+    "original_evidence": "Active/archived team selection; eventAvailability, availabilityStatus, playerAvailability:658. Original recordForItems:659 and resultForItem:940 consumed reported scores.",
+    "rebuild_evidence": "sources/teamsnap.js, domain/auxiliary.js, analysis/reads.js. Current TeamSnap collector deliberately emits unknown past result/status and retains reported scores as evidence, rather than asserting a result; this is a behavior difference requiring source-backed validation.",
+    "review_status": "Attendance code present; active/archived real collection unverified. Score semantics differ and should not be blindly reverted.",
+    "acceptance_checks": [
+      "Connect current and archived native teams to one intended logical team; verify full events, roster and historical scope.",
+      "Yes, No, Maybe, NR, missing and conflicting attendance retain distinct meaning in event/player/report views, including practices.",
+      "Compare real completed TeamSnap score/status evidence with displayed season record; establish accepted authority and visible uncertainty."
+    ],
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Attendance NULL-tracking and original practice/past scheduled scope repaired.",
+      "evidence_boundary": "Independent8/8 SQL; final native/live private-provider coverage pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 6,
+    "gate": "GotSport connect and discovery",
+    "original_evidence": "connectGotSport/disconnectGotSport, openTeamSearch:1796, openBrowsedTeam:1877; public ID or public page accepted, named search/follow selection.",
+    "rebuild_evidence": "sources/discovery.js, sources/gotsport.js; web/app/main.js and features.js; application/routes.js.",
+    "review_status": "Code present; final-build real discovery and recovery unverified.",
+    "acceptance_checks": [
+      "Paste supported public team link or use search; choose named result and correct destination with no unexplained ID requirement.",
+      "Invalid/ambiguous input has a usable correction; following another team does not import it into the owner\u2019s team.",
+      "Verify source names, links and native identity with the actual public pages."
+    ],
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Single name/link input and truthful narrowing are implemented; ordinary native flow covered.",
+      "evidence_boundary": "No silent NV/Boys/U10; live final-build source acceptance pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 7,
+    "gate": "GotSport Live identity and competitions",
+    "original_evidence": "6.20.133 release specifically completed Live competitions and bounded snapshot storage; original rebuild contract requires exact external identity, memberships and complete published contexts.",
+    "rebuild_evidence": "sources/gotsport.js, domain/identity.js, read-model/feature-reads.js; new collection admission must precede seasonal attachment but still respect required provider-native season keys.",
+    "review_status": "Code present; collection-key/pending distinction and real current coverage unverified.",
+    "acceptance_checks": [
+      "Resolve Live only by verified native/external identity. Account or catalog discovery must not connect unrelated teams.",
+      "Discover memberships before games publish, complete categories/standings, metadata and official links; show partial coverage accurately.",
+      "Missing native season key remains a visible collection prerequisite, never a guessed current-year key."
+    ],
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T21:22:00Z",
+      "status": "Exact public identity/season lineage and complete GotSport/Live imports are locally verified; real provider coverage remains a live gate.",
+      "evidence_boundary": "Public-history native 5/5; exact participant/freshness negatives; complete deployment public import and assembled shared workflow pass under unchanged native budgets.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 8,
+    "gate": "Trace sign-in and team selection",
+    "original_evidence": "openTraceConnect:2849, renderTraceCandidates:2850, traceEmailForm/traceAction; reuse authenticated account, code if needed, select candidate, reconnect and Check for updates.",
+    "rebuild_evidence": "sources/trace.js, security, application/auth-routes.js, web/app/main.js. Candidate selection is integrated with ongoing command/zero-season repair.",
+    "review_status": "Ordinary flow represented; real code delivery, entitlements and full multi-year retrieval unverified.",
+    "acceptance_checks": [
+      "Real existing-account reuse and email-code flow; invalid/expired code, no eligible teams, cancellation and retry.",
+      "Select a persistent multi-year Trace identity and connect additional provider to the same logical team without duplicate contexts.",
+      "Reconnect resumes saved checkpoints; account discovery alone cannot attach every candidate."
+    ],
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Stored Trace authorization reuse and email/code recovery retained.",
+      "evidence_boundary": "Synthetic auth/controller coverage; live entitlement and current provider session pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 9,
+    "gate": "Overview",
+    "original_evidence": "renderOverview:1386, recordForItems:659, overviewStandingHtml:1330, topPlayers. Original standing card opens its competition standings.",
+    "rebuild_evidence": "web/ui-original/screens.js:12\u201320; read-model/repository.js and feature-reads.js. Record, latest result, next event and leaders exist. Current standing card only prints competition name/position/points/played, with no competition action.",
+    "review_status": "Confirmed missing standing navigation; full totals and visual placement need parity proof.",
+    "acceptance_checks": [
+      "Use >100 completed games and independently compute record, goals, latest result and leaders for the exact inclusion set.",
+      "Open standing directly to the original competition/Standings context; all-results/full-schedule/leader links retain scope.",
+      "Unknown scores or statistics stay distinguishable from zero.",
+      "From Day mode, use every Overview schedule shortcut; verify correct season-wide scope and visible filter, plus standing/bracket navigation."
+    ],
+    "consultation_reconciliation": "Independently confirmed: main.js nav action applies filter/period but does not set schedule mode. Overview Full schedule, All results and Analyzed shortcuts can retain Day mode and silently show only one date.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Original shortcuts and shared totals/leaders integration implemented.",
+      "evidence_boundary": "UI/component receipts; final native full-match publication and live expected totals pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 10,
+    "gate": "Seasons and included games",
+    "original_evidence": "openSeasonFilter:687, seasonStatItems:680, setSelectors:957. Direct user: regular season July\u2013May, June preseason; inclusion switch includes June.",
+    "rebuild_evidence": "application/inclusion.js and team-features.js; read-model/inclusion.js; new connection-materializer.js. 7.1.4 lacked reachable automatic new seasons and helpers defaulted include_june=1; new materializer currently inserts 0.",
+    "review_status": "Confirmed deployed gap and default mismatch; active repair requires complete lifecycle tests.",
+    "acceptance_checks": [
+      "Preserve saved June choices; default a newly evidenced season to July\u2013May statistics while displaying June as preseason in its June\u2013May container.",
+      "Toggle June, competition/category and individual game; all overview/player/roster/report calculations share saved inclusion.",
+      "Import historical/future dates, timezone May31/June1 boundaries and owner date corrections; do not invent dates or copy undated events to every season.",
+      "Reset inclusion and verify June returns excluded, ordinary competition/game inheritance is restored, and cancelling Reset preserves the current draft."
+    ],
+    "consultation_reconciliation": "Independently confirmed Reset regression: application/inclusion.js:82 sets include_june=1 and returns true; features.js Reset copy explicitly says include June. Original Reset excludes June. New-season default repair alone does not fix Reset.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T21:22:00Z",
+      "status": "Observed history and timezone-sensitive season materialization are locally verified; live source coverage remains pending.",
+      "evidence_boundary": "Core 14/14 native cases; final 101 memberships across two seasons and independent scope/correction/roster proofs, 6/6. July-May totals and June opt-in remain distinct from June-May calendar containers.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 11,
+    "gate": "Schedule and filters",
+    "original_evidence": "schedule content:1643, bindScheduleSeasonButtons:1723, bindScheduleDates:1724, renderMatches:1734, openScheduleCalendar:1744; Day/Season, Today/calendar, All/Games/Practices/Analyzed and Past/Upcoming.",
+    "rebuild_evidence": "web/ui-original/screens.js:21\u201331, web/app/main.js; read-model/repository.js and feature-reads.js.",
+    "review_status": "Controls largely represented; exact touch, timezone, boundary and recovery behavior unverified.",
+    "acceptance_checks": [
+      "Compare original Day and Season controls and animations; traverse date strip/calendar, Today, adjacent month and available season boundaries.",
+      "Filters operate over complete selected data rather than current page; pending/no-season state has an honest empty/progress view.",
+      "Open row, Back to same date/filter/scroll; verified cross-provider duplicates display once.",
+      "Switch Season-filtered view to Day and ensure hidden filters cannot suppress events; calendar/date strip distinguishes games and practices. Cross June boundary through calendar and use adjacent-season controls without clamping to the previous season."
+    ],
+    "consultation_reconciliation": "Independently confirmed calendar contract mismatch: ReadRepository.calendar returns day,total only while dateStrip eventDots expects kinds for distinct game/practice dots. main.js schedule-mode changes only mode, retaining hidden type/period filters; source consultation additionally identifies season-crossing clamp and missing transitions, pending independent browser verification.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Original Day/Season filters, calendar kinds and season transitions restored.",
+      "evidence_boundary": "DOM navigation and SQL renderer receipts; physical gesture traversal pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 12,
+    "gate": "Match detail and logistics",
+    "original_evidence": "openMatch:2660; contributors:2679, playerRows:2680, goalRows:2681, Overview composition:2684. Original tabs depend on capabilities and include Overview/Coach/Players/H2H/Attendance.",
+    "rebuild_evidence": "web/ui-original/screens.js matchDetail/statsTable (about 62\u201374); web/app/detail-features.js. Main tabs/logistics exist. Original goals timeline and match leaders are absent; Players table lacks Start and Attacking% and replaces original richer identity/edited indicators. H2H has separate gaps below.",
+    "review_status": "Confirmed omitted content and changed Players table, not just unverified styling.",
+    "acceptance_checks": [
+      "Restore source-backed goal minute/scorer/assist/running-score and leader presentation where data exists, with explicit incomplete evidence.",
+      "Compare original Players columns, jersey/position/edited markers and sort/navigation behavior.",
+      "Verify score/status, uniform, arrival, venue, notes, source links and bookmark placement for connected/public games; conditional slots are not confirmed games.",
+      "Open Coach through its ordinary match tab and finish a real complete workflow; opening a conflicted schedule row must retain the conflict warning and source context in the detail sheet."
+    ],
+    "consultation_reconciliation": "Independently confirmed hard failure: detail-features.openDetail requests tab=coach before rendering; FeatureReads.match:232 only accepts overview/players/attendance/h2h. Thus the visible Coach tab is unreachable. Match header/rendering also omits row-level identity/result conflict banners.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Original leaders, goal timeline and Players columns restored.",
+      "evidence_boundary": "Current overview/H2H DOM; final HTTP full-query budget rerun pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 13,
+    "gate": "Unified match identity",
+    "original_evidence": "canonicalMatchItems, resolveMatchItem; original rebuild requires one coherent game when proof exists, while contradictions and doubleheaders remain distinct.",
+    "rebuild_evidence": "domain/identity.js, domain/repository.js, application/identity-routes.js; new team_event_season_resolutions and connection_event_resolutions.",
+    "review_status": "Identity model represented; new unique season membership adds merge/unmerge and stale-resolution review requirements.",
+    "acceptance_checks": [
+      "Proven TS/Trace/public counterpart, doubleheader, reschedule, timezone boundary and conflicting opponent/score.",
+      "Never merge by names/time alone; source corrections do not erase explicit owner decisions.",
+      "Canonical merge/unlink/relink and date reassignment leave one accepted effective date/season, no orphaned manual state or duplicate calendar game.",
+      "Open each conflicting row, navigate tabs and return; uncertainty survives throughout details, corrections and reporting."
+    ],
+    "consultation_reconciliation": "Independent renderer check: presentation.matchRow shows Possible duplicate/Conflicting results; screens.matchDetail/matchHeader do not show equivalent warnings.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Canonical identity and owner correction membership are preserved.",
+      "evidence_boundary": "Native peer unlink/collision/catch-up cases; final combined source review pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 14,
+    "gate": "Competitions and H2H",
+    "original_evidence": "renderTournaments:2062\u20132077 uses inline expandable cards, tabs preserving other cards and scroll; enableSortableTables:580\u2013590 is bound after tab updates:2075. teamHeadToHeadHtml:1846 and mountMatchHeadToHead:1852\u20131874 provide All seasons/This season/Last year/Last 6 months, refresh, WDL/goals and upcoming meetings.",
+    "rebuild_evidence": "screens.js competitions/standings/detail; detail-features.js competition-tab actions replace with detail sheets. standings columns set sortable:false. H2H screen only renders game list/more although feature-reads.headToHead returns record and coverage note; original range/refresh/summary/upcoming presentation missing.",
+    "review_status": "Confirmed interaction regressions: inline card tabs, standings sorting and H2H controls/summary.",
+    "acceptance_checks": [
+      "Restore original card interaction and scroll/open-card state, own/all-team and period controls; sort every standings column.",
+      "Exercise >1 page and multiple seasons, all-category schedules, classifications, pool/conditional slots and official links.",
+      "H2H matches original ranges/refresh/record/goals/upcoming sections and explains incomplete history; backend pagination cannot masquerade as complete record.",
+      "Verify category/division selection and incomplete/unpublished/stale schedule/standings explanations, not only a populated happy-path card."
+    ],
+    "consultation_reconciliation": "Original Sol review also identifies incomplete-schedule warning/category-division control losses. Inline-card and sorting gaps are independently confirmed; extra warning/control coverage remains to be exercised against populated original/rebuilt views.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Original inline competition tabs and sortable loaded standings restored.",
+      "evidence_boundary": "Independent23/23 DOM; explicit loaded-row sorting boundary; live standings pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 15,
+    "gate": "Roster and season table",
+    "original_evidence": "teamRowsHtml:2182, teamTotals:2183, renderTeam:2199; searchable/sortable Player/Apps/Starts/Min/G/A/G+A/G+A60/Attend. and total footer.",
+    "rebuild_evidence": "screens.js:32\u201340; analysis/reads.js. Table and search/totals exist, but original participation inference is not reproduced by current analysis projector. New historical roster snapshots are being integrated.",
+    "review_status": "UI core present; numeric and historical parity not established.",
+    "acceptance_checks": [
+      "Sort every column, search name/number/position, paginate, open players and verify full-selection totals.",
+      "Linked TS/Trace identities make one person row; ambiguous names/numbers remain distinct.",
+      "Historical roster/jersey/position comes from dated game or verified roster-period evidence; a current source roster must not populate every old season.",
+      "Search name, jersey and position and confirm visible highlighting and full-result totals; clear search restores original ordering/state."
+    ],
+    "consultation_reconciliation": "Independently confirmed keyword highlighting regression: rosterColumns name uses a custom render that escapeHTMLs name/jersey/position and ignores its query argument, bypassing tableHTML\u2019s normal highlight helper.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Shared analysis facts and imported roster provenance integrated.",
+      "evidence_boundary": "Pure/SQLite proofs; full128-player native publication and final read totals pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 16,
+    "gate": "Trophies",
+    "original_evidence": "teamTrophies:2185, trophyCollections:2194, teamTrophiesHtml:2197, bindTrophies:2198; original groups awards by competition collection, with Winner/Runner-up counts and edition/year links.",
+    "rebuild_evidence": "screens.js:42\u201346 groups awards by season and renders individual awards; feature-reads.js and feature-schema.js provide all-season owner/computed awards.",
+    "review_status": "Confirmed presentation/grouping difference; qualification needs real-source acceptance.",
+    "acceptance_checks": [
+      "Keep Team \u2192 Trophies entry and original competition-history grouping/navigation across seasons.",
+      "Only terminal verified competition outcomes qualify; owner-recorded award is labeled.",
+      "Upcoming/incomplete standings cannot award a trophy, and empty seasons with saved awards cannot be deleted by reconciliation.",
+      "View old trophy while a different season is selected, open its competition and return to trophy history without wrong-season filtering."
+    ],
+    "consultation_reconciliation": "Independently confirmed navigation risk: historical award button supplies competition ID only, while detail path is built from current selected team/season. Trophy\u2019s season is not carried into navigation.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Original trophy grouping/navigation integrated from pinned parity batch.",
+      "evidence_boundary": "Original-component tests; final full workflow/native/live qualification pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 17,
+    "gate": "Player detail and navigation",
+    "original_evidence": "playerOverview:2713\u20132720, openPlayerPanel:2728, openMatchPlayers:2742. Overview summary includes Apps/Starts/Minutes/Goals/Assists/GA60, Tracked distance, Attacking third and Attendance; tabs and match-player carousel. Attendance: decoded completedEvents/playerAvailability:657\u2013658 and seasonStatIncluded/seasonStatEventIncluded:674\u2013682 preserve June and saved inclusion rules.",
+    "rebuild_evidence": "screens.js:81\u201386 renders six basic summary metrics. Distance/attacking exist lower in spatial.js:49\u201351 positionProfile, so these are moved, not wholly absent. Overview attendance metric is omitted; separate Attendance tab exists. detail-features.js binds navigation/swipes.",
+    "review_status": "Confirmed summary placement/attendance difference; navigation code present but complete Back/scroll/touch matrix unverified.",
+    "acceptance_checks": [
+      "Match original overview composition, including available distance/attacking/attendance summaries and truthful missing data.",
+      "Open player from roster/match, switch tabs, browse match players, swipe previous/next and Back without losing origin.",
+      "Stats/matches/attendance use full selected season; date moves and linked identity changes preserve profile and manual state.",
+      "Attendance must include past, non-cancelled games/practices/other events, including past SCHEDULED events, while preserving original June and saved inclusion rules. Missing responses require event-level availability proof. Player match log must not invent an appearance from missing analysis; preserve DNP/unknown/appearance distinctions."
+    ],
+    "consultation_reconciliation": "Corrected 2026-10-12 from exact original source: rebuild attendance omits practices and past SCHEDULED events, but original playerAvailability also applies June and saved individual/competition/category exclusions through completedEvents \u2192 seasonStatEventIncluded. Preserve those rules. The earlier instruction to make attendance independent of statistical exclusions was unsupported. Player log still must not label unknown participation Appearance; carousel differences need browser proof.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Player summary/navigation and bounded attendance history retained/restored.",
+      "evidence_boundary": "Original parity fixtures and attendance SQL; physical swipe/Back/scroll pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 18,
+    "gate": "Trace analysis and participation inference",
+    "original_evidence": "worker.js TraceEngine.calculateGame:511 onward, finalizeGameParticipation:707, active traceEnginePrepareWork invocation:848; original detects playing windows/format, uses bounded field capacity, GK evidence, tracked/event evidence and manual truth to estimate participation. UI mountTraceAnalytics, playerAnalyticsHtml:2543.",
+    "rebuild_evidence": "analysis/projector.js:90\u2013121 sums visible tracking intervals; started, field_minutes and gk_minutes remain null unless manual; one native position accepted, otherwise unknown; format comes from lineup/manual override around :148. No equivalent original capacity-allocation/inferred-lineup engine. Native maps/comparison and scope labels exist.",
+    "review_status": "Confirmed substantive algorithm change. Restoring useful inference must preserve uncertainty and correct original unsafe identity assumptions, not blindly copy bugs.",
+    "acceptance_checks": [
+      "Run the same representative raw Trace inputs through original and rebuilt evidence models and explain every intended difference in minutes, starts, field/GK role and format.",
+      "Preserve agreed capacity/playing-window estimates with explicit inferred provenance; unresolved GK/opponent/dummy identities cannot be assigned by convenience.",
+      "Verify full/half and own/opponent stats, incomplete components, native zero vs unavailable, heatmaps, moments and correction precedence.",
+      "Verify every map kind and native coordinate frame against a known source example, including box-touch half-pitch layout; compare analytics cards and possession timeline and visibly label estimated/imported/partial evidence."
+    ],
+    "consultation_reconciliation": "Independently confirmed map-kind mismatch: API emits box_touches while eventMapSVG\u2019s half-pitch branch recognizes box or shots, so box touches render using full-pitch geometry. Sol adds missing analytics cards/facts and possession timeline; compare against original source before declaring parity.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:19:00Z",
+      "status": "Shared resolver 1.0.2 and original Trace play-window evidence restoration are frozen with native capacity proofs.",
+      "evidence_boundary": "Independent resolver/adapter98/98; Trace 8 MB Workerd1/1; catalog-driven128-player/4096-interval analysis1/1. Native capacity receipts precede final presentation-only additions; real private actor/entitlement acceptance pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 19,
+    "gate": "Corrections and lineup",
+    "original_evidence": "bindLineupDrag:2347, openMatchEditor:2388, playerEditHtml:726 and bindPlayerEdit:727; inline tap/drag starter/substitute layout, match corrections versus season defaults, restore source.",
+    "rebuild_evidence": "analysis/service.js, application/event-editor.js, web/app/lineup-features.js and detail-features.js. New domain/game-season-state.js moves event-scoped state under review.",
+    "review_status": "Core correction code present; cross-season state relocation and original gesture placement require integrated acceptance.",
+    "acceptance_checks": [
+      "Compare original edit locations and fields, tap/drag interactions, blank/inherited/explicit-null values and restore-source behavior.",
+      "Save, refresh provider, reopen and verify precedence and totals; stale concurrent writes fail visibly.",
+      "Move a corrected game across season with match analysis overrides, track assignments, lineup, Coach and bookmarks intact; retain true player-season defaults/kits/inclusion where intended; collisions retain data and require review.",
+      "Before any manual edits, open a well-evidenced analyzed match and verify original effective formation/lineup with uncertainty labels. Exercise Use match heatmap and Restore source through actual API/UI."
+    ],
+    "consultation_reconciliation": "Source consultation\u2019s missing automatic lineup agrees with independent projector review: source-derived format/starts/field-GK estimates are absent, and read-only pitch relies on manual lineup header/assignments. Heatmap-position editor promise needs full wiring verification.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:19:00Z",
+      "status": "Effective lineup, protected saved placements, bounded choices, format decision clocks and clock-free manual display are restored.",
+      "evidence_boundary": "Final author75/75 and independent70/70 adapter/lineup/Overview; final assembled native/physical interaction remains separate.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 20,
+    "gate": "Cross-provider player links",
+    "original_evidence": "traceIdentityIndex, matchPlayer, teamIdentityNote; original goal is one person with source observations, not duplicates.",
+    "rebuild_evidence": "domain/identity.js, application/identity-routes.js, web/app/identity-features.js; new historical roster evidence and canonical projection.",
+    "review_status": "Explicit link model present; actual identities and every UI gesture unverified.",
+    "acceptance_checks": [
+      "Link known person and confirm one roster/profile/Coach identity with both sources and season-qualified data.",
+      "Unlink/relink, duplicate jersey/name and cross-team/account rejection; no implicit name merge.",
+      "Changing canonical identity dirties every affected connection and season without losing dated evidence or corrections."
+    ],
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Explicit player identity and correction scope remain authoritative.",
+      "evidence_boundary": "Existing identity/native component tests; final multi-provider real identity comparison pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 21,
+    "gate": "Coach",
+    "original_evidence": "mountCoachPlayer:2614\u20132616, coachClock:2619, coachRecommendations:2623, coachSuggestedField:2626, Coach workspace:2638; match tab, player attributes, 7v7/9v9, availability, suggestions, substitution timeline and timestamp clock.",
+    "rebuild_evidence": "coaching/service.js and runtime; web/app/coach-features.js; forms.js. Earlier-season profile inheritance exists in service.js:273\u2013288. Current form presentation differs from original summary/Edit workflow; not yet fully compared.",
+    "review_status": "Feature mechanics represented; full original workflow and phone-lock real-time behavior remain unverified.",
+    "acceptance_checks": [
+      "Attributes inherit appropriately into later season without history leakage; compare original profile Edit/Cancel and match-plan entry.",
+      "Confirm availability, place/drag players, start/pause/resume, substitute, halftime/end and correct late substitution; validate 9\u00d750=450 applicable minutes.",
+      "Lock/reopen phone, navigate away/back, concurrent edits; clock ticks cause no DB writes. Viewer cannot access any Coach/private profile data.",
+      "Run the complete Coach path from Schedule \u2192 match \u2192 Coach, including absent existing plan, reconfigure before start, live recommendations, substitutions and locked-phone resume."
+    ],
+    "consultation_reconciliation": "Independently confirmed Coach reachability failure via tab validation, as gate12. Mechanics tests bypassing the ordinary detail route cannot establish the UI workflow. Sol additionally identifies pregame reconfiguration and live recommendation/presentation differences.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:58:00Z",
+      "status": "Original Coach configuration,23-slot vocabulary, scoring/recommendations, clock/correction and profile workflows are restored.",
+      "evidence_boundary": "Final95/95 source/service/DOM; native1/1,20 actual HTTP requests,max23/48 SQL. Physical phone-lock and visual acceptance remain pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 22,
+    "gate": "Bookmarks and follows",
+    "original_evidence": "gameWatchButton, renderFavorites:2045, paintFavorites, openSourcePlayerStats:1469; compact row marker, all-season games and team/period filters.",
+    "rebuild_evidence": "screens.js bookmarks; application/team-features.js, read-model/source-team.js; web/app/features.js/detail-features.js.",
+    "review_status": "Code present; real source omission and exact marker/nav behavior unverified.",
+    "acceptance_checks": [
+      "Save/remove/resave confirmed completed and upcoming games from Schedule, Competitions and detail header, preserving marker density.",
+      "Browse all seasons and team/period filters, reload, navigate followed team context and return to owned team.",
+      "Conditional slots cannot be saved as confirmed games; source omission or season reassignment does not silently erase saved bookmark or expose wrong team.",
+      "Measure passive bookmark marker at phone/desktop widths with and without statistics indicator and long names; ensure no score/date overlap or extra row height."
+    ],
+    "consultation_reconciliation": "Independently confirmed markup difference: rebuilt favorite-mark lacks the original CSS-positioning attribute; actual overlap/row-height effect still needs rendered viewport proof.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Original bookmarks/follows and cross-season navigation retained.",
+      "evidence_boundary": "Component/controller evidence; final deployed persistence/follow traversal pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 23,
+    "gate": "Reports and exports",
+    "original_evidence": "renderReportDetail:2447, renderReports:2448, reportRows:2450, exportExcel:2451, exportPdf:2452; Settings \u2192 Reports, four types, sortable preview and exports matching displayed order.",
+    "rebuild_evidence": "reporting/service.js and encoders; web/app/reports.js; screens.js reports. Four reports and real server XLSX/PDF exist. Explicit coverage columns and immutable snapshot are intentional backend safety improvements; no missing report identified.",
+    "review_status": "Code present; production complete-data/order/content proof remains required, not a claim that original reports are absent.",
+    "acceptance_checks": [
+      "Use >one page with linked players, inclusion, June and attendance edge cases; compare independent full-season totals.",
+      "Sort preview and export XLSX/PDF; open files and verify full row order, columns, scope, readable rendering and no silent truncation.",
+      "While source changes, keep snapshot coherent or explicitly recapture; viewer export excludes private data."
+    ],
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T21:22:00Z",
+      "status": "Original report ordering, precision, formats and empty/populated alarm completion pass local native checks.",
+      "evidence_boundary": "Independent 30/30; first-publication 7/7; native empty Summary, four-type XLSX/PDF, and 137-row populated export pass at 48/50-statement budgets.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 24,
+    "gate": "Dataset, evidence export and tracking capture",
+    "original_evidence": "exportTraceSourceEvidence:2818, exportUnifiedTrace:2828, openTrackingCapture:1371, bound importTrace; selective game/half/start/1\u2013600s/1\u20134 observed tracks. Historical downloadPlayerDiagnostics is unbound and not a required workflow.",
+    "rebuild_evidence": "reporting/data-files.js, data-routes.js; domain/dataset.js/serialization.js; tracking; web/app/data-files.js/tracking-capture.js.",
+    "review_status": "Current-release file/capture workflows represented; real private capture and pending-root import require integrated proof.",
+    "acceptance_checks": [
+      "Export/import exact supported dataset contract and prove round trip; reject old/foreign/corrupt/unauthorized input without partial source writes.",
+      "File observations may reconcile already authorized connection scope, but import cannot grant credentials, ownership or new provider collection admission.",
+      "Saved source evidence and raw capture are export-only; select bounded raw capture, finish with browser closed, expose partial/failed/unavailable components, and never mutate saved statistics.",
+      "Export complete authorized team history across seasons and import current-format missing history into an explicitly selected target without fetching those records first. Preserve owner decisions and source authority; file observations do not grant credentials, account ownership, identity approval or provider collection. Resume/find completed export/import jobs through ordinary UI."
+    ],
+    "consultation_reconciliation": "Confirmed substantive scope mismatch: original exportUnifiedTrace uses familyKey and full team/family snapshot. Rebuild sourceDatasetSections requires one persisted season and exports only that season\u2019s attached-source/event graph. validateDatasetImportScope requires the same existing season and attachments, while importedGraphQuery validates rows against an already observed graph. Thus its idempotent same-graph round trip does not prove portable missing-history restoration. Reopening artifact jobs and original Trace Manage entry points also need parity restoration.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T21:22:00Z",
+      "status": "Connected-history ZIP, validated staged imports and ordinary recovery are locally verified; fresh live provider portability remains a separate gate.",
+      "evidence_boundary": "Native 128 segments and 1,270 reachable events; final staged ZIP 1/1 preserving 21 source/canonical and 20 published rows, all 17 scored seeds and 11 segments. Maximum 66.5 MB download and 4,096-section graph bounds remain separately scoped.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 25,
+    "gate": "Branding and themes",
+    "original_evidence": "cycleTheme:483, openSeasonKitsEditor:1220, clubSeasonKits, openTeamLogoEditor:2833; shared club logo, season kits, Light/Dark/Soccer Green, familiar source Manage entry.",
+    "rebuild_evidence": "read-model/branding.js, application/team-features.js and club-kits.js; web/app/features.js; original.css.",
+    "review_status": "Code present; exact original entry points and full theme/device legibility unverified.",
+    "acceptance_checks": [
+      "Cycle all themes from familiar control, compare compact pages/sheets, focus/contrast and persistence.",
+      "Save/reset shared club logo and named/color kits; switch team/season, reload and view shared link.",
+      "New season derivation must not copy owner kits or season choices into unrelated historical season.",
+      "Cycle Light/Dark/Soccer Green from full Settings and verify Manage, reports, files, identity, rename/remove, sharing and branding controls remain available as appropriate."
+    ],
+    "consultation_reconciliation": "Independently confirmed theme-cycle Settings loss, detailed in gate4.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Original theme re-render and branding workflows retained.",
+      "evidence_boundary": "Theme DOM and existing branding tests; final physical legibility matrix pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 26,
+    "gate": "Viewer links and permissions",
+    "original_evidence": "currentViewerUrl, rotateViewer, renderAccountBody:2812; read-only dashboard, copy/replace link and Coach privacy.",
+    "rebuild_evidence": "security; application/bootstrap.js/routes.js; web/app/main.js; pending zero-season viewer UI is in progress.",
+    "review_status": "Security separation represented; final production and zero-season viewer behavior unverified.",
+    "acceptance_checks": [
+      "Separate signed-out browser views only allowed team data; no owner controls, credentials, Coach, private fields or writes through direct APIs/exports/errors.",
+      "Rotate link and prove old invalid/new valid. Owner cookie in explicit viewer mode remains read-only.",
+      "Zero-season/pending team shows safe status/empty state without internal identifiers or setup demands."
+    ],
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Owner/viewer boundaries retained; public history permits only one scoped public scan.",
+      "evidence_boundary": "Typed request/proof tests; final viewer HTTP/CSRF/revocation budget fixture pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 27,
+    "gate": "Status and diagnostics",
+    "original_evidence": "sourceState:976/sourceHelp:1001/renderSourceDetails:1016 and account actions; provider timestamps/progress, reconnect, partial/delayed reasons, sync and D1 diagnostics.",
+    "rebuild_evidence": "sync/coordinator.js/runtime.js; application/routes.js/sync-service.js; web/app/features.js. New root backlog, unresolved evidence and collection prerequisites must not be collapsed into one resolved flag.",
+    "review_status": "Code present; lifecycle repair introduces additional status dimensions needing end-to-end proof.",
+    "acceptance_checks": [
+      ">40 jobs and >128 affected memberships: all relevant work and eventual progress visible; no first-page-only refresh signature.",
+      "Separate attempted/fetched/saved/completed, collection vs projection, auth vs missing native key, uncertainty vs backlog.",
+      "Fail/rate-limit one provider and show correct recovery while others proceed; diagnostics bounded and secret-free.",
+      "Use expired/restricted/rate-limited/internal-error providers and compare actual renderer fields/actions; keep diagnostic counters bounded, secret-free and labeled according to what they measure."
+    ],
+    "consultation_reconciliation": "Provider help/error DTO-renderer consistency still requires concrete workflow evidence. The original Compare D1 queries action benchmarked two obsolete Trace-manifest table/query plans as a developer diagnostic; it is not a missing rebuilt user workflow. Current request_* usage counters are honestly labeled. No placeholder or replacement benchmark is required.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T19:05:00Z",
+      "status": "Progress distinguishes collection, reconciliation, projection, analysis and unresolved evidence.",
+      "evidence_boundary": "Status/controller/native component cases; final aggregate and production clocks pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 28,
+    "gate": "Browser-closed processing",
+    "original_evidence": "Original sourceHelp explicitly permits closing the window; scheduled handler and original rebuild directive require resumable independent server jobs.",
+    "rebuild_evidence": "sync/runtime.js/coordinator.js; Worker scheduled handler; new root reconciliation and durable pre-season collection admission. Prior fixture-native completion exists; real final deployment remains unverified.",
+    "review_status": "Live acceptance gate still open; no health response or UI polling substitutes for proof.",
+    "acceptance_checks": [
+      "Close every app tab; provider collection, new-season discovery, reconciliation and projection must advance via persisted alarms/cron/checkpoints.",
+      "Reopen and verify changed provider data and server timestamps without browser runner/retry requests.",
+      "Crash after commit before admission, expire lease, disconnect/unlink/delete during pages, restart and prove fencing/idempotent recovery and independent providers."
+    ],
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T21:22:00Z",
+      "status": "Local native alarms complete source, reconciliation, projection, report and file work without browser/manual runner requests.",
+      "evidence_boundary": "Final 101-membership history collection 236.908 s plus drain 36.233 s; lifecycle 6/6; 131 seasons/786 pages; 128-segment alarm import. Actual production closed-all-tabs refresh remains pending.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 29,
+    "gate": "Security and lifecycle",
+    "original_evidence": "Original owner/private/viewer responsibilities; previous implementation is not the security design authority. New backend must preserve intent while separating session/credential lifetimes.",
+    "rebuild_evidence": "security; auth-routes; domain/repository; exact-version installation write epoch and root/account generations under active review.",
+    "review_status": "Core tests exist; new write gate and all runtime paths require fresh verification.",
+    "acceptance_checks": [
+      "Rotate owner authorization without losing encrypted provider credentials; expire/sign-out/renew sessions and safely disconnect accounts.",
+      "Stale auth/root/team generations cannot commit source, reconciliation or projection writes.",
+      "No token leakage in API, files, logs or package; every old-runtime writable table and mutation entry is fenced after upgrade.",
+      "Rotate password through ordinary owner UI, prove old sessions revoked and provider jobs still decrypt credentials; sensitive credential entry/confirmation remains user-controlled in live testing."
+    ],
+    "consultation_reconciliation": "Independently confirmed: owner password API exists, but frontend JS references only login/initialization password entry; no ordinary password-rotation control is wired.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T21:22:00Z",
+      "status": "Native auth/vault/session and provider authority gates pass; production trust-boundary checks remain separate.",
+      "evidence_boundary": "12 auth, 9 owner and 4 verifier cases, plus owner-track 1/1 and installed proof 1/1: 43/48 admission, 13-statement atomic positive/stale/file-only commits. No authority relaxation.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 30,
+    "gate": "Asynchronous and mobile recovery",
+    "original_evidence": "currentOperation/currentDialog, selectTeamContext, captureEntityView, browser history, tab/key handlers; original competition inline state and swipe/detail contexts are relevant.",
+    "rebuild_evidence": "web/app/transport.js, feature-requests.js and main.js; interactions.js; controller tests. New source selection/zero-season states must fit same context epochs.",
+    "review_status": "Selected controller/native fixture checks exist; complete physical/mobile parity remains unverified.",
+    "acceptance_checks": [
+      "Delay A response, switch to B, finish A; B remains correct across auth, source selection, details, reports and reconciliation status.",
+      "Cancel/dismiss midflight, double-click, lose network, retry exact command, Back/Forward; preserve drafts and history without duplicate commits.",
+      "Physical touch, orientation, keyboard/focus, reduced motion and drag cleanup; no routine year/team setup demanded at each step.",
+      "Compare original modal/picker focus cycle, Escape, return focus and orientation interrupted drag/swipe; record physical and desktop keyboard receipts."
+    ],
+    "consultation_reconciliation": "Sol identifies absent modal focus trap/return, picker Escape and orientation cleanup. These are additional concrete review targets; not independently exercised in a browser in this pass.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T20:10:00Z",
+      "status": "New controllers fence close, navigation, role, scope, refresh and lost replies.",
+      "evidence_boundary": "Final frozen653/653 deterministic/DOM/SQLite aggregate, zero skips; physical touch, orientation, lock/reopen and deployed visual traversal remain unverified.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  },
+  {
+    "id": 31,
+    "gate": "Fresh install, exact upgrade and package",
+    "original_evidence": "Original user demanded clean rebuilt architecture and one complete required-files ZIP. Later current user explicitly required preserving already deployed data. Direct Astra recommends one small exact-version additive transition rather than reset or generic legacy architecture.",
+    "rebuild_evidence": "application/installation-schema.js, fresh-install.js, schema-upgrade.js, installation-epoch.js; release scripts. Exact 7.1.4 base; permanent write-epoch guards; bounded backfill; compatibility/maintenance rollback must be reviewed.",
+    "review_status": "Active implementation; final artifact, schema transition and full regression gate not complete.",
+    "acceptance_checks": [
+      "Extract exact final archive, install pinned dependencies, build and initialize brand-new DB; verify visible version/bindings/assets/cron/alarm.",
+      "Upgrade exact deployed physical schema and fingerprint preserving setup timestamps/data; interrupted every phase resumes; unknown/partial schema fails closed; old writers remain denied.",
+      "Review resulting exact package and hash, rerun changed/native/full suites, report every failure/not-run gate, and use only a compatible post-expansion rollback/roll-forward build.",
+      "Freeze lifecycle candidate/file map first, reconcile remaining six work packages, then freeze one integrated artifact. Do not deploy an auto-upgrade candidate under a maintenance-only description; show truthful upgrade-pending UI and review data-preserving activation/rollback."
+    ],
+    "consultation_reconciliation": "Coordination: original Sol response a86d6f62 owns baseline/parity sequencing and requests exact lifecycle candidate plus changed-file ownership before additional writers. Current candidate auto-upgrades through alarms/cron, so deploying it is a schema action; operational activation/approval boundary must be reconciled before publication. Upgrade-pending UI currently masquerades as fresh Initialize myTS and must be corrected.",
+    "integration_checkpoint": {
+      "as_of": "2026-10-12T21:22:00Z",
+      "status": "Exact preserved-data schema transition and required-only7.2.0 build are verified locally; final archive/extracted check and reviewed deployment remain separate.",
+      "evidence_boundary": "731-statement e1c1b6cf target / 755a9a58 plan: native 7/7, owner boundary 1/1 and swap 1/1. 191 required files plus manifest, clean locked install/build; all original failed/skipped records have scoped closure.",
+      "accepted_complete": false
+    },
+    "final_local_release_ledger": "integration-checkpoint.md#final-local-closure-12-october-2122-utc"
+  }
+]

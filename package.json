@@ -1,9 +1,18 @@
 {
   "name": "myts",
-  "version": "6.20.133",
+  "version": "7.2.18",
   "private": true,
   "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --config wrangler.jsonc",
+    "test": "node --test tests/*.test.js tests/*.test.mjs",
+    "test:browser": "node --test tests/*.browser.mjs",
+    "check:release": "node scripts/release-check.mjs",
+    "build": "node scripts/release-check.mjs && wrangler deploy --config wrangler.jsonc --dry-run --outdir tmp/review-build",
+    "deploy": "node scripts/release-check.mjs --deploy && wrangler deploy --config wrangler.jsonc"
+  },
+  "engines": { "node": ">=22" },
   "devDependencies": {
-    "wrangler": "^4.68.0"
+    "wrangler": "4.149.0"
   }
 }

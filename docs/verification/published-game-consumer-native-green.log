@@ -1,0 +1,18 @@
+{"native_track_proof":{"synthetic":true,"real_installation_writer":true,"owner_admission_statements":44,"prior_route_reserved":20,"children":5,"commits":[{"state":"provider","statements":13},{"state":"stale_root","statements":13},{"state":"file_only","statements":13}]}}
+✔ native owner and legacy track authority compile and commit within the real installation writer (15112.428221ms)
+{"consumer_native_start":{"source_fingerprint":"e8e57a8c7e5fb575f076b82015f9631fad89fc4c3802ca77cd21c4f8a5e3fcd2","files":["src/application/event-editor.js","src/application/sync-service.js","src/analysis/source-collection-proof.js","src/domain/team-game-scope.js","src/domain/repository.js","src/analysis/reads.js","src/read-model/attendance.js","src/reporting/service.js"]}}
+▶ native grouped EventEditor and exact Trace source admission preserve physical originals under the epoch writer
+  ✔ normalized ordinary player season statistics stay single-game and native-depth-safe (132.730481ms)
+  ✔ normalized ordinary player detail reads the published grouped match once (536.908182ms)
+  ✔ normalized Summary report uses the ordinary player query and real snapshot writer (614.752192ms)
+  ✔ normalized native bookmarks preserve original key and require exact opaque token (484.370199ms)
+{"published_consumers_native":{"source_fingerprint":"e8e57a8c7e5fb575f076b82015f9631fad89fc4c3802ca77cd21c4f8a5e3fcd2","budgets":[{"action":"player-season-summary","statements":13,"prior_route_reserved":8},{"action":"player-detail","statements":26,"prior_route_reserved":8},{"action":"summary-report-query-and-capture","statements":26,"query_bytes":40262,"prior_route_reserved":8},{"action":"bookmark-save-stale-remove","statements":35,"prior_route_reserved":8},{"action":"event-read","statements":5},{"action":"event-write","statements":16},{"action":"stale-track-admission","statements":15},{"action":"track-admission-including-route","statements":44,"prior_route_reserved":20}],"original_override":"event","native_trace_original":"event","published_target":"public-event","stale_admission_rollback":true,"exact_saved_read_only":true,"real_epoch_writer":true}}
+✔ native grouped EventEditor and exact Trace source admission preserve physical originals under the epoch writer (14307.495325ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 31784.754754

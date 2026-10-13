@@ -1,0 +1,1 @@
+{"command":"npm test","status":"interrupted","exit_code":130,"acceptance_claim":false,"reason":"Wildcard includes unrelated native Miniflare tests; stopped to preserve exclusive runner coordination."}

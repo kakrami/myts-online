@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {createReportsController} from '../web/app/reports.js';
+import {reports as screen} from '../web/ui-original/screens.js';
+import {bindShell} from '../web/ui-original/shell.js';
+import {REPORT_COLUMNS} from '../src/reporting/service.js';
+const require=createRequire(import.meta.url);let JSDOM;try{({JSDOM}=require(process.env.MYTS_JSDOM_MODULE||'jsdom'));}catch(error){if(process.env.MYTS_JSDOM_MODULE)throw error;}
+const uiTest=(name,run)=>test(name,{skip:JSDOM?false:'Set MYTS_JSDOM_MODULE to run the report DOM suite.'},run),tick=()=>new Promise(resolve=>setImmediate(resolve));
+async function fixture(run){const dom=new JSDOM('<main></main>',{url:'https://myts.test/admin'}),saved=new Map();for(const [key,value]of Object.entries({window:dom.window,document:dom.window.document,location:dom.window.location,AbortController:dom.window.AbortController})){saved.set(key,Object.getOwnPropertyDescriptor(globalThis,key));Object.defineProperty(globalThis,key,{value,configurable:true,writable:true});}const host=dom.window.document.querySelector('main'),calls=[],errors=[],controller=createReportsController(),api={state:{active:true,view:'reports'},context:()=>({team_id:'t',team_season_id:'s'}),notice:()=>{},showError:error=>errors.push(error),transport:{command:async(path,body)=>{calls.push({path,body});return {data:{data:{snapshot_id:'snapshot-'+calls.length}}};}},async action(name,data){if(name==='nav'){api.state.view=data.view;return;}return controller.handlers.actions[name]?.(data,api);},async renderView(){host.innerHTML=screen({type:controller.state.type,sort:{key:controller.state.sort,direction:controller.state.direction},snapshot_id:controller.state.snapshot,columns:REPORT_COLUMNS[controller.state.type],rows:{items:[{player:'Ada',minutes:45.3,ga_per_60:1.326}],total:137}});}};const cleanup=bindShell(host,{onAction:(name,data)=>void(name==='sort'?controller.handlers.reportSort(data,api):api.action(name,data))});try{await api.renderView();await run({dom,host,calls,errors,controller,api});assert.deepEqual(errors,[]);}finally{cleanup();controller.cleanup();dom.window.close();for(const [key,value]of saved)value?Object.defineProperty(globalThis,key,value):delete globalThis[key];}}
+
+uiTest('report headers, mobile change/reverse and per-report saved sorting use the actual controller',async()=>fixture(async({host,dom,controller,api})=>{
+ host.querySelector('[data-action="report-type"][data-value="players"]').click();await tick();assert.match(host.textContent,/45.3/);assert.match(host.textContent,/1.33/);assert.equal(host.querySelectorAll('th').length,11);
+ host.querySelector('th [data-key="minutes"]').click();await tick();assert.equal(controller.state.sort,'minutes');assert.equal(controller.state.direction,'asc');assert.equal(host.querySelector('th[aria-sort="ascending"] button').dataset.key,'minutes');
+ const select=host.querySelector('[aria-label="Sort report by"]');select.value='goals';select.dispatchEvent(new dom.window.Event('change',{bubbles:true}));await tick();assert.equal(controller.state.sort,'goals');host.querySelector('[data-action="report-sort-reverse"]').click();await tick();assert.equal(controller.state.direction,'desc');
+ await api.action('report-type',{value:'matches'});assert.equal(controller.state.sort,null);await api.action('report-type',{value:'players'});assert.equal(controller.state.sort,'goals');assert.equal(controller.state.direction,'desc');await api.action('report-type',{value:'season'});assert.equal(host.querySelector('.mobile-table-sort'),null);
+}));
+
+uiTest('repeated render preparation is deduplicated and stale creation cannot replace a newer report',async()=>fixture(async({controller,api,calls})=>{
+ let release;api.transport.command=async(path,body)=>{calls.push({path,body});return new Promise(resolve=>{release=resolve;});};
+ const pending={needs_snapshot:true,rows:{items:[],total:0}};await controller.handlers.present.reports(pending,api);await controller.handlers.present.reports(pending,api);assert.equal(calls.length,1);await api.action('report-type',{value:'players'});release({data:{data:{snapshot_id:'stale-season'}}});await tick();assert.equal(controller.state.type,'players');assert.equal(controller.state.snapshot,null);
+}));
+
+uiTest('capture disables exports, failures stay actionable and more-row windows retain full report totals',async()=>fixture(async({controller,api})=>{
+ const html=await controller.handlers.present.reports({state:'capturing',type:'players',snapshot_id:'incomplete',columns:REPORT_COLUMNS.players,rows:{items:[],total:137},captured:100},api);const node=document.createElement('div');node.innerHTML=html;assert.ok([...node.querySelectorAll('[data-action="report-export"]')].every(button=>button.disabled));assert.match(html,/137 rows · 100 saved/);
+ const failed=await controller.handlers.present.reports({state:'failed',type:'players',columns:REPORT_COLUMNS.players,rows:{items:[],total:137},error_code:'report_changed'},api);assert.match(failed,/Choose this report again/);
+ const a={data:{rows:{items:Array.from({length:200},(_,id)=>({id})),total:237}}},b={data:{scope_label:'All rows',rows:{items:Array.from({length:37},(_,i)=>({id:200+i})),total:237,next_cursor:null}}},result=controller.handlers.append('reports',a,b);assert.equal(result.data.rows.items.length,200);assert.equal(result.data.rows.total,237);assert.equal(result.data.rows.loaded,237);assert.match(result.data.scope_label,/downloads include all rows/);
+}));
+
+uiTest('failed export submission is shown and can be retried instead of remaining in flight',async()=>fixture(async({controller,api,errors})=>{controller.state.snapshot='snapshot';let count=0;api.transport.command=async()=>{count++;throw new Error('retryable');};for(let i=0;i<2;i++)await controller.handlers.actions['report-export']({snapshot:'snapshot',format:'pdf'},api);assert.equal(count,2);assert.equal(controller.state.exportPending,null);assert.deepEqual(errors.splice(0).map(error=>error.message),['retryable','retryable']);}));

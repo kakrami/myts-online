@@ -1,0 +1,44 @@
+// Synthetic public contracts; excluded from deployment.
+const response=(v,h={})=>new Response(JSON.stringify(v),{headers:{'content-type':'application/json',...h}});
+const col=rows=>({collection:{items:rows.map(r=>({data:Object.entries(r).map(([name,value])=>({name,value})),links:[]})),links:[]}});
+const rank=id=>({id,event_id:100,event_name:'Test Cup',schedule_id:200,bracket_id:300,match_number:id,match_date:'2026-10-09',matchTime:'2026-10-09T17:00:00-07:00',home_team_reg_id:600,away_team_reg_id:601,homeTeam:{team_id:212707,full_name:'Test Club U10 White'},awayTeam:{team_id:333333,full_name:'Opponent Blue'},home_score:2,away_score:1});
+const game=(id,extra={})=>({GameID:Number(id),GameStatusID:1,LeagueID:900,LeagueCategoryID:800,LeagueOrganizerID:500,FederationOrCupName:'Test Cup',HomeTeamID:700,AwayTeamID:701,HomeTeamClubID:50,AwayTeamClubID:51,HomeTeamIsSportswikTeam:true,AwayTeamIsSportswikTeam:true,HomeTeamTeamName:'U10 White',AwayTeamTeamName:'Blue',HomeTeamClubName:'Test Club',AwayTeamClubName:'Opponent',HomeTeamScore:0,AwayTeamScore:0,GameNumber:Number(id),GameTime:'2026-10-15T18:00:00Z',TimeNotSet:false,ArenaName:'Field 1',HideResult:false,Cancelled:false,Interrupted:false,Postponed:false,...extra});
+const member=i=>({is_player:true,is_active:true,user_id:9000+i,team_id:400,jersey_number:String(i),gid:'home-'+i,side:'home',position:i===1?'goalie':'midfield',user:{user_id:9000+i,first_name:'Player',last_name:String(i),is_dummy:false}});
+const metadata=()=>({game_id:4001,full_date:'2026-10-09T17:00:00Z',approx_half_duration:25,base_path:'https://go.traceup.com/test-assets/',num_equip:20,home_team:{team_id:400,name:'test-team',title:'Test Club U10 White',score:2},away_team:{team_id:401,name:'opponent',title:'Opponent Blue',score:1},team_members:Array.from({length:12},(_,i)=>member(i+1)),moments:[1,2].map(half=>({type:'FullGameVideo',half,game_clip_id:40010+half,start_time:1000000+half*2000000,duration:1500,dynamic_jfile:'radar'+half+'.json',base_path:'https://go.traceup.com/test-assets/'}))});
+export default{async fetch(request,env){const u=new URL(request.url),p=u.pathname,s=u.searchParams,mode=await env.COUNTERS.get('mode')||'',counts=await env.COUNTERS.get('counts','json')||{};counts[p]=(counts[p]||0)+1;await env.COUNTERS.put('counts',JSON.stringify(counts));let v;
+ if(mode==='blocked'&&u.hostname==='system.gotsport.com')return new Response('<html>Verify you are human</html>',{headers:{'content-type':'text/html'}});
+ if(p==='/api/v1/team_ranking_data/team_details')v={id:Number(s.get('team_id')),team_name:'U10 White',club_name:'Test Club',club_id:20,image:'/system/organizations/logos/000/000/020/icon/logo.jpg'};
+ else if(/\/api\/v1\/teams\/\d+\/matches$/.test(p)){const page=Number(s.get('page')),pages=mode==='long'?12:1;v=mode==='history-empty'?{matches:[],pagination:{current_page:page,total_pages:0,total_entries:0}}:{matches:[rank(1000+page)],pagination:{current_page:page,total_pages:pages,total_entries:pages}};}
+ else if(p==='/api/v1/event_ranking_data/event_details')v={event:{id:100,name:'Test Cup',tournament:true,league:false,website_url:'https://tournament.example.com',live_event_url:'https://gotsportlive.com/league/900',schedule_groups:[{id:200,division:'U10 Boys',brackets:[{id:300,name:'Pool A',schedule_group_id:200}]}]}};
+ else if(p==='/api/v1/event_ranking_data/flight_matches')v=[rank(1001)];
+ else if(p==='/api/v1/event_ranking_data/flight_registrations')v=[{id:600,team_id:212707,full_name:'Test Club U10 White',event_id:100,schedule_group_id:200,bracket_id:300,matches_played:1,wins_total:1,draws_total:0,losses_total:0,goals_for_total:2,goals_against_total:1,goal_difference_total:1,points_total:3,group_play_placement:1}];
+ else if(p==='/api/v1/team_ranking_data'&&s.has('team_id'))v={team_ranking_data:{team_id:Number(s.get('team_id'))},events:[{id:100,name:'Test Cup'}]};
+ else if(p==='/api/v1/team_ranking_data')v={team_ranking_data:[{team_id:212707,team_name:'U10 White',club_name:'Test Club',age:10,gender:'m',team_association:'NV'}],pagination:{current_page:1,total_pages:1,total_count:1}};
+ else if(p==='/api/leagueapi/getleagueheader')v={LeagueID:900,LeagueOrganizerID:500,Name:'Pool A',FederationName:'Test Cup',SeasonName:'2026'};
+ else if(p==='/api/leagueorganizerapi/getleagueorganizerclubs')v=[{ClubID:50,Name:'Test Club'}];
+ else if(p==='/api/clubapi/initclubteams')v={ClubID:50,Seasons:[{SeasonID:60,SeasonName:'2026',IsDefault:true}]};
+ else if(p==='/api/clubapi/getteams')v=[{TeamID:700,ItemID:700,ClubID:50,SeasonID:60,TeamName:'U10 White',ClubName:'Test Club',ExternalDataSourceKey:212707,ExternalDataSourceName:'GotSport',ExternalDataSourceID:6}];
+ else if(p==='/api/teamapi/getcomingteamgames')v=s.get('LastGameID')==='0'?[game(2001),game(2002,{AwayTeamID:0,AwayTeamIsSportswikTeam:false})]:[];
+ else if(p==='/api/teamapi/getcomingteamadminleagueteams')v=s.get('LastLeagueTeamID')==='0'?[{LeagueTeamID:950,LeagueID:900,TeamID:700,SeasonName:'2026'}]:[];
+ else if(p==='/api/leagueorganizerapi/getleagueorganizerheader')v={LeagueOrganizerID:500,Name:'Test Cup',StartDate:'2026-10-15',EndDate:'2026-10-17',City:'Las Vegas',State:'NV'};
+ else if(p==='/api/leagueorganizerapi/initleagueorganizerleagueswithcategories')v={Seasons:[{SeasonID:60,SeasonName:'2026'}],Leagues:[{LeagueCategoryID:800,Name:'U10 Boys',Leagues:[{LeagueID:900,LeagueTypeID:3,LeagueName:'Pool A',SeasonID:60,SeasonName:'2026'}]}]};
+ else if(p==='/api/leagueorganizerapi/getleagueorganizerschedule')v=s.get('Skip')==='0'&&s.get('Tense')==='1'?[game(2001),game(2002,{AwayTeamID:0,AwayTeamIsSportswikTeam:false}),game(2003,{HomeTeamID:702,AwayTeamID:703})]:[];
+ else if(p==='/api/leagueorganizerapi/getleagueorganizerstandings')v=s.get('Skip')==='0'?[{LeagueID:900,LeagueTable:{LeagueID:900,Rows:[{LeagueTeamID:950,TeamID:700,ClubName:'Test Club',TeamName:'U10 White',Position:1,Played:0,Won:0,Draws:0,Lost:0,Points:0,GoalsScored:0,GoalsConceded:0,GoalDifference:0}]}}]:[];
+ else if(p==='/api/followgameapi/initgameview')v={GameHeaderInfo:game(s.get('GameID'),mode==='score'?{GameStatusID:3,HomeTeamScore:3,AwayTeamScore:1}:{})};
+ else if(p==='/v3/me')v=col([{id:123}]);
+ else if(p==='/v3/teams/search')v=col([{id:321,name:'Test Club U10 White',season_name:'2026',time_zone:'America/Los_Angeles'}]);
+ else if(p==='/v3/members/search')v=col(Array.from({length:mode==='roster-short'?10:12},(_,i)=>({id:100+i,is_player:true,first_name:'Player',last_name:String(i+1),jersey_number:String(i+1)})));
+ else if(p==='/v3/events/search')v=col([{id:999,is_game:true,name:'Test Game',start_date:'2026-10-15T18:00:00Z',opponent_name:'Opponent Blue',home_or_away:'home',location_name:'Field 1',uniform:'White',minutes_to_arrive_early:30}]);
+ else if(p==='/v3/availabilities/search')v=col(Array.from({length:12},(_,i)=>({id:200+i,event_id:999,member_id:100+i,status_code:i===11?0:1})));
+ else if(['/v3/locations/search','/v3/opponents/search'].includes(p))v=col([]);
+ else if(p==='/webapp/users/self/logout')return response({success:true},{'set-cookie':'PHPSESSID=guest; Path=/'});
+ else if(p==='/tracebot-prod/42/users/search')v={data:{id:9999}};
+ else if(p==='/webapp/autologin-url/send')v={success:true};
+ else if(p==='/webapp/users/login/by-code')return response({success:true},{'set-cookie':'PHPSESSID=authenticated; Path=/'});
+ else if(p==='/webapp/users/self')v={data:{user_id:9999}};
+ else if(p==='/webapp/users/self/token')v={data:{user_id:9999,token:'provider-test-token',timestamp:123456789}};
+ else if(p==='/webapp/users/self/teams')v={data:[{team_id:400,name:'test-team',title:'Test Club U10 White',sport_type:'soccer'}]};
+ else if(p==='/traceid-prod/graphql'){const b=await request.json();switch(b.operationName){case 'teamGames':v={data:{teamGames:[metadata()]}};break;case 'getTeamMembers':v={data:{teamMembers:Array.from({length:12},(_,i)=>member(i+1))}};break;case 'getUserRelations':v={data:{userRelations:[{user_id:9001}]}};break;case 'findProfileByUserId':v={data:{profile:{hash_key:'verified-profile',user_id:9001}}};break;case 'game':v={data:{game:metadata()}};break;case 'gameStats':v={data:{gameStats:{available:'yes',distance:1000,passes_complete:{count:15},passes_all:{count:20},shots:{count:3},box_touches:{count:2}}}};break;case 'gameStatsHeatmap':v={data:{playerGameHeatMap:{map:Array.from({length:10},()=>Array.from({length:15},(_,i)=>i===(b.variables.gids[0]==='home-1'?0:7)?10:0))}}};break;case 'getHaloData':{const s=b.variables.segments[0];v={data:{halo:{ring:[[s.local_start,'L'],[s.local_start+s.duration,'L'],[0,'DISCONTINUITY']]}}};break;}}}
+ else if(p.startsWith('/test-assets/radar'))v={setup:{field:{coordinates:{}}},frm:[{t:0,a:Object.fromEntries(Array.from({length:20},(_,i)=>[i,{}]))},{t:150000,a:Object.fromEntries(Array.from({length:20},(_,i)=>[i,{}]))}]};
+ if(v===undefined)return new Response(JSON.stringify({unsupported:p}),{status:404,headers:{'content-type':'application/json'}});return response(v);
+}};

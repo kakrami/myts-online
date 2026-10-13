@@ -1,0 +1,68 @@
+import {savedAnalysisContextsQuery} from './source-scope.js';
+import {resolvePublishedGame,assertPublishedGameCurrent} from '../domain/team-game-scope.js';
+import { ReadRepository } from '../read-model/repository.js';
+import { DomainRepository } from '../domain/repository.js';
+import { invalid } from '../read-model/selection.js';
+import { activeAnalysisWrite,analysisOwnerState,analysisScopeRevision } from './write-scope.js';
+import {acceptedGameSeason} from '../domain/game-season-state.js';
+const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value)))),v=>v.toString(16).padStart(2,'0')).join('');
+
+export class NativeTrackService {
+  constructor(db,actor,options={}){this.db=db;this.actor=actor;this.base=new ReadRepository(db,actor,options);this.cursor=options.cursor;this.repo=new DomainRepository(db);this.enqueueRefresh=options.enqueueRefresh||null;}
+  owner(){if(!this.actor?.owner)throw invalid('Only the owner can assign native tracks.','owner_required',403);}
+  async context(input,eventId){
+    this.owner();const context=await this.base.context(input),{selection}=context;
+    const game=await resolvePublishedGame(this.db,selection.team_id,selection.team_season_id,eventId);if(!game)throw invalid('This match is unavailable.','not_found',404);if(!game.available)throw invalid('This saved game changed. Reload.','game_scope_changed',409);eventId=game.event_id;const ownerState=await analysisOwnerState(this.db,game);
+    const accepted=acceptedGameSeason(selection.team_id,selection.team_season_id,eventId);
+    if(!await this.db.prepare(`SELECT 1 AS ok FROM team_events WHERE app_team_id=? AND team_season_id=? AND event_id=? AND (${accepted.sql})`).bind(selection.team_id,selection.team_season_id,eventId,...accepted.params).first())throw invalid('This match is unavailable.','not_found',404);
+    const sources=(await savedAnalysisContextsQuery(this.db,game).all()).results,state=await this.base.stateQuery(selection).first();
+    await assertPublishedGameCurrent(this.db,game);
+    const scopeRevision=await analysisScopeRevision(game);
+    return {...context,eventId,game,ownerState,game_scope_revision:scopeRevision,sources,source:sources.length===1?sources[0]:null,state,revision:await hash([state.content_revision,scopeRevision,sources.map(v=>[v.id,v.source_team_id,v.generation,v.input_revision,v.attachment_id,v.attachment_generation,v.connection_generation,v.membership_generation])])};
+  }
+  listKey(c){return {...c.selection,resource:'native-track-list',native_event:c.eventId};}
+  commandKey(c){return {...c.selection,resource:'native-track-command',native_event:c.eventId};}
+  commandScope(c){return this.base.scope(c.selection.team_id)+'/native-tracks';}
+  async list(input,eventId,{limit=50,cursor=null}={}){
+    const c=await this.context(input,eventId);if(!Number.isInteger(limit)||limit<1||limit>50)throw invalid('Choose at most 50 native tracks per page.');
+    if(!c.source)return this.base.envelope(c.selection,c.state,{state:c.sources.length?'human_review':'unsupported',items:[],total:0,next_cursor:null,can_edit:true,reason:c.sources.length?'Choose the canonical Trace game before assigning tracks.':'No active authorized Trace game is attached.'});
+    const source=c.source,key=this.listKey(c),position=cursor?await this.cursor.verify(cursor,{selection:key,revision:c.revision,scope:this.commandScope(c)}):null;
+    if(position&&(!Array.isArray(position)||position.length!==1||typeof position[0]!=='string'))throw invalid('Invalid track cursor.','cursor_invalid');
+    const where='m.source_event_id=? AND m.source_team_id=? AND m.account_id=? AND m.side=? AND m.gid IS NOT NULL',params=[source.id,source.source_team_id,source.account_id,source.side];
+    const rows=await this.db.batch([this.db.prepare(`SELECT COUNT(DISTINCT m.gid) AS total FROM source_game_members m WHERE ${where}`).bind(...params),this.db.prepare(`WITH tracks AS(SELECT m.gid,MIN(m.native_key) AS native_key,MIN(m.name) AS name,MIN(m.jersey) AS jersey,MIN(m.position) AS position,MAX(m.dummy) AS dummy,COUNT(DISTINCT m.name) AS observed_names,COUNT(DISTINCT cp.canonical_id) AS identities,MIN(cp.canonical_id) AS native_player_id FROM source_game_members m LEFT JOIN player_source_links l ON l.source_player_id=m.source_player_id LEFT JOIN canonical_player_ids cp ON cp.input_id=l.player_id WHERE ${where} GROUP BY m.gid) SELECT t.*,ac.canonical_id AS assigned_player_id,COALESCE(a.revision,0) AS revision,p.name AS assigned_name,p.jersey AS assigned_jersey FROM tracks t LEFT JOIN analysis_track_assignments a ON a.app_team_id=? AND a.team_season_id=? AND a.source_event_id=? AND a.source_team_id=? AND a.gid=t.gid LEFT JOIN canonical_player_ids ac ON ac.input_id=a.player_id LEFT JOIN team_players p ON p.app_team_id=a.app_team_id AND p.team_season_id=a.team_season_id AND p.player_id=ac.canonical_id WHERE t.native_key>? ORDER BY t.native_key LIMIT ?`).bind(...params,c.selection.team_id,c.selection.team_season_id,source.id,source.source_team_id,position?.[0]||'',limit+1)]);
+    const records=rows[1].results,items=[];for(const row of records.slice(0,limit))items.push({id:await this.cursor.issue({selection:this.commandKey(c),revision:c.revision,scope:this.commandScope(c),position:[row.native_key]}),name:row.name,jersey:row.jersey,position:row.position,dummy:!!row.dummy,observed_names:row.observed_names,state:row.assigned_player_id?'assigned':row.identities===1&&!row.dummy?'native':row.identities>1?'human_review':'unresolved',native_player:row.identities===1&&!row.dummy?{id:row.native_player_id}:null,assigned_player:row.assigned_player_id?{id:row.assigned_player_id,name:row.assigned_name,jersey:row.assigned_jersey}:null,revision:row.revision});
+    const after=await this.context(input,eventId);if(after.revision!==c.revision)throw invalid('The native track list changed. Reload.','cursor_restart',409);
+    return this.base.envelope(c.selection,c.state,{state:'ready',game_scope_revision:c.game_scope_revision,items,total:rows[0].results[0].total,next_cursor:records.length>limit?await this.cursor.issue({selection:key,revision:c.revision,scope:this.commandScope(c),position:[records[limit-1].native_key]}):null,can_edit:true});
+  }
+  async target(input,eventId,id){
+    const c=await this.context(input,eventId);await analysisScopeRevision(c.game,input);if(!c.source)throw invalid('Choose one authorized Trace game before assigning a track.','identity_conflict',409);
+    const position=await this.cursor.verify(id,{selection:this.commandKey(c),revision:c.revision,scope:this.commandScope(c)});if(!Array.isArray(position)||position.length!==1)throw invalid('Invalid native track choice.','cursor_invalid');
+    const source=c.source,member=await this.db.prepare('SELECT * FROM source_game_members WHERE source_event_id=? AND source_team_id=? AND account_id=? AND side=? AND native_key=? AND gid IS NOT NULL').bind(source.id,source.source_team_id,source.account_id,source.side,position[0]).first();if(!member)throw invalid('The native track changed. Reload.','identity_conflict',409);
+    const assignment=await this.db.prepare('SELECT player_id,revision FROM analysis_track_assignments WHERE app_team_id=? AND team_season_id=? AND source_event_id=? AND source_team_id=? AND gid=?').bind(c.selection.team_id,c.selection.team_season_id,source.id,source.source_team_id,member.gid).first();
+    return {...c,member,assignment,params:[c.selection.team_id,c.selection.team_season_id,source.id,source.source_team_id,member.gid]};
+  }
+  async sourceChildren(c){
+    const s=c.source;if(!s.account_active||(Object.hasOwn(s,'attachment_active')&&s.attachment_active!==1)||s.provenance!=='provider'||c.member.provenance!=='provider')return [];const rows=(await this.db.prepare("SELECT id,content_hash,half,evidence FROM source_trace_components WHERE source_event_id=? AND source_team_id=? AND account_id=? AND kind='clip' AND provenance='provider' ORDER BY half LIMIT 3").bind(s.id,s.source_team_id,s.account_id).all()).results;
+    const clips=rows.map(v=>({...JSON.parse(v.evidence),analysis_clip_proof:{id:v.id,content_hash:v.content_hash,half:v.half}})).filter(v=>[1,2].includes(v.half)&&Number.isFinite(v.start)&&Number.isFinite(v.duration)&&v.duration>0&&Number.isSafeInteger(Number(v.game_clip_id))&&Number(v.game_clip_id)>0),player_id='track:'+encodeURIComponent(c.member.gid),common={team_id:s.native_team_id,game_id:s.native_id,side:s.side,player_id,track_gid:c.member.gid,reported_date:''};
+    const proof={version:1,app_team_id:c.selection.team_id,team_season_id:c.selection.team_season_id,source_event_id:s.id,source_team_id:s.source_team_id,event_content_hash:s.content_hash,member_id:c.member.id,member_content_hash:c.member.content_hash,source_input_revision:s.input_revision,attachment_id:s.attachment_id,attachment_generation:s.attachment_generation,connection_generation:s.connection_generation??null,membership_generation:s.membership_generation??null,clips:clips.map(v=>v.analysis_clip_proof)},children=[],add=(component,scope,args)=>children.push({provider:'trace',component,scope,resourceKey:scope,args:{...common,...args,analysis_source_proof:proof},accountId:s.account_id,accountGeneration:s.generation,priority:80,stage:'source'});
+    for(const clip of clips)add('tracking',`trace:${s.native_id}:trace:${s.native_team_id}:${c.member.gid}:${clip.half}`,{half:clip.half,gid:c.member.gid,jersey:c.member.jersey||'',name:c.member.name,clip});
+    for(const period of [{id:'full',start:null,end:null},...clips.map(v=>({id:String(v.half),start:v.start,end:v.start+v.duration*1000}))])add('analytics',`trace:${s.native_id}:trace:${s.native_team_id}:${player_id}:${s.side}:${period.id}`,{side:s.side,gids:[c.member.gid],period});
+    if(children.length>5)throw invalid('The native game has conflicting half clips.','identity_conflict',409);return children;
+  }
+  async set(input,eventId,id,{player_id,revision}){
+    const c=await this.target(input,eventId,id),old=c.assignment?.revision||0;if(!Number.isSafeInteger(revision)||revision<0||old!==revision)throw invalid('The track assignment changed. Reload.','revision_conflict',409);
+    const player=await this.db.prepare('SELECT p.player_id,p.name FROM team_players p JOIN canonical_player_ids cp ON cp.input_id=p.player_id AND cp.canonical_id=p.player_id WHERE p.app_team_id=? AND p.team_season_id=? AND p.player_id=?').bind(c.selection.team_id,c.selection.team_season_id,player_id).first();if(!player)throw invalid('Choose a current canonical roster player.','identity_conflict',409);
+    const children=await this.sourceChildren(c),s=c.source;
+    await this.repo.domainBatch((guard,token)=>[
+      this.db.prepare(`INSERT INTO analysis_track_assignments SELECT ?,?,?,?,?,?,1,? WHERE ?=0 AND ${guard} ON CONFLICT(app_team_id,team_season_id,source_event_id,source_team_id,gid) DO NOTHING`).bind(...c.params,player_id,new Date().toISOString(),revision,token),
+      this.db.prepare(`UPDATE analysis_track_assignments SET player_id=?,revision=revision+1,updated_at=? WHERE app_team_id=? AND team_season_id=? AND source_event_id=? AND source_team_id=? AND gid=? AND revision=? AND ?>0 AND ${guard}`).bind(player_id,new Date().toISOString(),...c.params,revision,revision,token),
+      this.db.prepare(`UPDATE team_read_state SET content_revision=content_revision+1,status_revision=status_revision+1 WHERE app_team_id=? AND ${guard}`).bind(c.selection.team_id,token),
+    ],activeAnalysisWrite(c.selection,{sql:`COALESCE((SELECT revision FROM analysis_track_assignments WHERE app_team_id=? AND team_season_id=? AND source_event_id=? AND source_team_id=? AND gid=?),0)=? AND EXISTS(SELECT 1 FROM source_game_members m WHERE m.id=? AND m.source_event_id=? AND m.source_team_id=? AND m.account_id=? AND m.gid=? AND m.side IS ? AND m.native_key=? AND m.content_hash=?)`,params:[...c.params,revision,c.member.id,s.id,s.source_team_id,s.account_id,c.member.gid,s.side,c.member.native_key,c.member.content_hash]},{eventId:c.eventId,playerId:player_id,game:c.game,ownerState:c.ownerState}));
+    if(this.enqueueRefresh)await this.enqueueRefresh({teamId:c.selection.team_id,seasonId:c.selection.team_season_id,eventId:c.eventId,playerId:player_id,sourceChildren:children});return {revision:revision+1,assigned_player:{id:player_id,name:player.name},queued:!!this.enqueueRefresh,source_jobs:children.length};
+  }
+  async reset(input,eventId,id,{revision}){
+    const c=await this.target(input,eventId,id);if(!Number.isSafeInteger(revision)||revision<1||c.assignment?.revision!==revision)throw invalid('The track assignment changed. Reload.','revision_conflict',409);
+    await this.repo.domainBatch((guard,token)=>[this.db.prepare(`DELETE FROM analysis_track_assignments WHERE app_team_id=? AND team_season_id=? AND source_event_id=? AND source_team_id=? AND gid=? AND revision=? AND ${guard}`).bind(...c.params,revision,token),this.db.prepare(`UPDATE team_read_state SET content_revision=content_revision+1,status_revision=status_revision+1 WHERE app_team_id=? AND ${guard}`).bind(c.selection.team_id,token)],activeAnalysisWrite(c.selection,{sql:'EXISTS(SELECT 1 FROM analysis_track_assignments WHERE app_team_id=? AND team_season_id=? AND source_event_id=? AND source_team_id=? AND gid=? AND revision=?)',params:[...c.params,revision]},{eventId:c.eventId,game:c.game,ownerState:c.ownerState}));
+    if(this.enqueueRefresh)await this.enqueueRefresh({teamId:c.selection.team_id,seasonId:c.selection.team_season_id,eventId:c.eventId,sourceChildren:[]});return {revision:0,assigned_player:null,queued:!!this.enqueueRefresh};
+  }
+}

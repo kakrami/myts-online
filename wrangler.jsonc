@@ -1,38 +1,48 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "myts",
-  "main": "./worker.js",
+  "name": "myts-v7",
+  "main": "worker.js",
   "compatibility_date": "2026-09-09",
+  "workers_dev": true,
+  "limits": {
+    "cpu_ms": 30000
+  },
+  "assets": {
+    "directory": "./web",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
   "d1_databases": [
     {
-      "binding": "DB"
+      "binding": "DB",
+      "database_name": "myts-v7-rebuild-data",
+      "database_id": "60f77502-33d4-41d6-80d4-1c5577ebba76"
     }
   ],
-  "triggers": {
-    "crons": [
-      "* * * * *",
-      "1-59/5 * * * *",
-      "0-59/2 * * * *"
-    ]
-  },
   "durable_objects": {
     "bindings": [
       {
-        "name": "MYTS_RUNTIME",
-        "class_name": "MyTSRuntime"
+        "name": "SYNC",
+        "class_name": "SyncRuntime"
       }
     ]
   },
-  "migrations": [
-    {
-      "tag": "myts-runtime-v1",
-      "new_sqlite_classes": [
-        "MyTSRuntime"
-      ]
+  "exports": {
+    "SyncRuntime": {
+      "type": "durable-object",
+      "storage": "sqlite"
     }
-  ],
-  "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  },
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
+  },
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA"
+  },
   "observability": {
     "enabled": true
-  }
+  },
+  "preview_urls": false
 }
