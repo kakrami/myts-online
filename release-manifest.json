@@ -1,6 +1,6 @@
 {
   "service": "myTS",
-  "version": "7.2.9",
+  "version": "7.2.10",
   "review": true,
   "files": [
     {
@@ -204,6 +204,11 @@
       "sha256": "cca2b3e416dee05673e44f6458c0800fbcf9e65ec7f41709055a1ae0d9a9e039"
     },
     {
+      "path": "docs/shared-pagination-dispatch-repair.md",
+      "bytes": 2074,
+      "sha256": "56814074a20804c5228915946c666019e367ac0b156d5f3fcc700b477b50d2b2"
+    },
+    {
       "path": "docs/sync-contract.md",
       "bytes": 18541,
       "sha256": "3cf89031a51ef17bcc20789c8f75d351fddda75b29d9119f45b7a5af45f35656"
@@ -245,13 +250,13 @@
     },
     {
       "path": "package-lock.json",
-      "bytes": 49485,
-      "sha256": "fba3c51e5fa050438a92101fba6d3e9ec7dcafd33c849d0d50985adb0b46997e"
+      "bytes": 49487,
+      "sha256": "d85d03dc77f037cbad8a435464fa797dd4cdc234520c260f03b6f6652a123089"
     },
     {
       "path": "package.json",
-      "bytes": 635,
-      "sha256": "88de2b34b34b8d8444c2cae5d76c915033a3e46d507eb3b450c6aa4b0e3731cc"
+      "bytes": 636,
+      "sha256": "4f67259691d7569951184dcff40a77fb91d998c217a557d4937000a2c7c6ba47"
     },
     {
       "path": "scripts/release-check.mjs",
@@ -480,8 +485,8 @@
     },
     {
       "path": "src/application/version.js",
-      "bytes": 30,
-      "sha256": "fd26265d373102047657f77405d4746f844b0e01e42448251323e6534c404b30"
+      "bytes": 31,
+      "sha256": "f8be645ec0b46586b6796b2ea140d050a6c24ddafd1154a2810e9f223ada6d33"
     },
     {
       "path": "src/coaching/routes.js",
@@ -940,8 +945,8 @@
     },
     {
       "path": "web/app/features.js",
-      "bytes": 52723,
-      "sha256": "303cb2af126d4f84297544be412bd0977cee07db0ad15eaf96bf8fe99b1f9c7e"
+      "bytes": 52745,
+      "sha256": "b8d3ed8e0fe79e3f6794f748cbd9f43721af6dfcd961e437fa5ebfbb9859cf62"
     },
     {
       "path": "web/app/identity-features.js",
