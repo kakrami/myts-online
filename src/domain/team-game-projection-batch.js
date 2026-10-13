@@ -1,3 +1,4 @@
+import {assertControlTransactionBounds} from './team-game-control-witness.js';
 /** Two-season publication coordinator. Its durable generation fences every
  * participant; no participant can independently expose a half-finished move. */
 import {hash} from '../sources/common.js';
@@ -10,7 +11,7 @@ const batchColumns='batch_id,app_team_id,association_id,decision_revision,genera
 export const teamGameBatchContextSQL=`(SELECT json_object(${batchColumns.split(',').map(k=>`'${k}',b.${k}`).join(',')},'from_current_input',f.input_revision,'to_current_input',d.input_revision,'from_current_run',f.published_run_id,'to_current_run',d.published_run_id) FROM team_game_publish_batches b JOIN team_projection_state f ON f.team_season_id=b.from_team_season_id JOIN team_projection_state d ON d.team_season_id=b.to_team_season_id WHERE b.app_team_id=t.id AND(b.state IN('preparing','ready') OR b.batch_id=?) ORDER BY b.state IN('preparing','ready') DESC LIMIT 1)`;
 export function teamGameBatchFence(batch){return {sql:`EXISTS(SELECT 1 FROM team_game_publish_batches b JOIN team_projection_state f ON f.team_season_id=b.from_team_season_id JOIN team_projection_state d ON d.team_season_id=b.to_team_season_id WHERE b.batch_id=? AND b.generation=? AND b.state IN('preparing','ready') AND f.input_revision=b.from_expected_input_revision AND d.input_revision=b.to_expected_input_revision AND f.published_run_id IS b.from_expected_run_id AND d.published_run_id IS b.to_expected_run_id)`,params:[batch.batch_id,batch.generation]};}
 const valid=batch=>batch.from_current_input===batch.from_expected_input_revision&&batch.to_current_input===batch.to_expected_input_revision&&batch.from_current_run===batch.from_expected_run_id&&batch.to_current_run===batch.to_expected_run_id;
-const response=(statements,checkpoint,extra={})=>({statements,checkpoint,complete:false,changed:false,published:false,recoveryRequired:false,affectedTeams:[],...extra});
+const response=(statements,checkpoint,extra={})=>{assertControlTransactionBounds(statements,checkpoint);return {statements,checkpoint,complete:false,changed:false,published:false,recoveryRequired:false,affectedTeams:[],...extra};};
 export async function startTeamGameBatch(repo,team,season,state,cp,statements){
  const add=(sql,...params)=>statements.push({sql,params}),move=cp.move;
  const hold=(reason='destination_scope_unavailable')=>{const held=cp.holdMoves===true?true:[...(cp.holdMoves??[]).filter(h=>(typeof h==='string'?h:h.association_id)!==move.association_id),{association_id:move.association_id,reason}];const next={...cp,phase:'events',move:undefined,holdMoves:held};if(bytes(next)>8192)next.holdMoves=true;return response(statements,next);};
@@ -22,6 +23,7 @@ export async function startTeamGameBatch(repo,team,season,state,cp,statements){
  const destination=target.results[0],frame=await teamGameBuildFrame(repo.db,team.id,season.id,cp.runId);
  if(cp.gameFrame!==await teamGameFrameIdentity(frame)||frame.source_revision!==move.source_revision||frame.mutation_revision!==move.mutation_revision||frame.saved_valid!==1)return response(statements,{});
  teamGameFrameAssertion(add,team.id,season.id,frame);
+ addTeamGamePublicationAssertions(add,team.id,cp.runId,null,frame.controlSnapshot);
  teamGameAssert(add,`NOT EXISTS(SELECT 1 FROM team_game_publish_batches WHERE app_team_id=? AND state IN('preparing','ready')) AND EXISTS(SELECT 1 FROM team_projection_state WHERE team_season_id=? AND input_revision=? AND published_run_id IS ?)`,team.id,destination.id,destination.input_revision,destination.published_run_id);
  const batchId=crypto.randomUUID(),fromRun=crypto.randomUUID(),toRun=crypto.randomUUID(),now=stamp();
  add("UPDATE team_projection_runs SET state='obsolete' WHERE app_team_id=? AND team_season_id IN(?,?) AND state='building' AND $FENCE",team.id,season.id,destination.id);
@@ -56,6 +58,7 @@ export async function buildTeamGameBatchPage(repo,teamId,seasonId,checkpoint,bat
  const statements=[...page.statements],fence=teamGameBatchFence(batch);
  // The single participant's input assertion includes this same generation CAS.
  statements.push({sql:`UPDATE team_game_publish_batches SET generation=generation+1 WHERE batch_id=? AND generation=? AND ${fence.sql} AND $FENCE`,params:[batch.batch_id,batch.generation,...fence.params]});
+ assertControlTransactionBounds(statements,next);
  return {...page,statements,checkpoint:next,complete:false,published:false};
 }
 async function ready(repo,batch,cp){
@@ -74,7 +77,7 @@ async function publish(repo,batch,cp){
  }
  const statements=[],add=(sql,...params)=>statements.push({sql,params}),fence=teamGameBatchFence(batch);
  teamGameAssert(add,`${fence.sql} AND(SELECT COUNT(*) FROM team_projection_runs WHERE id IN(?,?) AND state='building' AND team_game_version=1)=2`,...fence.params,batch.from_build_run_id,batch.to_build_run_id);
- for(const side of ['from','to']){teamGameFrameAssertion(add,batch.app_team_id,batch[side+'_team_season_id'],frames[side]);addTeamGamePublicationAssertions(add,batch.app_team_id,batch[side+'_build_run_id'],batch);}
+ for(const side of ['from','to']){teamGameFrameAssertion(add,batch.app_team_id,batch[side+'_team_season_id'],frames[side]);addTeamGamePublicationAssertions(add,batch.app_team_id,batch[side+'_build_run_id'],batch,frames[side].controlSnapshot);}
  add("UPDATE team_projection_runs SET state='obsolete' WHERE id IN(?,?) AND state='published' AND $FENCE",batch.from_expected_run_id,batch.to_expected_run_id);
  add("UPDATE team_projection_runs SET state='published' WHERE id IN(?,?) AND state='building' AND $FENCE",batch.from_build_run_id,batch.to_build_run_id);
  for(const side of ['from','to'])add('UPDATE team_projection_state SET published_run_id=?,published_input_revision=?,pending=?,input_revision=input_revision+?,projection_hash=? WHERE team_season_id=? AND $FENCE',batch[side+'_build_run_id'],batch[side+'_expected_input_revision'],cp.deferredMoves?1:0,cp.deferredMoves?1:0,'batch:'+batch.batch_id,batch[side+'_team_season_id']);

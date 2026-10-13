@@ -1,6 +1,6 @@
 {
   "service": "myTS",
-  "version": "7.2.13",
+  "version": "7.2.14",
   "review": true,
   "files": [
     {
@@ -179,6 +179,16 @@
       "sha256": "a0b8494acdf79ead5f2fff0d802f42d401de122a51a068c56f7c6721219489e0"
     },
     {
+      "path": "docs/projection-control-native-map.json",
+      "bytes": 79650,
+      "sha256": "d5e91cfddb15c5b6d00bf7f7e59e741d219333137af8aea2261d0f0d5f23b4a5"
+    },
+    {
+      "path": "docs/projection-control-throughput.md",
+      "bytes": 10463,
+      "sha256": "232dc1f43c782dfdfbbb297c5549272b98487e2508dded4a5d50b4b6ddd7ff03"
+    },
+    {
       "path": "docs/provider-access.md",
       "bytes": 25972,
       "sha256": "2f25bba7d3dd87c68a29ec52a023e01505d473f8b8882a13ad0ce1589c98b81f"
@@ -351,12 +361,12 @@
     {
       "path": "package-lock.json",
       "bytes": 49487,
-      "sha256": "747b033725bf69275b403e86f7649277c229c997567cd53a41bea0d502a8b54b"
+      "sha256": "809a049745de0f3ae16955503bd8d2bb232bc269120b58b0db3ed9ef53a36ea9"
     },
     {
       "path": "package.json",
       "bytes": 636,
-      "sha256": "0f985b1cc6f2e9592344186b4fd047b9041f989120dec8158d9a7fd8d0923436"
+      "sha256": "f4d96e88783e7db42eb81331a9c6e279bd0fe26e88b2b7be8cc0d2a5a2227d90"
     },
     {
       "path": "scripts/release-check.mjs",
@@ -626,7 +636,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 31,
-      "sha256": "3d31636fe47582d411ac9795617c34812c9b844e920ab471e787a50abecc6ba0"
+      "sha256": "ac8d770f60bf9164e659f416c1bd4c382a18178c9b25a3b41e85a950da89a74d"
     },
     {
       "path": "src/coaching/routes.js",
@@ -720,8 +730,8 @@
     },
     {
       "path": "src/domain/projector.js",
-      "bytes": 27970,
-      "sha256": "7d2246b2664cecf190a660eeb29aa4de5dbc97fa27fe22815a6d51d6ba759ad8"
+      "bytes": 28484,
+      "sha256": "b1b0d1a32aad5471af15a09dece2588555e66b1f4e0b8c4c7615185c89f07840"
     },
     {
       "path": "src/domain/repository.js",
@@ -745,8 +755,8 @@
     },
     {
       "path": "src/domain/team-game-candidates.js",
-      "bytes": 30507,
-      "sha256": "76a66551154daeda0ef587cd6691f6b1915e64c14cc55ee2a246d2e19568e40f"
+      "bytes": 31029,
+      "sha256": "4962f96d3059d8bd1d03d619fdcdfd1a3c94ed523fabeab9f450ffb542157f03"
     },
     {
       "path": "src/domain/team-game-command-fence.js",
@@ -754,9 +764,14 @@
       "sha256": "46ccf77c79cf42d9e4af7e962f27dcf9ea83c9a76b1ad9b6c2bb1ca0e25b7912"
     },
     {
+      "path": "src/domain/team-game-control-witness.js",
+      "bytes": 13750,
+      "sha256": "de57a4feaa5ed7cfb9132c1e3952cc4e46025ca76d6721c2b58dd0719809a33b"
+    },
+    {
       "path": "src/domain/team-game-projection-batch.js",
-      "bytes": 15027,
-      "sha256": "fffe060ed1df7d7208ce183fde1b495666257fb9a06a3c802388681ca343ba8e"
+      "bytes": 15331,
+      "sha256": "fe8dd2d3c6f870197e2e3640445250885aee22a8f0b201e2ff760abaf1b41265"
     },
     {
       "path": "src/domain/team-game-projection-semantic.js",
@@ -765,8 +780,8 @@
     },
     {
       "path": "src/domain/team-game-projection.js",
-      "bytes": 59536,
-      "sha256": "f62a1eca7e8820dc50661fd8736723acb58a24179e75b57e32fc8e17d04d9243"
+      "bytes": 61339,
+      "sha256": "15a5703ecd58cd8aa67bec74aea7f47a6835d5c62520f51088fbf8fd9b9899dd"
     },
     {
       "path": "src/domain/team-game-resolver.js",

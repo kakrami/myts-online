@@ -1,3 +1,4 @@
+import {assertControlTransactionBounds} from './team-game-control-witness.js';
 import {teamGameBatchContextSQL,teamGameBatchFence,startTeamGameBatch,buildTeamGameBatchPage} from './team-game-projection-batch.js';
 import {teamGameSemanticChange} from './team-game-projection-semantic.js';
 import {sourceConsumerQuery} from './source-consumers.js';
@@ -39,7 +40,7 @@ export async function buildProjectionPage(repo,teamId,seasonId,checkpoint={},opt
   const batch=options.batch??null,connectionManaged=!!season.connection_managed;
   const statements=[],add=(sql,...params)=>statements.push({sql,params}),affectedTeams=[];
   let cp={...checkpoint},revision=state.input_revision;
-  const response=(complete=false,extra={})=>({statements,checkpoint:cp,complete,changed:false,recoveryRequired:true,revision:state.content_revision,input_revision:revision,affectedTeams,...extra});
+  const response=(complete=false,extra={})=>{assertControlTransactionBounds(statements,cp);return {statements,checkpoint:cp,complete,changed:false,recoveryRequired:true,revision:state.content_revision,input_revision:revision,affectedTeams,...extra};};
   if(cp.phase==='cleanup') {
     // Old runs may be deleted in bounded slices while a newer source revision is
     // already pending. The published pointer is protected in every delete.
@@ -140,12 +141,14 @@ export async function buildProjectionPage(repo,teamId,seasonId,checkpoint={},opt
     cp={...cp,cursor:page.at(-1).id};return response(false,{recoveryRequired:missing.length!==0});
   }
   if(cp.phase==='events') {
+    // Re-evaluate old receipt-pressure sizing once, without discarding progress.
+    if(cp.gamePagePolicy!==2)cp={...cp,gamePagePolicy:2,gamePageSize:pageSize};
     const retained=`SELECT a.target_event_id AS id FROM team_game_associations a JOIN team_game_decision_revisions d ON d.app_team_id=a.app_team_id AND d.association_id=a.association_id AND d.revision=a.accepted_revision WHERE a.app_team_id=? AND d.team_season_id=? AND a.target_event_id>?`;
     const page=connectionManaged?(await repo.db.prepare(`${roots} SELECT DISTINCT c.canonical_id AS id FROM source_events e JOIN event_source_links l ON l.source_event_id=e.id JOIN canonical_event_ids c ON c.input_id=l.event_id JOIN team_event_season_resolutions resolution ON resolution.event_id=c.canonical_id AND resolution.app_team_id=? AND resolution.team_season_id=? WHERE ${SELECTED} AND c.canonical_id>? UNION ${retained} ORDER BY id LIMIT ${cp.gamePageSize??pageSize}`).bind(teamId,seasonId,teamId,seasonId,cp.cursor||'',teamId,seasonId,cp.cursor||'').all()).results:(await repo.db.prepare(`${roots} SELECT DISTINCT l.event_id AS id FROM source_events e JOIN event_source_links l ON l.source_event_id=e.id WHERE ${SELECTED} AND (${nativeWindow} OR EXISTS(SELECT 1 FROM domain_overrides o WHERE o.app_team_id=? AND o.kind='event' AND o.entity_id=l.event_id)) AND l.event_id>? UNION ${retained} ORDER BY id LIMIT ${cp.gamePageSize??pageSize}`).bind(teamId,seasonId,...seasonWindow(season),teamId,cp.cursor||'',teamId,seasonId,cp.cursor||'').all()).results;
 
     if(!page.length){cp={...cp,phase:'players',cursor:''};return response(false,{recoveryRequired:false});}
     const frame=await teamGameBuildFrame(repo.db,teamId,seasonId,cp.runId,batch),frameIdentity=await teamGameFrameIdentity(frame);
-    if(cp.gameFrame&&(cp.gameFrame!==frameIdentity||frame.saved_valid!==1)) {
+    if(frame.saved_valid!==1||cp.gameFrame&&cp.gameFrame!==frameIdentity) {
       add("UPDATE team_projection_runs SET state='obsolete' WHERE id=? AND $FENCE",cp.runId);
       cp={};return response(false,{recoveryRequired:false});
     }
@@ -153,8 +156,8 @@ export async function buildProjectionPage(repo,teamId,seasonId,checkpoint={},opt
     // The requested native page bounds output only. The adapter loads every
     // reciprocal neighbor before deciding, even beyond this cursor/page.
     let selected=page,prepared;
-    try{prepared=await prepareTeamGameProjection(repo.db,{team,season,runId:cp.runId,ids:selected.map(e=>e.id),batch,holdMoves:cp.holdMoves});}
-    catch(error){if(error.code!=='team_game_native_bound'||selected.length===1)throw error;prepared={smallerPage:true};}
+    try{prepared=await prepareTeamGameProjection(repo.db,{team,season,runId:cp.runId,ids:selected.map(e=>e.id),batch,holdMoves:cp.holdMoves,frame});}
+    catch(error){if(error.code==='team_game_projection_changed'){add("UPDATE team_projection_runs SET state='obsolete' WHERE id=? AND $FENCE",cp.runId);cp={};return response(false,{recoveryRequired:false});}if(error.code!=='team_game_native_bound'||selected.length===1)throw error;prepared={smallerPage:true};}
     if(prepared.smallerPage){cp={...cp,gamePageSize:Math.max(1,Math.floor(selected.length/2))};return response(false,{recoveryRequired:false});}
     if(prepared.moves.length){cp={...cp,phase:'move_prepare',move:{...prepared.moves.sort((a,b)=>a.association_id.localeCompare(b.association_id))[0],source_revision:frame.source_revision,mutation_revision:frame.mutation_revision}};return response(false,{recoveryRequired:false});}
     stageTeamGameProjection(add,prepared,teamId,cp.runId,batch);
@@ -163,12 +166,12 @@ export async function buildProjectionPage(repo,teamId,seasonId,checkpoint={},opt
 
   if(cp.phase==='publish') {
     const frame=await teamGameBuildFrame(repo.db,teamId,seasonId,cp.runId,batch),frameIdentity=await teamGameFrameIdentity(frame);
-    if(cp.gameFrame&&(cp.gameFrame!==frameIdentity||frame.saved_valid!==1)){add("UPDATE team_projection_runs SET state='obsolete' WHERE id=? AND $FENCE",cp.runId);cp={};return response(false,{recoveryRequired:false});}
+    if(frame.saved_valid!==1||cp.gameFrame&&cp.gameFrame!==frameIdentity){add("UPDATE team_projection_runs SET state='obsolete' WHERE id=? AND $FENCE",cp.runId);cp={};return response(false,{recoveryRequired:false});}
     cp={...cp,gameFrame:frameIdentity};
     if(batch)return response(false,{batchReady:true,recoveryRequired:false,deferredMoves:cp.deferredMoves});
     const changed=await teamGameSemanticChange(repo.db,teamId,seasonId,cp.runId,state.published_run_id);
     teamGameFrameAssertion(add,teamId,seasonId,frame);
-    addTeamGamePublicationAssertions(add,teamId,cp.runId);
+    addTeamGamePublicationAssertions(add,teamId,cp.runId,null,frame.controlSnapshot);
     add("UPDATE team_projection_runs SET state='obsolete' WHERE app_team_id=? AND team_season_id=? AND state='published' AND id<>? AND $FENCE",teamId,seasonId,cp.runId);
     add("UPDATE team_projection_runs SET state='published' WHERE id=? AND state='building' AND input_revision=? AND $FENCE",cp.runId,revision);
     add('UPDATE team_projection_state SET published_run_id=?,published_input_revision=?,pending=0,projection_hash=? WHERE team_season_id=? AND input_revision=? AND $FENCE',cp.runId,revision,changed?`input:${revision}`:state.projection_hash,seasonId,revision);
