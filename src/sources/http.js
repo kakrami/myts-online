@@ -66,11 +66,13 @@ export class SourceTransport {
         if(challengeMarker(prefix))throw Object.assign(fail("Provider returned a verified challenge.",502,"human_verification"),{failureKind:"blocked"});
         throw fail("Provider returned an unsupported format.",502,"unsupported_response");
       }
+      // Audit bytes count inspected response bytes, capped at the read bound.
+      // A rejected oversized stream must still fit the bounded failure audit.
       const reader = response.body?.getReader();
       requireValue(reader, "Provider response body is missing.", "unsupported_response");
       const decode = new TextDecoder(); let raw = "";
       try {
-        for (;;) { const chunk = await reader.read(); if (chunk.done) break; observation.bytes += chunk.value.length; if (observation.bytes > maxBytes) { await reader.cancel(); throw fail("Provider page exceeded its bound.", 502, "record_too_large"); } raw += decode.decode(chunk.value, { stream: true }); }
+        for (;;) { const chunk = await reader.read(); if (chunk.done) break; const remaining = maxBytes - observation.bytes; observation.bytes += Math.min(chunk.value.length, remaining); if (chunk.value.length > remaining) { await reader.cancel(); throw fail("Provider page exceeded its bound.", 502, "record_too_large"); } raw += decode.decode(chunk.value, { stream: true }); }
       } finally { reader.releaseLock(); }
       raw += decode.decode();
       let value; try { value = JSON.parse(raw); } catch { throw fail("Provider returned invalid JSON.", 502, "unsupported_response"); }

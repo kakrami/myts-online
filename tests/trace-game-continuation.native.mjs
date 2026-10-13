@@ -95,7 +95,7 @@ test('Workerd/D1 completes Trace semantic continuations and legacy resume; genui
     assert.equal(state.job.state,'ready');assert.equal(state.job.pages_saved,4);assert.equal(state.job.failures,0);
     assert.ok(state.jobs.every(j=>j.state==='ready'&&j.failures===0));
     assert.equal(state.jobs.reduce((n,j)=>n+j.count,0),44);
-    for(const [table,count] of Object.entries({source_game_members:7,source_game_moments:3,source_tracking_segments:56,source_stat_summaries:27,source_stat_items:27,source_heatmaps:27}))assert.equal(state[table],count,table);
+    for(const [table,count] of Object.entries({source_game_members:7,source_game_moments:3,source_tracking_segments:14,source_stat_summaries:27,source_stat_items:27,source_heatmaps:27}))assert.equal(state[table],count,table);
     assert.deepEqual(state.components,[{kind:'clip',count:2},{kind:'header',count:1},{kind:'radar',count:2}]);
     assert.equal(state.members[0].join_time,Date.UTC(2025,7,1,12,0,0,123));
     assert.equal(JSON.parse(state.members[0].evidence).join_time,'2025-08-01T05:00:00.123456-07:00');

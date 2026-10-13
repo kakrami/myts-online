@@ -36,7 +36,7 @@ test('three saved tracking chunks resume at chunk 3 and require the fourth befor
  const provider=traceProvider(traceNativeGame()),store=traceStorage();
  try{
   const pages=await gamePages(provider);for(const page of pages)await store.save(page);
-  const child=pages.flatMap(p=>p.children).find(j=>j.kind==='tracking');let cursor={};
+  const child=pages.flatMap(p=>p.children).find(j=>j.kind==='tracking');let cursor={chunk:0};
   for(let i=0;i<3;i++){
    const page=await provider.collect('tracking',child.args,cursor);await store.save(page);cursor=page.checkpoint;
    assert.equal(page.complete,false);assert.equal(cursor.chunk,i+1);

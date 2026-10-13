@@ -449,16 +449,37 @@ export async function collectTrace({ j, args = {}, cursor = {}, transport, crede
     return out;
   }
   if (j.kind === "tracking") {
-    const chunk = Number(cursor.chunk || 0), count = 4, duration = Math.round(args.clip?.duration * 1000);
+    // Original 6.20.133 starts with a full half. Existing chunk cursors keep
+    // their exact four-part contract; never restart a saved partial scan.
+    const full = Object.keys(cursor).length === 0 || cursor.protocol === "trace-tracking-full-v1";
+    const chunk = full ? 0 : Number(cursor.chunk || 0), count = 4, duration = Math.round(args.clip?.duration * 1000);
     requireValue(Number.isInteger(chunk) && chunk >= 0 && chunk < count && duration > 0 && Number.isFinite(args.clip?.start) && native(args.clip?.game_clip_id) && text(args.gid), "Trace tracking scope is incomplete.", "contract_violation");
-    const lo = Math.round(duration * chunk / count), hi = Math.round(duration * (chunk + 1) / count);
-    const d = await graphql(transport, credential, Q.HALO_QUERY, { segments: [{ start: args.clip.start + lo, local_start: lo, duration: hi - lo, game_clip_id: args.clip.game_clip_id,
-      gid: args.gid.replaceAll("-", "_"), player_name: [args.jersey ? "#" + args.jersey : "", args.name].filter(Boolean).join(" "), sport_type: "soccer" }], eduButtonSize: { width: 115, height: 72 } }, "getHaloData");
-    const ranges = segments(d.halo?.ring), page = await slice(ranges, cursor, 1000);
-    out.records.trace_parts = [sourcePart(`tracking:${args.half}:${args.gid}:${chunk}:${page.offset}`, { player_id: args.player_id, gid: args.gid, half: args.half, chunk, segments: page.page })];
-    const chunkPages = { ...(cursor.chunk_pages || {}), ...(page.complete ? { [chunk]: Math.max(1, Math.ceil((page.offset + page.page.length) / 1000)) } : {}) };
-    out.complete = page.complete && chunk === count - 1;
-    out.checkpoint = !page.complete ? { ...page.checkpoint, chunk, chunk_pages: chunkPages } : out.complete ? { finished: true } : { chunk: chunk + 1, chunk_pages: chunkPages };
+    const lo = full ? 0 : Math.round(duration * chunk / count), hi = full ? duration : Math.round(duration * (chunk + 1) / count);
+    let ranges;
+    try {
+      const d = await graphql(transport, credential, Q.HALO_QUERY, { segments: [{ start: args.clip.start + lo, local_start: lo, duration: hi - lo, game_clip_id: args.clip.game_clip_id,
+        gid: args.gid.replaceAll("-", "_"), player_name: [args.jersey ? "#" + args.jersey : "", args.name].filter(Boolean).join(" "), sport_type: "soccer" }], eduButtonSize: { width: 115, height: 72 } }, "getHaloData");
+      ranges = segments(d.halo?.ring);
+    } catch (error) {
+      // Persist the mode change before trying segmented retrieval on a later
+      // claim. Never treat denial, rate limiting, transport or budget failure
+      // as permission for another request.
+      if (!full || !["record_too_large", "unsupported_response"].includes(error.code)) throw error;
+      out.complete = false;
+      out.checkpoint = { chunk: 0, chunk_pages: {} };
+      out.coverage.push(coverage("tracking", fixtureId + ":" + teamKey + ":" + args.gid + ":" + args.half, false, 0));
+      return out;
+    }
+    // Reuse one full response for at most four bounded storage records.
+    // This avoids re-fetching the same half once per 1000-interval row while
+    // keeping the tested source transaction within its existing query budget.
+    const page = await slice(ranges, cursor, full ? 4000 : 1000);
+    out.records.trace_parts = [];
+    for (let offset = 0; offset < Math.max(1, page.page.length); offset += 1000)
+      out.records.trace_parts.push(sourcePart(`tracking:${args.half}:${args.gid}:${chunk}:${page.offset + offset}`, { player_id: args.player_id, gid: args.gid, half: args.half, chunk, segments: page.page.slice(offset, offset + 1000) }));
+    const chunkPages = { ...(full ? {} : cursor.chunk_pages || {}), ...(page.complete ? { [chunk]: Math.max(1, Math.ceil((page.offset + page.page.length) / 1000)) } : {}) };
+    out.complete = page.complete && (full || chunk === count - 1);
+    out.checkpoint = !page.complete ? { ...page.checkpoint, ...(full ? { protocol: "trace-tracking-full-v1" } : { chunk, chunk_pages: chunkPages }) } : out.complete ? { finished: true } : { chunk: chunk + 1, chunk_pages: chunkPages };
     out.coverage.push(coverage("tracking", fixtureId + ":" + teamKey + ":" + args.gid + ":" + args.half, out.complete, page.page.length));
     if (out.complete) out.replacements.push({ kind: "trace_tracking_parts", fixture_id: fixtureId, team_id: teamKey, account_id: accountId, half: args.half, gid: args.gid, chunk_pages: chunkPages, segment_page_size: 1000 });
     return out;
