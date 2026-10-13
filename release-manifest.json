@@ -1,6 +1,6 @@
 {
   "service": "myTS",
-  "version": "7.2.15",
+  "version": "7.2.16",
   "review": true,
   "files": [
     {
@@ -177,6 +177,16 @@
       "path": "docs/progressive-root-service-proof.md",
       "bytes": 4618,
       "sha256": "a0b8494acdf79ead5f2fff0d802f42d401de122a51a068c56f7c6721219489e0"
+    },
+    {
+      "path": "docs/projection-bridge-expiry-native-map.json",
+      "bytes": 79716,
+      "sha256": "b35a8c7cef7cefc8630404e018a93cd777650a25b6ba3c022b147c8a8c5789de"
+    },
+    {
+      "path": "docs/projection-bridge-expiry.md",
+      "bytes": 8839,
+      "sha256": "c27b79e7513d461f889ad7610a48b5a8508338aff45111c4d148d0b9eb12bc92"
     },
     {
       "path": "docs/projection-control-lifetime-native-map.json",
@@ -371,12 +381,12 @@
     {
       "path": "package-lock.json",
       "bytes": 49487,
-      "sha256": "c86d255342ef48673b2dbaf17ca1d56ee301220d602897f29b859f78e4b74051"
+      "sha256": "aa84d54678a5fa9b6b08e81255833352bdf18169592601bd0fa3d294f4eb91f4"
     },
     {
       "path": "package.json",
       "bytes": 636,
-      "sha256": "41fa0c1ea7fc414d0709cd34dd589cfb9940052c81a2710447107e44e02450a2"
+      "sha256": "253759ed717660cf6962b240a742e7c957fe8f1f5a5376c7f15e5098040ea5fe"
     },
     {
       "path": "scripts/release-check.mjs",
@@ -646,7 +656,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 31,
-      "sha256": "99b70b8c460e5c957171e026efc1aded9f99403b231bd81d0df835a0e0966971"
+      "sha256": "f17f56978dd19eca0690f2ae23e50efc67e2f8cd54bf36c666284f5c2a113e52"
     },
     {
       "path": "src/coaching/routes.js",
@@ -790,8 +800,8 @@
     },
     {
       "path": "src/domain/team-game-projection.js",
-      "bytes": 66128,
-      "sha256": "56d2c289531d448dd29a04071b5704bd325e4c7aceb8999cff76e6bccb9a175f"
+      "bytes": 66464,
+      "sha256": "d70893a39e087dde6801bcc46c4f1987cad3443d066cee5ed2b6d71d386b5a59"
     },
     {
       "path": "src/domain/team-game-resolver.js",
@@ -1055,13 +1065,13 @@
     },
     {
       "path": "src/sync/coordinator.js",
-      "bytes": 73852,
-      "sha256": "8ebc20d1b250e3be758b53f6569f810c0a65b91488b27077100bc34c4e9bbd27"
+      "bytes": 74367,
+      "sha256": "6199d995d416d40522f0853bedb9c28c758dab716b02fcfdad50ec17a5af01ea"
     },
     {
       "path": "src/sync/errors.js",
-      "bytes": 2337,
-      "sha256": "a97bba894308d8b5406e7b1243841b1afb9854e2d00e05fed282454bc96e7ab2"
+      "bytes": 8397,
+      "sha256": "20a8d4539444baf6db1b510fdab9ad552e18d96dc9ce303410103f9bd15fb5a8"
     },
     {
       "path": "src/sync/public-history-bridge.js",
@@ -1075,8 +1085,8 @@
     },
     {
       "path": "src/sync/runtime.js",
-      "bytes": 11822,
-      "sha256": "2dc02d9bc2afdc1c085a6dc3f885c2a7bf78feb1d87f53514e07b27a9342470d"
+      "bytes": 12127,
+      "sha256": "7121666171d1d7eb0316bcdef1c98634116e4805fc49ba4503753de8e29f9063"
     },
     {
       "path": "src/sync/schema.js",

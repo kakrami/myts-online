@@ -1,6 +1,6 @@
 import { JobCoordinator, ORDINARY_SERVICE_CYCLE } from './coordinator.js';
 import { BudgetDB } from './budget.js';
-import { classifyFailure } from './errors.js';
+import { classifyFailure, logSyncFailure } from './errors.js';
 
 // Production and tests inject their source/projection collector. No provider,
 // credential, canonical identity, or user-facing team creation lives here.
@@ -85,7 +85,7 @@ export function createSyncRuntime(collector, options = {}) {
     async run() {
       const started = Date.now(), rawDb = new BudgetDB(this.env.DB,options.statementLimit ?? 48);
       let db=rawDb;
-      let installation;
+      let installation, diagnosticLease, diagnosticPhase='runtime_setup';
       try {
         const wakeSequence = await this.ctx.storage.get('wake_sequence') || 0;
         installation=await this.installation(db);
@@ -129,7 +129,9 @@ export function createSyncRuntime(collector, options = {}) {
           coordinator.ordinaryTurn=ORDINARY_SERVICE_CYCLE[turn];
         }
         let projectionRecovery = null;
+        diagnosticPhase='runtime_claim';
         const result = await coordinator.runOne(async context=>{
+          diagnosticPhase='runtime_job';diagnosticLease=context.lease;
           // Record the obligation before any imported source page can commit.
           // A restarted alarm can recover it even if the final commit's reply
           // or subsequent storage promotion was interrupted.
@@ -141,6 +143,7 @@ export function createSyncRuntime(collector, options = {}) {
           if(provider==='domain'&&component==='projection'&&stage==='projection')projectionRecovery={jobId:id,required:page?.recoveryRequired};
           return page;
         },{env:this.env});
+        diagnosticPhase='runtime_after_job';
         // A page may legitimately use the whole invocation. It has already
         // saved its checkpoint: schedule another bounded invocation rather
         // than turn the due-queue read into a fictitious source failure.
@@ -163,6 +166,7 @@ export function createSyncRuntime(collector, options = {}) {
         await this.ctx.storage.put('last_run',{...result,...(options.inspectInstallation?{installation_id:installation.identity}:{}),started_at:started,finished_at:Date.now(),statements:db.used,rows_read:db.rowsRead,rows_written:db.rowsWritten});
         await this.scheduleAfterRun(next,wakeSequence);
       } catch (error) {
+        logSyncFailure(diagnosticPhase,error,{db,lease:diagnosticLease,started});
         const failure = classifyFailure(error);
         await this.ctx.storage.put('last_run',{state:'error',error:failure,...(options.inspectInstallation?{installation_id:installation?.identity??null}:{}),started_at:started,finished_at:Date.now(),statements:db.used});
         await this.arm(Date.now()+(options.runtimeRetryMs ?? 60000));

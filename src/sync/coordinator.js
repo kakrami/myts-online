@@ -1,4 +1,4 @@
-import { SyncError, classifyFailure } from './errors.js';
+import { SyncError, classifyFailure, logSyncFailure } from './errors.js';
 import {publicHistoryKey,publicHistoryJob,publicHistoryProof,publicHistoryLive,publicHistoryContext,publicHistoryDemanded,publicHistoryQuery,publicHistoryJobAuthority} from './public-history.js';
 
 const encoder = new TextEncoder();
@@ -351,7 +351,10 @@ export class JobCoordinator {
     statements.push(this.prepare('DELETE FROM sync_commit_fences WHERE job_id=? AND commit_token=?').bind(lease.id,commitToken));
     if (this.db.remaining !== undefined && statements.length+(this.db.writeOverhead||0) > this.db.remaining) throw new SyncError('invocation_budget', 'The page needs another invocation.', { retryAfterMs: 1000 });
     const saved = await this.db.batch(statements);
-    if (saved[updateIndex].meta.changes !== 1) return { state:'lease_lost', committed:false };
+    if (saved[updateIndex].meta.changes !== 1) {
+      logSyncFailure('commit',null,{db:this.db,lease,leaseLost:true});
+      return { state:'lease_lost', committed:false };
+    }
     return { state:result.complete?'ready':'queued', committed:true, coverage:result.coverage || (result.complete?'complete':'partial') };
   }
   async fail(lease, error) {
@@ -374,7 +377,9 @@ export class JobCoordinator {
       prepare(`UPDATE sync_jobs SET state=?,next_at=?,lease_token=NULL,lease_until=0,failures=failures+1,last_error_code=?,last_error_message=?,failure_kind=?,last_retrieved_at=COALESCE(?,last_retrieved_at),coverage=COALESCE(?,coverage) WHERE id=? AND ${guard}`).bind(state,next,info.code,info.message,info.kind,retrievedAt,coverage,lease.id),
       ...(receiptFailure?[this.prepare('DELETE FROM sync_commit_fences WHERE job_id=? AND commit_token=?').bind(lease.id,failureToken)]:[]),
     ]);
-    return { state:results.at(receiptFailure?-2:-1).meta.changes?state:'lease_lost', error:info };
+    const outcome = { state:results.at(receiptFailure?-2:-1).meta.changes?state:'lease_lost', error:info };
+    if(outcome.state==='lease_lost')logSyncFailure('fail',null,{db:this.db,lease,leaseLost:true});
+    return outcome;
   }
   async retry(id,{precondition=null}={}) {
     if(precondition&&(typeof precondition.sql!=='string'||!Array.isArray(precondition.params)||/;/.test(precondition.sql)))throw new SyncError('contract_violation','Invalid internal retry precondition.',{kind:'permanent'});
@@ -436,12 +441,20 @@ export class JobCoordinator {
   async runOne(collector, context = {}) {
     const lease = await this.claim();
     if (!lease) return {state:'idle'};
+    let phase='collect';
     try {
       const result = await collector({ ...context, db:this.db, lease, args:lease.args, checkpoint:lease.checkpoint });
+      phase='commit';
       return {jobId:lease.id,provider:lease.provider,component:lease.component,stage:lease.stage,...await this.commit(lease,result)};
     } catch (error) {
+      logSyncFailure(phase,error,{db:this.db,lease});
       // Budget exhaustion before commit is a retry, not a successful partial page.
-      return {jobId:lease.id,provider:lease.provider,component:lease.component,stage:lease.stage,...await this.fail(lease,error)};
+      try {
+        return {jobId:lease.id,provider:lease.provider,component:lease.component,stage:lease.stage,...await this.fail(lease,error)};
+      } catch (failureError) {
+        logSyncFailure('fail',failureError,{db:this.db,lease,originalError:error,originalPhase:phase});
+        throw failureError;
+      }
     }
   }
 }
