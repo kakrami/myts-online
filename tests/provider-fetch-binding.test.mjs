@@ -12,7 +12,7 @@ let mf,outgoing=[];
 const secret='synthetic-private-value';
 test.before(async()=>{
  const modules={};for(const file of (await readdir(path.join(root,'src'),{recursive:true})).filter(f=>f.endsWith('.js'))){const name='src/'+file;modules[name]={type:'esm',contents:await readFile(path.join(root,name),'utf8')};}
- modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};modules['web/app/schedule-query.js']={type:'esm',contents:await readFile(path.join(root,'web/app/schedule-query.js'),'utf8')};
+ modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};for(const name of ['web/app/schedule-query.js','web/app/reporting/encoders.js','web/app/reporting/font-metrics.js'])modules[name]={type:'esm',contents:await readFile(path.join(root,name),'utf8')};
  modules['binding-test.js']={type:'esm',contents:`
  import {SourceTransport} from './src/sources/http.js';
  import {CaptureTransport} from './src/sources/tracking-capture.js';

@@ -5,7 +5,8 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {requiredFiles, stageRelease, schemaIdentity} from '../scripts/release-check.mjs';
-import {V714_OBJECTS,V714_FINGERPRINT} from '../src/application/schema-v714.js';
+import {V731_OBJECTS} from '../src/application/schema-v731.js';
+import {preservedFixture} from './team-game-release-fixture.mjs';
 
 const fakeWrangler = `#!/usr/bin/env node
 const fs = require('node:fs');
@@ -19,7 +20,7 @@ if (args[0] === 'd1' && args[1] === 'execute' && args[2] === 'DB'
       const loaded=JSON.parse(fs.readFileSync(process.env.MYTS_GUARD_DATABASE_FIXTURE,'utf8'));
       const fixture=process.env.MYTS_GUARD_SCENARIO==='initializing-target'?loaded.target:loaded;
       const sql=args[args.indexOf('--command')+1];
-      const results=sql.includes('FROM sqlite_master')?fixture.objects:sql.includes('FROM setup_state')?[fixture.setup]:sql.includes('FROM domain_installation')?[{schema_version:1}]:null;
+      const results=sql.includes('FROM sqlite_master')?fixture.objects:sql.includes('FROM setup_state')?[fixture.setup]:sql.includes('FROM domain_installation')?[{schema_version:1}]:sql.includes('FROM installation_upgrade')?[fixture.journal]:null;
       if(!results){process.exitCode=87;break;}
       process.stdout.write(JSON.stringify([{success:true,results}]));
       break;
@@ -84,7 +85,7 @@ async function runPipeline(scenario, check, amendConfig) {
     const sentinel = path.join(fixture, 'deploy-sentinel.txt');
     const databaseFixture=path.join(fixture,'guard-database.json');
     const identity=await schemaIdentity();
-    await writeFile(databaseFixture,JSON.stringify({target:{objects:[V714_OBJECTS.find(row=>row.name==='setup_state')],setup:{schema_fingerprint:identity.fingerprint,next_index:0,state:'initializing',started_at:'2026-10-12T05:20:00.000Z',completed_at:null}},objects:V714_OBJECTS,setup:{schema_fingerprint:V714_FINGERPRINT,next_index:270,state:'ready',started_at:'2026-10-12T05:20:00.000Z',completed_at:'2026-10-12T05:29:49.040Z'}}));
+    const preserved=preservedFixture(identity);await writeFile(databaseFixture,JSON.stringify({target:{objects:[V731_OBJECTS.find(row=>row.name==='setup_state')],setup:{schema_fingerprint:identity.fingerprint,next_index:0,state:'initializing',started_at:preserved.setup.started_at,completed_at:null}},objects:V731_OBJECTS,setup:preserved.setup,journal:preserved.journal}));
     const result = spawnSync('npm', ['run', 'deploy'], {
       cwd:fixture,
       encoding:'utf8',
@@ -121,14 +122,14 @@ async function runPipeline(scenario, check, amendConfig) {
   }
 }
 
-test('actual npm deploy awaits the exact preserved 7.1.4 physical schema before deploying', async () => {
+test('actual npm deploy awaits the exact preserved731 physical schema and714 receipt before deploying', async () => {
   await runPipeline('known-old', ({result, output, calls, deployed}) => {
     assert.equal(result.status, 0, output);
     assert.match(output, /Remote rebuild database inspected: upgrade_required\. Deployment guard passed\./);
     assert.doesNotMatch(output, /inspected: undefined/);
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 5);
     assert.equal(calls[0][0], 'd1');
-    assert.deepEqual(calls[3], ['deploy', '--config', 'wrangler.jsonc']);
+    assert.deepEqual(calls[4], ['deploy', '--config', 'wrangler.jsonc']);
     assert.equal(deployed, 'deploy reached\n');
   });
 });

@@ -125,3 +125,10 @@ uiTest('the assembled detail controller invalidates the real Coach command befor
  gate.resolve({session:session('PRIVATE STALE COMMAND')});await pending;assert.equal(f.api.host.querySelector('#entityBody').innerHTML,current);assert.doesNotMatch(current,/PRIVATE STALE COMMAND/);
  detail.cleanup(f.api);
 }));
+
+uiTest('Coach commands forward the captured published-scope token and adopt the returned token',async()=>withCoach(async f=>{
+ f.read=async()=>({data:{...envelope().data,game_scope_revision:'captured-game'}});f.command=async()=>({session:session('Saved player',2),game_scope_revision:'confirmed-game'});await f.load();await f.coach.actions['coach-command']({value:'pause'},f.api);assert.equal(f.calls.commands[0].body.game_scope_revision,'captured-game');await f.coach.actions['coach-command']({value:'resume'},f.api);assert.equal(f.calls.commands[1].body.game_scope_revision,'confirmed-game');
+}));
+uiTest('saved-only Coach plan shows disabled controls and blocks retained command handlers',async()=>withCoach(async f=>{
+ f.read=async()=>({data:{...envelope().data,state_only:true,can_edit:false,game_scope_revision:null}});await f.load();assert.equal(f.body().querySelector('fieldset').disabled,true);assert.match(f.body().textContent,/read-only/);await f.coach.actions['coach-command']({value:'pause'},f.api);assert.equal(f.calls.commands.length,0);
+}));

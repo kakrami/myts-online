@@ -20,7 +20,7 @@ async function applicationFixture() {
   for(const directory of ['domain','security','sync','sources','analysis','application','read-model'])for(const file of await readdir(`src/${directory}`,{recursive:true}))if(file.endsWith('.js')) {
     const name=`src/${directory}/${file}`;modules[name]={type:'esm',contents:await readFile(name,'utf8')};
   }
-  modules['web/app/schedule-query.js']={type:'esm',contents:await readFile('web/app/schedule-query.js','utf8')};
+  for(const name of ['web/app/schedule-query.js','web/app/reporting/encoders.js','web/app/reporting/font-metrics.js'])modules[name]={type:'esm',contents:await readFile(name,'utf8')};
   modules['application-test-worker.js']={type:'esm',contents:`
     import {ApplicationSyncService,createApplicationRuntime} from './src/application/sync-service.js';
     import {BudgetDB} from './src/sync/budget.js';

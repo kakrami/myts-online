@@ -1,3 +1,4 @@
+import {publishedGameScopeCTE,resolvePublishedGame,gameScopeFenceSQL} from '../domain/team-game-scope.js';
 import { DomainRepository } from '../domain/repository.js';
 import { SecurityStore } from '../security/index.js';
 import { collectSource, SourceTransport } from '../sources/index.js';
@@ -42,7 +43,7 @@ async function collectAnalysisCatalog(db,lease,args,checkpoint) {
   const after=fresh?null:checkpoint.after;
   const rows=(await db.prepare(`WITH eligible AS(SELECT e.event_id,COALESCE(e.starts_at,'') AS starts_at,CASE WHEN e.starts_at IS NULL OR e.starts_at<? THEN 20 WHEN e.starts_at>? THEN 40 ELSE 70 END AS priority FROM team_events e WHERE e.app_team_id=? AND e.team_season_id=? AND (EXISTS(SELECT 1 FROM source_events s JOIN event_source_links l ON l.source_event_id=s.id JOIN canonical_event_ids c ON c.input_id=l.event_id JOIN team_source_attachments a ON a.app_team_id=e.app_team_id AND a.team_season_id=e.team_season_id AND a.account_id=s.account_id AND a.active=1 JOIN provider_accounts p ON p.id=a.account_id JOIN source_event_teams st ON st.source_event_id=s.id AND st.source_team_id=a.source_team_id WHERE s.provider='trace' AND c.canonical_id=e.event_id AND ${savedAnalysisSourceSQL()}) OR EXISTS(SELECT 1 FROM analysis_overrides o WHERE o.app_team_id=e.app_team_id AND o.team_season_id=e.team_season_id AND (o.event_id=e.event_id OR o.kind='player_season')) OR EXISTS(SELECT 1 FROM analysis_track_assignments t JOIN event_source_links l ON l.source_event_id=t.source_event_id JOIN canonical_event_ids c ON c.input_id=l.event_id WHERE t.app_team_id=e.app_team_id AND t.team_season_id=e.team_season_id AND c.canonical_id=e.event_id))) SELECT * FROM eligible WHERE ? IS NULL OR priority<? OR (priority=? AND starts_at<?) OR (priority=? AND starts_at=? AND event_id>?) ORDER BY priority DESC,starts_at DESC,event_id LIMIT 33`).bind(new Date(now-60*86400000).toISOString(),new Date(now+30*86400000).toISOString(),args.teamId,args.seasonId,after?.eventId||null,after?.priority||0,after?.priority||0,after?.startsAt||'',after?.priority||0,after?.startsAt||'',after?.eventId||'').all()).results;
   const selected=rows.slice(0,32),last=selected.at(-1);
-  return {statements:[],children:selected.map(event=>({provider:'analysis',component:'match',stage:'analysis',scope:args.teamId,resourceKey:`${args.seasonId}:${event.event_id}`,args:{teamId:args.teamId,seasonId:args.seasonId,eventId:event.event_id,requestId:args.requestId},priority:event.priority,recurring:false,subscriberMode:'inherit'})),checkpoint:{projectionHash:state.projection_hash,now,after:last?{priority:last.priority,startsAt:last.starts_at,eventId:last.event_id}:after},complete:rows.length<=32,coverage:rows.length<=32?'complete':'partial',publishContent:false};
+  return {statements:[],children:selected.map(event=>({provider:'analysis',component:'match',stage:'analysis',scope:args.teamId,resourceKey:`${args.seasonId}:${event.event_id}`,args:{teamId:args.teamId,seasonId:args.seasonId,eventId:event.event_id,requestId:args.requestId,automatic:true},priority:event.priority,recurring:false,subscriberMode:'inherit'})),checkpoint:{projectionHash:state.projection_hash,now,after:last?{priority:last.priority,startsAt:last.starts_at,eventId:last.event_id}:after},complete:rows.length<=32,coverage:rows.length<=32?'complete':'partial',publishContent:false};
 }
 function childPriority(child, page, now) {
   if (ANALYSIS.has(child.component)) return 20;
@@ -84,8 +85,13 @@ export async function collectApplicationJob({db,env,lease,args,checkpoint}, opti
 
     requireValue(lease.stage==='projection' && lease.component==='projection' && args.teamId===lease.scope && args.seasonId===lease.resource_key,'Invalid projection demand.');
     const projection = await repo.buildProjectionPage(args.teamId,args.seasonId,checkpoint);
-    const children=(projection.affectedTeams||[]).slice(0,127).map(affected=>projectionSpec(affected.app_team_id,affected.team_season_id));
-    if(projection.published)children.push(analysisCatalogSpec(args.teamId,args.seasonId,args.requestId));
+    const publishedSeasons=projection.published?(projection.publishedSeasons??[args.seasonId]):[];
+    requireValue(Array.isArray(publishedSeasons)&&publishedSeasons.length<=2&&
+      (!projection.published||publishedSeasons.length>0&&publishedSeasons.includes(args.seasonId))&&
+      new Set(publishedSeasons).size===publishedSeasons.length&&
+      publishedSeasons.every(id=>typeof id==='string'&&id.length>0&&id.length<=240),'Invalid published season boundary.');
+    const children=(projection.affectedTeams||[]).slice(0,Math.min(127,128-publishedSeasons.length)).map(affected=>projectionSpec(affected.app_team_id,affected.team_season_id));
+    for(const seasonId of publishedSeasons)children.push(analysisCatalogSpec(args.teamId,seasonId,args.requestId));
     return {statements:projection.statements,checkpoint:projection.checkpoint,children,complete:projection.complete,recoveryRequired:projection.recoveryRequired,coverage:projection.complete?'complete':'partial',publishContent:false,rowsSaved:projection.rowsSaved||0};
   }
   const transport = options.transportFactory ? options.transportFactory(env) : new SourceTransport(env);
@@ -156,9 +162,32 @@ export class ApplicationSyncService {
     requireValue(Number.isInteger(reserveStatements)&&reserveStatements>=0&&reserveStatements<=12,'Invalid recovery budget reserve.');
     const capacity=this.db.remaining===undefined?limit:Math.min(limit,Math.max(0,Math.floor((this.db.remaining-1-reserveStatements)/(6+(this.db.writeOverhead||0)))));
     if(!capacity)return {queued:0,deferred:true};
-    const pending=(await this.db.prepare(`SELECT p.app_team_id,p.team_season_id FROM team_projection_state p LEFT JOIN sync_jobs j ON j.provider='domain' AND j.account_scope='public' AND j.component='projection' AND j.scope=p.app_team_id AND j.resource_key=p.team_season_id WHERE p.pending=1 AND ${connectionEvidenceReady('p.app_team_id')} AND NOT EXISTS(SELECT 1 FROM team_lifecycle l WHERE l.team_id=p.app_team_id) AND (j.id IS NULL OR j.state IN('ready','disabled')) ORDER BY p.app_team_id,p.team_season_id LIMIT ?`).bind(capacity).all()).results;
+    const pending=(await this.db.prepare(`SELECT p.app_team_id,p.team_season_id FROM team_projection_state p LEFT JOIN sync_jobs j ON j.provider='domain' AND j.account_scope='public' AND j.component='projection' AND j.scope=p.app_team_id AND j.resource_key=p.team_season_id WHERE p.pending=1 AND ${connectionEvidenceReady('p.app_team_id')} AND NOT EXISTS(SELECT 1 FROM team_lifecycle l WHERE l.team_id=p.app_team_id) AND NOT EXISTS(SELECT 1 FROM team_game_publish_batches b WHERE b.app_team_id=p.app_team_id AND b.state IN('preparing','ready') AND b.to_team_season_id=p.team_season_id) AND (j.id IS NULL OR j.state IN('ready','disabled')) ORDER BY p.app_team_id,p.team_season_id LIMIT ?`).bind(capacity).all()).results;
     let queued=0;for(const team of pending)if((await this.enqueueProjection(team.app_team_id,team.team_season_id,{wake:false})).queued)queued++;
     if(wake&&queued)await this.wake();return {queued,more:pending.length===capacity};
+  }
+  // Published run IDs bind the immutable member IDs; their ordered revision
+  // vector is a compact exact analysis-input clock. A successful match page
+  // acknowledges it under its existing input CAS. Failed attempts acknowledge
+  // only their admission clock, so an unchanged failure never loops.
+  async recoverMatchAnalyses({limit=1,wake=true}={}) {
+    requireValue(Number.isInteger(limit)&&limit>=1&&limit<=3,'Recovery analysis page must be between one and three.');
+    const capacity=this.db.remaining===undefined?limit:Math.min(limit,Math.max(0,Math.floor((this.db.remaining-2)/(6+(this.db.writeOverhead||0)))));
+    if(!capacity)return {queued:0,deferred:true};
+    const rows=(await this.db.prepare(`WITH analysis_selection AS(SELECT app_team_id,team_season_id FROM team_projection_state p WHERE p.published_run_id IS NOT NULL AND p.pending=0 AND NOT EXISTS(SELECT 1 FROM team_lifecycle l WHERE l.team_id=p.app_team_id)),${publishedGameScopeCTE('analysis_selection','analysis_game')},
+      candidates AS MATERIALIZED(SELECT t.app_team_id,t.team_season_id,t.event_id,t.run_id,t.starts_at,j.id AS job_id,j.generation,j.state,
+        (SELECT json_array(t.run_id,json_group_array(input_revision)) FROM(SELECT COALESCE(v.input_revision,0) AS input_revision FROM analysis_game_checked m JOIN source_events s ON s.id=m.source_event_id JOIN event_source_links l ON l.source_event_id=s.id LEFT JOIN source_event_state v ON v.source_event_id=s.id WHERE m.run_id=t.run_id AND m.app_team_id=t.app_team_id AND m.team_season_id=t.team_season_id AND m.target_event_id=t.event_id ORDER BY s.id)) AS source_clock,
+        CASE WHEN j.state IN('failed','blocked') THEN json_extract(j.args,'$.sourceClock') ELSE json_extract(j.checkpoint,'$.sourceClock') END AS serviced_clock
+        FROM analysis_game_targets t LEFT JOIN sync_jobs j ON j.provider='analysis' AND j.account_scope='public' AND j.component='match' AND j.scope=t.app_team_id AND j.resource_key=t.team_season_id||':'||t.event_id
+        WHERE t.locally_available=1 AND t.member_count<=64 AND NOT EXISTS(SELECT 1 FROM team_event_season_resolutions accepted WHERE accepted.app_team_id=t.app_team_id AND accepted.event_id=t.event_id AND accepted.team_season_id IS NOT t.team_season_id) AND (j.id IS NULL OR j.state IN('ready','failed','blocked','disabled')) AND EXISTS(SELECT 1 FROM analysis_game_checked m WHERE m.run_id=t.run_id AND m.app_team_id=t.app_team_id AND m.team_season_id=t.team_season_id AND m.target_event_id=t.event_id AND m.provider='trace' AND m.entitled=1))
+      SELECT * FROM candidates WHERE source_clock IS NOT serviced_clock AND length(CAST(source_clock AS BLOB))<=2048 AND NOT EXISTS(SELECT 1 FROM json_each(source_clock,'$[1]') clock WHERE clock.type<>'integer' OR clock.value<0 OR clock.value>9007199254740991) ORDER BY COALESCE(starts_at,'') DESC,app_team_id,team_season_id,event_id LIMIT ?`).bind(capacity).all()).results;
+    let queued=0;
+    for(const row of rows){
+      const precondition={sql:`EXISTS(SELECT 1 FROM team_projection_state WHERE app_team_id=? AND team_season_id=? AND published_run_id=? AND pending=0) AND ${row.job_id?'EXISTS(SELECT 1 FROM sync_jobs WHERE id=? AND generation=? AND state=?)':"NOT EXISTS(SELECT 1 FROM sync_jobs WHERE provider='analysis' AND account_scope='public' AND component='match' AND scope=? AND resource_key=?)"}`,params:[row.app_team_id,row.team_season_id,row.run_id,...(row.job_id?[row.job_id,row.generation,row.state]:[row.app_team_id,`${row.team_season_id}:${row.event_id}`])]};
+      try{await this.jobs.enqueueMany([{provider:'analysis',component:'match',stage:'analysis',scope:row.app_team_id,resourceKey:`${row.team_season_id}:${row.event_id}`,args:{teamId:row.app_team_id,seasonId:row.team_season_id,eventId:row.event_id,sourceClock:row.source_clock,automatic:true,requestId:crypto.randomUUID()},priority:analysisPriority(row.starts_at,Date.now()),recurring:false}],[{kind:'team',key:`analysis:${row.app_team_id}:${row.team_season_id}:${row.event_id}`,teamId:row.app_team_id}],{precondition});queued++;}
+      catch(error){if(!/CHECK constraint failed: expected_input=actual_input/.test(String(error.message)))throw error;}
+    }
+    if(wake&&queued)await this.wake();return {queued};
   }
   async recoverConnections({limit=1,wake=true}={}) {
     requireValue(Number.isInteger(limit)&&limit>=1&&limit<=3,'Recovery connection page must be between one and three.');
@@ -174,19 +203,21 @@ export class ApplicationSyncService {
   async recoverLocalDemand({wake=true}={}) {
     const connections=await this.recoverConnections({limit:1,wake:false});
     const projections=await this.recoverProjections({limit:1,wake:false});
+    const analyses=await this.recoverMatchAnalyses({limit:1,wake:false});
     const publicDeferred=this.db.remaining!==undefined&&this.db.remaining<11+(this.db.writeOverhead||0);
     const history=publicDeferred?{processed:0}:await this.jobs.recoverPublicHistory({limit:1});
-    const queued=connections.queued+projections.queued;
+    const queued=connections.queued+projections.queued+analyses.queued;
     if(wake&&queued)await this.wake();
-    return {queued,connectionsQueued:connections.queued,projectionsQueued:projections.queued,historyRecovered:history.processed,more:!!connections.more||!!projections.more||history.processed===1,deferred:!!connections.deferred||!!projections.deferred||publicDeferred};
+    return {queued,connectionsQueued:connections.queued,projectionsQueued:projections.queued,analysesQueued:analyses.queued,historyRecovered:history.processed,more:!!connections.more||!!projections.more||history.processed===1,deferred:!!connections.deferred||!!projections.deferred||publicDeferred};
   }
   async recoverDemand({wake=true}={}) {
     const connections=await this.recoverConnections({limit:1,wake:false});
     const capacity=this.db.remaining===undefined?2:Math.min(2,Math.max(0,Math.floor((this.db.remaining-12)/(12+(this.db.writeOverhead||0)))));
     const accounts=capacity?await this.recoverDiscovery({limit:capacity,wake:false}):{queued:0,nextCursor:null};
     const projections=await this.recoverProjections({limit:3,wake:false});
+    const analyses=await this.recoverMatchAnalyses({limit:1,wake:false});
     const history=this.db.remaining===undefined||this.db.remaining>=11+(this.db.writeOverhead||0)?await this.jobs.recoverPublicHistory({limit:1}):{processed:0};
-    if(wake&&(connections.queued||accounts.queued||projections.queued))await this.wake();return {historyRecovered:history.processed,connectionsQueued:connections.queued,accountsQueued:accounts.queued,projectionsQueued:projections.queued,more:!!connections.more||!!connections.deferred||!!accounts.nextCursor||!!projections.more||!!projections.deferred};
+    if(wake&&(connections.queued||accounts.queued||projections.queued||analyses.queued))await this.wake();return {historyRecovered:history.processed,connectionsQueued:connections.queued,accountsQueued:accounts.queued,projectionsQueued:projections.queued,analysesQueued:analyses.queued,more:!!connections.more||!!connections.deferred||!!accounts.nextCursor||!!projections.more||!!projections.deferred};
   }
   async candidates(accountId) {
     const account=await this.db.prepare('SELECT id FROM provider_accounts WHERE id=? AND active=1').bind(accountId).first();requireValue(account,'This account is unavailable.');
@@ -285,7 +316,11 @@ export class ApplicationSyncService {
   }
   async enqueueTrackSource({teamId,seasonId,eventId,sourceChildren},{wake=true}={}) {
     requireValue(eventId&&Array.isArray(sourceChildren)&&sourceChildren.length>0&&sourceChildren.length<=5,'Track source refresh requires a bounded match scope.');
-    const first=sourceChildren[0];
+    const first=sourceChildren[0],game=await resolvePublishedGame(this.db,teamId,seasonId,eventId);
+    requireValue(game?.available,'This saved match is unavailable.','analysis_source_scope');
+    const sourceId=first.args?.analysis_source_proof?.source_event_id;
+    requireValue(game.source_members.some(member=>member.source_id===sourceId&&member.provider==='trace'&&member.account_id===first.accountId&&member.source_team_id===first.args?.analysis_source_proof?.source_team_id),'This track is outside the published match.','analysis_source_scope');
+    const membership=gameScopeFenceSQL(game);
     const proofValue=JSON.stringify(first.args?.analysis_source_proof),proofs=sourceChildren.map(child=>{
       requireValue(JSON.stringify(child.args?.analysis_source_proof)===proofValue,'Track fetch demand crossed its authority proof.','analysis_source_scope');
       return analysisSourceCollectionProof(child.args?.analysis_source_proof,{args:child.args,accountId:child.accountId,accountGeneration:child.accountGeneration,teamId,seasonId});
@@ -294,10 +329,10 @@ export class ApplicationSyncService {
     requireValue(verified.every(result=>result.results[0]?.ok===1),'Only provider-verified saved tracks may request new source data.','analysis_source_scope');
 
     for(const child of sourceChildren)requireValue(child.provider==='trace'&&['tracking','analytics'].includes(child.component)&&child.accountId===first.accountId&&child.accountGeneration===first.accountGeneration&&child.args?.team_id===first.args?.team_id&&child.args?.game_id===first.args?.game_id&&child.args?.side===first.args?.side&&['home','away'].includes(child.args?.side)&&child.scope===child.resourceKey,'Track source refresh crossed its match or account.');
-    const attachment=await this.db.prepare(`SELECT a.id,a.generation FROM team_source_attachments a JOIN source_teams t ON t.id=a.source_team_id JOIN provider_accounts p ON p.id=a.account_id AND p.active=1 JOIN source_event_teams st ON st.source_team_id=t.id JOIN source_events s ON s.id=st.source_event_id AND s.account_id=p.id JOIN event_source_links l ON l.source_event_id=s.id JOIN canonical_event_ids c ON c.input_id=l.event_id JOIN team_events e ON e.app_team_id=a.app_team_id AND e.team_season_id=a.team_season_id AND e.event_id=c.canonical_id WHERE a.active=1 AND a.app_team_id=? AND a.team_season_id=? AND a.account_id=? AND p.generation=? AND t.provider='trace' AND t.native_id=? AND s.provider='trace' AND s.native_id=? AND st.side=? AND c.canonical_id=? AND NOT EXISTS(SELECT 1 FROM team_lifecycle life WHERE life.team_id=a.app_team_id) LIMIT 1`).bind(teamId,seasonId,first.accountId,first.accountGeneration,String(first.args.team_id),String(first.args.game_id),first.args.side,eventId).first();
+    const attachment=await this.db.prepare(`SELECT a.id,a.generation FROM team_source_attachments a JOIN source_teams t ON t.id=a.source_team_id JOIN provider_accounts p ON p.id=a.account_id AND p.active=1 JOIN source_event_teams st ON st.source_team_id=t.id JOIN source_events s ON s.id=st.source_event_id AND s.account_id=p.id WHERE a.id=? AND a.active=1 AND a.app_team_id=? AND a.team_season_id=? AND a.account_id=? AND p.generation=? AND t.provider='trace' AND t.native_id=? AND s.provider='trace' AND s.native_id=? AND st.side=? AND s.id=? AND NOT EXISTS(SELECT 1 FROM team_lifecycle life WHERE life.team_id=a.app_team_id) LIMIT 1`).bind(first.args.analysis_source_proof.attachment_id,teamId,seasonId,first.accountId,first.accountGeneration,String(first.args.team_id),String(first.args.game_id),first.args.side,sourceId).first();
     requireValue(attachment,'This attached account did not provide the selected match track.');
     const specs=sourceChildren.map(child=>({...child,stage:'analysis',priority:80,intervalMs:INTERVAL[child.component]||43200000}));
-    const jobIds=await this.jobs.enqueueMany(specs,[{kind:'team',key:attachment.id,teamId,generation:attachment.generation}],{refresh:true,precondition:proofs[0]});
+    const jobIds=await this.jobs.enqueueMany(specs,[{kind:'team',key:attachment.id,teamId,generation:attachment.generation}],{refresh:true,precondition:{sql:`(${membership.sql}) AND (${proofs[0].sql})`,params:[...membership.params,...proofs[0].params]}});
     if(wake)await this.wake();return {queued:true,jobIds};
   }
   async enqueueAnalysisRefresh({teamId,seasonId,eventId=null,sourceChildren},{wake=true}={}) {

@@ -2,6 +2,7 @@ import {FeatureReads} from '../read-model/feature-reads.js';
 import {invalid} from '../read-model/selection.js';
 import {publicHistoryProof,publicHistoryQuery,publicHistoryAdmission} from '../sync/public-history.js';
 import {digest} from '../security/crypto.js';
+import {gameScopeFenceSQL,assertPublishedGameCurrent} from '../domain/team-game-scope.js';
 import {findPublicHistoryAnchor} from '../read-model/public-history-anchor.js';
 
 const DAY=86400000,COOLDOWN=60000,MAX_PAIRS=8,MAX_JOBS=512;
@@ -22,8 +23,9 @@ export class PublicHistoryService {
     const now=this.now(),requester=this.principal.role==='owner'?'owner':'viewer',key=requester==='owner'?'owner':this.requesterKey;
     const row=await findPublicHistoryAnchor(this.db,context,current,{now,requester,key,provider:'gotsport'});
     if(!row)return null;
+    if(current._game_scope)await assertPublishedGameCurrent(this.db,current._game_scope);
     row.id=await digest(JSON.stringify(['public-history',row.app_team_id,row.team_season_id,requester,key,row.pair_a,row.pair_b]));
-    return {row,context};
+    return {row,context,gameScope:current._game_scope};
   }
   async saved(id) {
     return this.db.prepare(publicHistoryQuery(`SELECT d.*,${publicHistoryAdmission('d')} AS proof_live,(SELECT count(*) FROM public_history_jobs j WHERE j.demand_id=d.id AND j.generation=d.generation) AS jobs_total,(SELECT count(*) FROM public_history_jobs j WHERE j.demand_id=d.id AND j.generation=d.generation AND j.state='complete') AS jobs_complete,(SELECT count(*) FROM public_history_jobs j WHERE j.demand_id=d.id AND j.generation=d.generation AND j.state IN('failed','superseded')) AS jobs_failed FROM public_history_demands d WHERE d.id=?`,String(this.now()),{live:true})).bind(id).first();
@@ -45,9 +47,10 @@ export class PublicHistoryService {
     if(limits.active_pairs>=MAX_PAIRS)throw invalid('Several history checks are still running. Try again after one finishes.','history_capacity',429);
     if(limits.pair_cooldown>now)return {...this.model(old),can_refresh:false,cooldown_until:limits.pair_cooldown,note:'This pair was just requested. Wait a moment before requesting another scan.'};
     row.generation=(old?.generation??0)+1;row.requested_at=now;row.expires_at=now+DAY;row.cooldown_until=now+COOLDOWN;
+    const scopeFence=anchor.gameScope?gameScopeFenceSQL(anchor.gameScope,{forWrite:false}):{sql:'1',params:[]};
     const draft=proposed(row),session=this.principal.role==='owner'?{sql:SESSION,params:[this.principal.session_id,now]}:{sql:'1',params:[]};
-    const guard=`${publicHistoryAdmission('d','public_history_candidate')} AND ${session.sql} AND NOT EXISTS(SELECT 1 FROM public_history_demands existing WHERE existing.id=d.id AND (existing.generation<>? OR existing.cooldown_until>?)) AND NOT EXISTS(SELECT 1 FROM public_history_demands recent WHERE recent.app_team_id=d.app_team_id AND recent.pair_a=d.pair_a AND recent.pair_b=d.pair_b AND recent.cooldown_until>?) AND (SELECT count(*) FROM(SELECT DISTINCT pair_a,pair_b FROM public_history_demands active WHERE active.app_team_id=d.app_team_id AND active.state='active' AND active.expires_at>${now} AND NOT(active.pair_a=d.pair_a AND active.pair_b=d.pair_b)))<${MAX_PAIRS}`;
-    const insert=this.db.prepare(publicHistoryQuery(draft.sql+` INSERT INTO public_history_demands(${fields.join(',')}) SELECT ${fields.map(key=>'d.'+key).join(',')} FROM d WHERE ${guard} ON CONFLICT(id) DO UPDATE SET ${fields.filter(key=>key!=='id').map(key=>key+'=excluded.'+key).join(',')}`,String(now),{candidateSource:'d'})).bind(...draft.params,...session.params,old?.generation??0,now,now);
+    const guard=`${publicHistoryAdmission('d','public_history_candidate')} AND ${session.sql} AND (${scopeFence.sql}) AND NOT EXISTS(SELECT 1 FROM public_history_demands existing WHERE existing.id=d.id AND (existing.generation<>? OR existing.cooldown_until>?)) AND NOT EXISTS(SELECT 1 FROM public_history_demands recent WHERE recent.app_team_id=d.app_team_id AND recent.pair_a=d.pair_a AND recent.pair_b=d.pair_b AND recent.cooldown_until>?) AND (SELECT count(*) FROM(SELECT DISTINCT pair_a,pair_b FROM public_history_demands active WHERE active.app_team_id=d.app_team_id AND active.state='active' AND active.expires_at>${now} AND NOT(active.pair_a=d.pair_a AND active.pair_b=d.pair_b)))<${MAX_PAIRS}`;
+    const insert=this.db.prepare(publicHistoryQuery(draft.sql+` INSERT INTO public_history_demands(${fields.join(',')}) SELECT ${fields.map(key=>'d.'+key).join(',')} FROM d WHERE ${guard} ON CONFLICT(id) DO UPDATE SET ${fields.filter(key=>key!=='id').map(key=>key+'=excluded.'+key).join(',')}`,String(now),{candidateSource:'d'})).bind(...draft.params,...session.params,...scopeFence.params,old?.generation??0,now,now);
     const cleanup=this.db.prepare(`DELETE FROM public_history_jobs WHERE demand_id=? AND generation<>? AND EXISTS(SELECT 1 FROM public_history_demands d WHERE d.id=? AND d.generation=? AND d.requested_at=?)`).bind(row.id,row.generation,row.id,row.generation,now);
     const specs=['home','away'].flatMap(side=>{
       const native=row[side+'_native_id'];let evidence={};try{evidence=JSON.parse(row[side+'_evidence']||'{}');}catch{}

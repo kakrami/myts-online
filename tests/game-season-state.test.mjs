@@ -63,8 +63,9 @@ async function snapshot(db,tables=[...OWNER_TABLES,...PRESERVED_TABLES,'team_eve
 async function publishOldSeason(db,f) {
   const run=f.prefix+'-published';
   await db.batch([
-    db.prepare("INSERT INTO team_projection_runs VALUES(?,?,?,0,'published',?)").bind(run,f.teamId,f.fromSeasonId,AT),
-    db.prepare("INSERT INTO team_event_rows(run_id,app_team_id,team_season_id,event_id,local_day,type,status,conditional,own_side,home_name,away_name,title,venue,source_ids,schedule_source_id,result_source_id) VALUES(?,?,?,?,'2026-05-31','game','SCHEDULED',0,'home','Us','Them','Game','Field','[]',?,?)").bind(run,f.teamId,f.fromSeasonId,f.eventId,f.sourceEvent,f.sourceEvent),
+    db.prepare('INSERT INTO team_source_attachments(id,app_team_id,team_season_id,source_team_id) VALUES(?,?,?,?)').bind(f.prefix+'-attachment',f.teamId,f.fromSeasonId,f.sourceTeam),
+    db.prepare("INSERT INTO team_projection_runs(id,app_team_id,team_season_id,input_revision,state,created_at) VALUES(?,?,?,0,'published',?)").bind(run,f.teamId,f.fromSeasonId,AT),
+    db.prepare("INSERT INTO team_event_rows(run_id,app_team_id,team_season_id,event_id,local_day,type,status,conditional,own_side,home_name,away_name,title,venue,source_ids,schedule_source_id,result_source_id) VALUES(?,?,?,?,'2026-05-31','game','SCHEDULED',0,'home','Us','Them','Game','Field',?,?,?)").bind(run,f.teamId,f.fromSeasonId,f.eventId,JSON.stringify([f.sourceEvent]),f.sourceEvent,f.sourceEvent),
     db.prepare("INSERT INTO team_player_rows VALUES(?,?,?,?,?,'12','[]')").bind(run,f.teamId,f.fromSeasonId,f.player,'Keeper'),
     db.prepare('UPDATE team_projection_state SET published_run_id=? WHERE team_season_id=?').bind(run,f.fromSeasonId),
   ]);

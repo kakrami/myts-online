@@ -6,6 +6,8 @@ import {execFileSync} from 'node:child_process';
 import {REPORT_SCHEMA} from '../src/reporting/schema.js';
 import {SYNC_SCHEMA} from '../src/sync/schema.js';
 import {DOMAIN_SCHEMA} from '../src/domain/schema.js';
+import {TEAM_GAME_SCHEMA} from '../src/domain/team-game-schema.js';
+import {TEAM_GAME_RUN_BASE_DDL,TEAM_GAME_RUN_TARGET_DDL} from '../src/application/team-game-installation-epoch.js';
 import {SECURITY_SCHEMA} from '../src/security/schema.js';
 import {ANALYSIS_SCHEMA} from '../src/analysis/schema.js';
 import {TEAM_FEATURE_SCHEMA} from '../src/application/team-features.js';
@@ -20,7 +22,7 @@ import {roster,playerDetail,reports as reportScreen} from '../web/ui-original/sc
 const AT='2026-10-12T12:00:00.000Z',INPUT={team_id:'team',team_season_id:'season'};
 function fixture(){
  const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON;');
- for(const sql of [...DOMAIN_SCHEMA,...SECURITY_SCHEMA,...ANALYSIS_SCHEMA,...TEAM_FEATURE_SCHEMA,...AWARDS_SCHEMA,...REPORT_SCHEMA,...SYNC_SCHEMA])sqlite.exec(sql);
+ for(const sql of [...DOMAIN_SCHEMA.map(sql=>sql===TEAM_GAME_RUN_BASE_DDL?TEAM_GAME_RUN_TARGET_DDL:sql),...TEAM_GAME_SCHEMA,...SECURITY_SCHEMA,...ANALYSIS_SCHEMA,...TEAM_FEATURE_SCHEMA,...AWARDS_SCHEMA,...REPORT_SCHEMA,...SYNC_SCHEMA])sqlite.exec(sql);
  const insert=(table,row)=>sqlite.prepare(`INSERT INTO ${table}(${Object.keys(row).join(',')}) VALUES(${Object.keys(row).map(()=>'?').join(',')})`).run(...Object.values(row));
  let now=Date.parse(AT);
  const db={prepare(sql){const statement={sql,params:[],bind(...params){return {...statement,params};},async first(){const row=sqlite.prepare(sql).get(...this.params);return row?{...row}:null;},async run(){const result=sqlite.prepare(sql).run(...this.params);return {meta:{changes:Number(result.changes)}};},async all(){return {results:sqlite.prepare(sql).all(...this.params).map(row=>({...row}))};}};return statement;},async batch(statements){return Promise.all(statements.map(s=>s.all()));}};
@@ -52,6 +54,7 @@ function fixture(){
   const source='native-'+id,canonical=alias||id;
   if(!alias)insert('events',{id:canonical,created_at:AT});
   insert('source_events',{id:source,provider:'teamsnap',scope:account,account_id:account,native_id:id,starts_at:starts,local_day:day,time_precision:starts?'instant':day?'day':'pending',type,status,conditional:0,home_source_team_id:sourceTeam,home_label:'Us',away_label:'Them',title:id,venue:'Field',evidence:'{}',content_hash:'event',observed_at:AT});
+  insert('source_event_teams',{source_team_id:sourceTeam,source_event_id:source,side:'home'});
   insert('event_source_links',{source_event_id:source,event_id:canonical,reason:'native',evidence:'{}',revision:1});
   if(project)insert('team_event_rows',{run_id:'run-'+season,app_team_id:'team',team_season_id:season,event_id:canonical,starts_at:starts,local_day:day,type,status,conditional:0,own_side:'home',home_name:'Us',away_name:'Them',title:id,venue:'Field',source_ids:JSON.stringify([source]),schedule_source_id:source,result_source_id:source});
   if(enabled!==undefined)insert('source_event_logistics',{source_event_id:source,source_team_id:sourceTeam,account_id:account,availability_enabled:enabled,content_hash:'logistics',observed_at:AT});

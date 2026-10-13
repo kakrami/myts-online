@@ -8,6 +8,10 @@ import {installationSchema} from '../src/application/fresh-install.js';
 import {SCHEMA,SEED,DOMAIN_SCHEMA_VERSION} from '../src/application/installation-schema.js';
 import {InstallationUpgrade,V714_FINGERPRINT,V714_CURSOR,V714_OBJECTS,schemaObjects,sealStatements,journalStatements,equalObjects} from '../src/application/schema-upgrade.js';
 import {INSTALLATION_EPOCH} from '../src/application/installation-epoch.js';
+import {InstallationUpgrade as PredecessorInstallation} from '../src/application/schema-upgrade-v731.js';
+import {V731_FINGERPRINT,V731_PLAN_HASH,V731_CURSOR,V731_OBJECTS,V731_SCHEMA,V731_SEED} from '../src/application/schema-v731.js';
+import {TEAM_GAME_EPOCH,TEAM_GAME_BOOTSTRAP_SCHEMA} from '../src/application/team-game-installation-epoch.js';
+import {teamGameExpectedObjects} from '../src/application/team-game-schema-upgrade.js';
 import {transferObjects} from '../src/application/transfer-schema-upgrade.js';
 import {zipEntry,zipDirectory,zipEnd,concat} from '../src/reporting/encoders.js';
 
@@ -56,13 +60,13 @@ export function scanSecretText(name,text){const patterns=[/-----BEGIN (?:RSA |EC
 const contractDocs=['acceptance-baseline','analysis-reads-contract','coaching-contract','data-files-contract','domain-contract','feature-reads-contract','frontend-contract','matching-contract','provider-access','reporting-contract','security-contract','sync-contract','team-features-contract','tracking-capture-contract','verification','schema-comparison','deployment-verification','owner-initialization','schema-upgrade'];
 export async function requiredFiles({include=[]}={}){const worker=await moduleClosure(['worker.js']),browser=await moduleClosure(['web/app/entry.js']),tooling=await moduleClosure(['scripts/release-check.mjs']);const result=new Set([...worker,...browser,...tooling,'package.json','package-lock.json',configFile,'README.md','docs/fresh-deployment.md','web/app/index.html','web/ui-original/original.css','web/assets/report-font.ttf','web/assets/report-font.LICENSE','src/security/vendor/noble-hashes-1.7.1/LICENSE','src/security/vendor/noble-hashes-1.7.1/SOURCE.json','src/security/vendor/noble-hashes-1.7.1/README.md',...contractDocs.map(name=>'docs/'+name+'.md')]);for(const item of include){const resolved=path.resolve(root,item);if(!resolved.startsWith(root+path.sep)||!/^docs\/[A-Za-z0-9._/-]+\.(?:md|json)$/.test(relative(resolved)))fail('Additional release files must be named review documents inside docs/.');result.add(relative(resolved));}return [...result].sort();}
 
-export async function schemaIdentity(){
+export async function schemaIdentityV731(){
  const entry=await readFile(path.join(root,'worker.js'),'utf8');if(!entry.includes("import {SCHEMA,SEED} from './src/application/installation-schema.js';"))fail('The Worker must use the reviewed shared installation schema.');
- const model=new InstallationUpgrade({}, {schema:SCHEMA,seed:SEED}),schema=installationSchema([SCHEMA]);
+ const model=new PredecessorInstallation({}, {schema:V731_SCHEMA,seed:V731_SEED}),schema=installationSchema([V731_SCHEMA]);
  return {fingerprint:await model.fingerprint,domainVersion:DOMAIN_SCHEMA_VERSION,tables:new Set(schema.filter(sql=>/^CREATE TABLE/i.test(sql)).map(sql=>sql.match(/^CREATE TABLE IF NOT EXISTS\s+(\w+)/i)[1])),schema,objects:model.targetObjects,expansion:model.expansion,planHash:await model.planHash};
 }
 
-export function validateRemoteDatabase(names,setup,domain,identity,details){
+export function validateRemoteDatabaseV731(names,setup,domain,identity,details){
  const actual=names.filter(name=>name!=='d1_migrations'&&!name.startsWith('_cf_')&&!name.startsWith('sqlite_'));
  if(!actual.length)return {state:'empty'};
  if(!details||!Array.isArray(details.objects))fail('Physical schema metadata is required to validate this preserved installation.');
@@ -90,8 +94,49 @@ export function validateRemoteDatabase(names,setup,domain,identity,details){
  return {state:setup.state,fingerprint:identity.fingerprint};
 }
 
+export async function schemaIdentity(){
+ const entry=await readFile(path.join(root,'worker.js'),'utf8');if(!entry.includes("import {SCHEMA,SEED} from './src/application/installation-schema.js';"))fail('The Worker must use the reviewed shared installation schema.');
+ const model=new InstallationUpgrade({}, {schema:SCHEMA,seed:SEED}),schema=installationSchema([SCHEMA]);
+ return {fingerprint:await model.fingerprint,domainVersion:DOMAIN_SCHEMA_VERSION,tables:new Set(schema.filter(sql=>/^CREATE TABLE/i.test(sql)).map(sql=>sql.match(/^CREATE TABLE IF NOT EXISTS\s+(\w+)/i)[1])),schema,objects:model.targetObjects,expansion:model.expansion,planHash:await model.planHash,baseFingerprint:V731_FINGERPRINT,basePlanHash:V731_PLAN_HASH,predecessor:await schemaIdentityV731()};
+}
+const baseReceiptFields=['epoch','from_fingerprint','to_fingerprint','plan_hash','phase','cursor','started_at','completed_at','original_started_at','original_completed_at','original_cursor','writer_mode','writer_epoch','permit_guard'];
+export function validateRemoteDatabase(names,setup,domain,identity,details){
+ const actual=names.filter(name=>name!=='d1_migrations'&&!name.startsWith('_cf_')&&!name.startsWith('sqlite_'));
+ if(!actual.length)return {state:'empty'};
+ if(!details||!Array.isArray(details.objects))fail('Physical schema metadata is required to validate this preserved installation.');
+ if(setup?.state==='initializing')fail('The production target must be fully ready; fresh initialization is not recovery for the preserved database.');
+ const metadataNames=details.objects.filter(row=>row.type==='table').map(row=>row.name);
+ if(actual.length!==metadataNames.length||actual.some(name=>!metadataNames.includes(name)))fail('The selected remote database belongs to another build or is incomplete.');
+ if(!setup||!actual.includes('setup_state'))fail('The selected remote database belongs to another build or is incomplete.');
+ if(setup.state!=='ready')fail('The production target must be fully ready; fresh initialization is not recovery for the preserved database.');
+ if(!domain||domain.schema_version!==identity.domainVersion)fail('The selected remote database is incomplete.');
+ if(setup.schema_fingerprint===V714_FINGERPRINT){
+  if(details.extension)fail('The old714 transition cannot contain a team-game extension.');
+  const prior=validateRemoteDatabaseV731(names,setup,domain,identity.predecessor,details);
+  return {...prior,route:'predecessor731',predecessorTarget:V731_FINGERPRINT,target:identity.fingerprint};
+ }
+ if(setup.schema_fingerprint===identity.fingerprint){
+  if([...identity.tables].some(name=>!actual.includes(name)))fail('The target physical schema is incomplete.');
+  fail('A fresh-origin target cannot prove the preserved 7.1.4 transition and exact731 base receipt. No production replacement is authorized.');
+ }
+ if(setup.schema_fingerprint!==V731_FINGERPRINT||setup.next_index!==V731_CURSOR||!setup.started_at||!setup.completed_at)fail('The selected remote database belongs to another build or is incomplete; this extension requires exact completed731.');
+ const journal=details.journal;
+ if(!journal||journal.epoch!=='team-connections-v1'||journal.from_fingerprint!==V714_FINGERPRINT||journal.to_fingerprint!==V731_FINGERPRINT||journal.plan_hash!==V731_PLAN_HASH||journal.phase!=='complete'||journal.cursor!==''||!journal.started_at||!journal.completed_at||journal.original_cursor!==V714_CURSOR||journal.original_started_at!==setup.started_at||journal.original_completed_at!==setup.completed_at||journal.writer_mode!==null||journal.writer_epoch!==null||journal.permit_guard!==null)fail('The completed731 base does not prove the preserved 7.1.4 transition.');
+ const extension=details.extension;
+ if(!extension){
+  if(!equalObjects(details.objects,V731_OBJECTS))fail('The exact731 physical schema differs from its preserved manifest.');
+  return {state:'upgrade_required',fingerprint:V731_FINGERPRINT,target:identity.fingerprint,baseFingerprint:V731_FINGERPRINT};
+ }
+ const receipt=Object.fromEntries(baseReceiptFields.map(key=>[key,journal[key]??null]));
+ if(extension.origin!=='preserved731'||extension.epoch!==TEAM_GAME_EPOCH||extension.record_version!==1||extension.base_fingerprint!==V731_FINGERPRINT||extension.base_plan_hash!==V731_PLAN_HASH||extension.target_fingerprint!==identity.fingerprint||extension.plan_hash!==identity.planHash||extension.base_setup_started_at!==setup.started_at||extension.base_setup_completed_at!==setup.completed_at||extension.base_cursor!==V731_CURSOR||extension.base_journal_hash!==sha256(JSON.stringify(receipt))||extension.writer_mode!==null||extension.writer_epoch!==null||extension.permit_guard!==null)fail('The extension journal belongs to another plan or does not preserve the exact731 receipt.');
+ if(!['expanding','validating','complete'].includes(extension.phase)||!Number.isInteger(extension.cursor)||extension.cursor<0||extension.cursor>identity.expansion.length||(extension.phase!=='expanding'&&extension.cursor!==identity.expansion.length)||(extension.phase==='complete')!==!!extension.completed_at)fail('The extension phase or cursor is invalid.');
+ const expected=teamGameExpectedObjects(identity.expansion,extension.cursor);
+ if(!equalObjects(details.objects,expected))fail('The extension physical schema is incomplete or differs from the exact reviewed prefix.');
+ return {state:extension.phase==='complete'?'ready':'upgrading',phase:extension.phase,fingerprint:extension.phase==='complete'?identity.fingerprint:V731_FINGERPRINT,target:identity.fingerprint,baseFingerprint:V731_FINGERPRINT};
+}
+
 function remoteQuery(sql){const command=spawnSync(process.execPath,[path.join(root,'node_modules/wrangler/bin/wrangler.js'),'d1','execute','DB','--config',configFile,'--remote','--json','--command',sql],{cwd:root,encoding:'utf8',env:{...process.env,CI:'true',WRANGLER_SEND_METRICS:'false'},maxBuffer:4*1024*1024});if(command.status!==0)fail('Remote database inspection failed. No deployment is authorized; verify the build token has D1 Read permission in the target account.');let parsed;try{parsed=JSON.parse(command.stdout);}catch{fail('Remote inspection returned an unreadable response. No deployment is authorized.');}if(!Array.isArray(parsed)||!parsed.length||parsed.some(result=>!result||result.success!==true||!Array.isArray(result.results)))fail('Remote database inspection did not complete. No deployment is authorized.');return parsed.flatMap(result=>result.results);}
-async function inspectRemote(identity){const objects=remoteQuery("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name<>'d1_migrations' ORDER BY type,name"),names=objects.filter(row=>row.type==='table').map(row=>row.name);if(!names.length)return validateRemoteDatabase(names,null,null,identity,{objects,journal:null});if(!names.includes('setup_state'))return validateRemoteDatabase(names,null,null,identity,{objects,journal:null});const setup=remoteQuery('SELECT schema_fingerprint,next_index,state,started_at,completed_at FROM setup_state WHERE id=1')[0],domain=names.includes('domain_installation')?remoteQuery('SELECT schema_version FROM domain_installation WHERE id=1')[0]:null,journal=names.includes('installation_upgrade')?remoteQuery('SELECT epoch,from_fingerprint,to_fingerprint,plan_hash,phase,cursor,original_started_at,original_completed_at,original_cursor,writer_mode,permit_guard FROM installation_upgrade WHERE id=1')[0]:null;return validateRemoteDatabase(names,setup,domain,identity,{objects,journal});}
+async function inspectRemote(identity){const objects=remoteQuery("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name<>'d1_migrations' ORDER BY type,name"),names=objects.filter(row=>row.type==='table').map(row=>row.name);if(!names.length)return validateRemoteDatabase(names,null,null,identity,{objects,journal:null,extension:null});if(!names.includes('setup_state'))return validateRemoteDatabase(names,null,null,identity,{objects,journal:null,extension:null});const setup=remoteQuery('SELECT schema_fingerprint,next_index,state,started_at,completed_at FROM setup_state WHERE id=1')[0],domain=names.includes('domain_installation')?remoteQuery('SELECT schema_version FROM domain_installation WHERE id=1')[0]:null,journal=names.includes('installation_upgrade')?remoteQuery('SELECT '+baseReceiptFields.join(',')+' FROM installation_upgrade WHERE id=1')[0]:null,extension=names.includes('installation_team_games_upgrade')?remoteQuery('SELECT * FROM installation_team_games_upgrade WHERE id=1')[0]:null;return validateRemoteDatabase(names,setup,domain,identity,{objects,journal,extension});}
 
 export async function stageRelease(destination,files){const target=path.resolve(destination);if(target===root||root.startsWith(target+path.sep))fail('Use a separate staging directory.');await mkdir(target,{recursive:true});if((await readdir(target)).length)fail('The staging directory must be empty. Use a new directory so no unlisted files can be retained.');const manifest={service:'myTS',version:VERSION,review:true,files:[]};for(const name of files){const source=path.join(root,name),data=await readFile(source);if(!name.endsWith('.ttf'))scanSecretText(name,data.toString('utf8'));const output=path.join(target,name);await mkdir(path.dirname(output),{recursive:true});await copyFile(source,output);manifest.files.push({path:name,bytes:data.length,sha256:sha256(data)});}await writeFile(path.join(target,'release-manifest.json'),JSON.stringify(manifest,null,2)+'\n');return manifest;}
 

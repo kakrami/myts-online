@@ -1,5 +1,8 @@
 import {nativeCanonicalId} from './identity.js';
 const PUBLIC=new Set(['gotsport','live']);
+// These observations feed per-match analysis, never season membership or rows.
+const ANALYSIS_TABLES=new Set(['source_tracking_segments','source_stat_items','source_stat_summaries','source_heatmaps']);
+const analysisOnly=(table,row)=>ANALYSIS_TABLES.has(table)||table==='source_trace_components'&&row.kind==='radar';
 const parse=(v)=>typeof v==='string'?JSON.parse(v||'{}'):v||{};
 const error=(message,code='source_contract')=>Object.assign(new Error(message),{code,status:409});
 const requireValue=(v,m)=>{if(!v)throw error(m);return v;};
@@ -96,7 +99,7 @@ function retainedPublicCoverage(page,coverage) {
  * account generation and source input CAS in one transaction. */
 export async function buildAuxiliaryPage(repo,page) {
   const {records={},accountId=null,accountProvider=null,replacements=[],sourceCoverage=[],scanId=''}=page;
-  const rows={},scope={account_id:accountId},teamIds=new Set(),divisionIds=new Set(),eventIds=new Set(),competitionIds=new Set(),genericTeamIds=new Set();
+  const rows={},scope={account_id:accountId},teamIds=new Set(),divisionIds=new Set(),eventIds=new Set(),analysisEventIds=new Set(),competitionIds=new Set(),genericTeamIds=new Set();
   const push=(table,row)=>{(rows[table]||=[]).push(row);};
   const ref=(v)=>{const provider=String(v).split(':')[0];requireValue(PUBLIC.has(provider)||provider===accountProvider,'Native auxiliary belongs to another provider account.');return auxiliaryKey(v,accountId);};
   const privateRefs=(r)=>{
@@ -176,7 +179,7 @@ export async function buildAuxiliaryPage(repo,page) {
     const updates=list.filter(r=>!byId.has(r.id)||!(r.provenance==="file_import"&&byId.get(r.id).provenance==="provider")&&(byId.get(r.id).provenance==="file_import"&&r.provenance==="provider"||byId.get(r.id).content_hash!==r.content_hash&&r.observed_at>=byId.get(r.id).observed_at));
     if(updates.length) {changed=true;for(const row of updates){
       if(row.source_team_id&&!row.source_event_id&&table!=='source_competition_memberships')genericTeamIds.add(row.source_team_id);
-      if(row.source_event_id)eventIds.add(row.source_event_id);
+      if(row.source_event_id)(analysisOnly(table,row)?analysisEventIds:eventIds).add(row.source_event_id);
       if(row.source_division_id)divisionIds.add(row.source_division_id);
       if(table==='source_divisions')divisionIds.add(row.id);
       if(table==='source_competitions')competitionIds.add(row.id);
@@ -216,7 +219,7 @@ export async function buildAuxiliaryPage(repo,page) {
     } else if(r.kind.startsWith('trace_')) {
       requireValue(accountId&&r.account_id===accountId,'Trace replacement belongs to another account.');
       const team=ref(r.team_id),event=ref(r.fixture_id),prefix='source_team_id=? AND source_event_id=? AND account_id=?',params=[team,event,accountId];
-      const remove=async(table,condition,extra=[])=>{const count=await repo.db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE ${prefix} AND (${condition})`).bind(...params,...extra).first();if(count.count){changed=true;eventIds.add(event);}add(`DELETE FROM ${table} WHERE ${prefix} AND (${condition}) AND $FENCE`,...params,...extra);};
+      const remove=async(table,condition,extra=[])=>{const count=await repo.db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE ${prefix} AND (${condition})`).bind(...params,...extra).first();if(count.count){changed=true;(ANALYSIS_TABLES.has(table)||r.kind==='trace_radar_parts'?analysisEventIds:eventIds).add(event);}add(`DELETE FROM ${table} WHERE ${prefix} AND (${condition}) AND $FENCE`,...params,...extra);};
       if(r.kind==='trace_game_parts') {
         requireValue(Number.isInteger(r.member_count)&&Number.isInteger(r.moment_count)&&Array.isArray(r.halves),'Trace game replacement lacks terminal counts.');
         await remove('source_game_members','CAST(substr(native_key,8) AS INTEGER)>=?',[r.member_count]);
@@ -269,7 +272,7 @@ export async function buildAuxiliaryPage(repo,page) {
       if(saved&&saved.complete===c.complete&&saved.record_count===c.record_count&&saved.availability===c.availability&&saved.heatmap_availability===c.heatmap_availability)continue;
       updates.push(c);changed=true;
       const m=c.scope.match(/^(trace|teamsnap):([A-Za-z0-9._-]+):(trace|teamsnap):([A-Za-z0-9._-]+)/);
-      if(m)eventIds.add(ref(`${m[1]}:${m[2]}`));
+      if(m)(c.provider==='trace'&&['analytics','tracking','radar'].includes(c.kind)?analysisEventIds:eventIds).add(ref(`${m[1]}:${m[2]}`));
       else if(c.provider==='teamsnap'&&['events','attendance'].includes(c.kind)&&/^teamsnap:[A-Za-z0-9._-]+$/.test(c.scope))genericTeamIds.add(ref(c.scope));
       else if(c.kind==='standings')divisionIds.add(c.source_division_id);
     }
@@ -277,5 +280,5 @@ export async function buildAuxiliaryPage(repo,page) {
   }
   // Dirty fan-out consumes typed competition/division/event IDs directly in
   // sourceConsumerQuery; reverse team expansion here had no consumer.
-  return {changed,statements,affectedGenericSourceTeamIds:changed?[...genericTeamIds]:[],affectedDivisionIds:changed?[...divisionIds]:[],affectedCompetitionIds:changed?[...competitionIds]:[],affectedEventIds:changed?[...eventIds]:[]};
+  return {changed,statements,affectedGenericSourceTeamIds:changed?[...genericTeamIds]:[],affectedDivisionIds:changed?[...divisionIds]:[],affectedCompetitionIds:changed?[...competitionIds]:[],affectedEventIds:changed?[...eventIds]:[],affectedAnalysisEventIds:changed?[...analysisEventIds]:[]};
 }

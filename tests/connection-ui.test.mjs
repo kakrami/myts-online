@@ -366,6 +366,7 @@ uiTest('explicit Trace Cancel stays dismissed after Settings Reports and a full 
     await until(()=>ui.app.state.view==='team'&&!ui.query('#root').hasAttribute('aria-busy'),'Team view');
     await ui.click('#accountBtn');await until(()=>ui.app.state.modal?.kind==='settings');
     await ui.click('[data-action="source-manage"][data-provider="trace"]');
+    await until(()=>ui.app.state.modal?.kind==='source-status');await ui.click('[data-action="source-connect"]');
     await until(()=>ui.query('form[data-form="trace-send-code"]'),'Trace email form');
     await ui.click('[data-action="connection-cancel"]');
     assert.equal(ui.app.state.modal,null);assert.equal(ui.app.state.view,'team');
@@ -385,6 +386,7 @@ for(const dismissal of ['cancel','close','navigation','history'])uiTest(`Trace c
   await withUI({teams:[team()],resolve:call=>call.path==='/api/accounts/trace/start'?{attempt:'cancelled-attempt',expires_at:Date.now()+600000}:undefined},async ui=>{
     await ui.click('#accountBtn');await until(()=>ui.app.state.modal?.kind==='settings');
     await ui.click('[data-action="source-manage"][data-provider="trace"]');
+    await until(()=>ui.app.state.modal?.kind==='source-status');await ui.click('[data-action="source-connect"]');
     await until(()=>ui.query('form[data-form="trace-send-code"]'),'Trace email form');
     ui.fill('[name="email"]','synthetic@example.invalid');await ui.submit('form[data-form="trace-send-code"]');
     await until(()=>ui.query('form[data-form="trace-verify-code"]'),'Trace code form');

@@ -1,6 +1,7 @@
 import { AUXILIARY_SCHEMA } from './auxiliary-schema.js';
 import {serializationSchema} from './serialization.js';
 import {CONNECTION_SCHEMA} from './connection-schema.js';
+import {TEAM_GAME_SCHEMA} from './team-game-schema.js';
 export const DOMAIN_SCHEMA_VERSION = 1;
 
 export const DOMAIN_SCHEMA = [
@@ -40,7 +41,7 @@ export const DOMAIN_SCHEMA = [
   `CREATE TABLE team_event_rows(run_id TEXT NOT NULL REFERENCES team_projection_runs(id),app_team_id TEXT NOT NULL REFERENCES app_teams(id),team_season_id TEXT NOT NULL REFERENCES team_seasons(id),event_id TEXT NOT NULL REFERENCES events(id),competition_id TEXT,division_id TEXT,starts_at TEXT,local_day TEXT,type TEXT NOT NULL,status TEXT NOT NULL,conditional INTEGER NOT NULL,own_side TEXT NOT NULL CHECK(own_side IN('home','away')),home_name TEXT NOT NULL,away_name TEXT NOT NULL,home_score REAL,away_score REAL,goals_for REAL,goals_against REAL,title TEXT NOT NULL,venue TEXT NOT NULL,source_ids TEXT NOT NULL,schedule_source_id TEXT NOT NULL REFERENCES source_events(id),result_source_id TEXT NOT NULL REFERENCES source_events(id),result_conflict INTEGER NOT NULL DEFAULT 0 CHECK(result_conflict IN(0,1)),identity_conflict INTEGER NOT NULL DEFAULT 0 CHECK(identity_conflict IN(0,1)),conflict TEXT,PRIMARY KEY(run_id,app_team_id,team_season_id,event_id))`,
   `CREATE INDEX team_events_selection ON team_event_rows(run_id,app_team_id,team_season_id,starts_at,local_day,event_id)`,
   `CREATE TABLE domain_overrides(app_team_id TEXT NOT NULL REFERENCES app_teams(id),kind TEXT NOT NULL CHECK(kind IN('player','event')),entity_id TEXT NOT NULL,fields TEXT NOT NULL CHECK(length(CAST(fields AS BLOB))<=16000),revision INTEGER NOT NULL,PRIMARY KEY(app_team_id,kind,entity_id))`,
-  `CREATE TABLE team_projection_runs(id TEXT PRIMARY KEY,app_team_id TEXT NOT NULL REFERENCES app_teams(id),team_season_id TEXT NOT NULL REFERENCES team_seasons(id),input_revision INTEGER NOT NULL,state TEXT NOT NULL CHECK(state IN('building','published','obsolete')),created_at TEXT NOT NULL)`,
+  `CREATE TABLE team_projection_runs(id TEXT PRIMARY KEY,app_team_id TEXT NOT NULL REFERENCES app_teams(id),team_season_id TEXT NOT NULL REFERENCES team_seasons(id),input_revision INTEGER NOT NULL,state TEXT NOT NULL CHECK(state IN('building','published','obsolete')),created_at TEXT NOT NULL, team_game_version INTEGER NOT NULL DEFAULT 0 CHECK(team_game_version IN(0,1)))`,
   `CREATE INDEX projection_runs_selection ON team_projection_runs(app_team_id,team_season_id,state,id)`,
   `CREATE TABLE domain_team_preconditions(id INTEGER PRIMARY KEY CHECK(id=1),expected_input INTEGER NOT NULL,actual_input INTEGER NOT NULL CHECK(expected_input=actual_input))`,
   `CREATE TABLE source_event_state(source_event_id TEXT PRIMARY KEY,input_revision INTEGER NOT NULL DEFAULT 0)`,
@@ -50,7 +51,9 @@ export const DOMAIN_SCHEMA = [
 ];
 
 DOMAIN_SCHEMA.push(...CONNECTION_SCHEMA);
+// The frozen 731 upgrade imports its immutable snapshot, never this current schema.
 DOMAIN_SCHEMA.push(...serializationSchema(DOMAIN_SCHEMA));
+DOMAIN_SCHEMA.push(...TEAM_GAME_SCHEMA);
 
 export async function initializeDomain(db) {
   const tables = (await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'").all()).results;

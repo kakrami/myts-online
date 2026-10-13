@@ -6,7 +6,7 @@ import {wrapDatabase} from '../src/application/installation-epoch.js';
 import {SCHEMA} from '../src/application/installation-schema.js';
 export const TEST_PASSWORD='native-review-owner-password-123';
 export async function freshHarness(){
-  const qaRoot=path.resolve('.'),root=path.resolve(process.env.MYTS_TEST_PACKAGE_ROOT||qaRoot),files=['worker.js','web/app/coach-tactics.js','web/app/schedule-query.js',...(await readdir(path.join(root,'src'),{recursive:true})).filter(f=>f.endsWith('.js')).map(f=>'src/'+f)],modules={};
+  const qaRoot=path.resolve('.'),root=path.resolve(process.env.MYTS_TEST_PACKAGE_ROOT||qaRoot),files=['worker.js','web/app/coach-tactics.js','web/app/schedule-query.js','web/app/reporting/encoders.js','web/app/reporting/font-metrics.js',...(await readdir(path.join(root,'src'),{recursive:true})).filter(f=>f.endsWith('.js')).map(f=>'src/'+f)],modules={};
   for(const file of files)modules[file]={type:'esm',contents:await readFile(path.join(root,file),'utf8')};
   const mockProvider=await readFile(path.join(qaRoot,'tests/mock-provider.js'),'utf8');
   const previousDispatcher=getGlobalDispatcher(),dispatcher=new Agent({pipelining:0});setGlobalDispatcher(dispatcher);

@@ -274,7 +274,8 @@ export class DomainRepository {
     const changed=Object.values(rows).some((list)=>list.length)||roster.length>0||links.length>0||entitlementAdds.length>0||auxiliary.changed;
     const genericIds=[...new Set([...rows.source_teams.map(r=>r.id),...roster.map(r=>r.source_team_id),...links.flatMap(r=>[r.a,r.b]),...auxiliary.affectedGenericSourceTeamIds])];
     const consumerQuery=sourceConsumerQuery({genericIds,playerIds:rows.source_players.map(r=>r.id),eventFacts:[...rows.source_events,...previousEvents],eventIds:auxiliary.affectedEventIds,divisionIds:auxiliary.affectedDivisionIds,competitionIds:auxiliary.affectedCompetitionIds,links:allLinks});
-    const affected=changed?(await this.db.prepare(consumerQuery.sql+' ORDER BY c.app_team_id,c.team_season_id LIMIT 128').bind(...consumerQuery.params).all()).results:[];
+    const projectionChanged=genericIds.length||rows.source_players.length||rows.source_events.length||auxiliary.affectedEventIds.length||auxiliary.affectedDivisionIds.length||auxiliary.affectedCompetitionIds.length;
+    const affected=projectionChanged?(await this.db.prepare(consumerQuery.sql+' ORDER BY c.app_team_id,c.team_season_id LIMIT 128').bind(...consumerQuery.params).all()).results:[];
     const statements=[],add=(sql,...params)=>statements.push({sql,params});
     if(!changed&&!auxiliary.statements.length&&!allLinks.length) return {changed:false,statements,affectedTeams:[],ignored_app_records:["spaces","space_teams"].filter((key)=>records[key]?.length)};
     // An optimistic precondition fails the entire enclosing source/job transaction.
@@ -299,14 +300,19 @@ export class DomainRepository {
     const publicChanged=changed&&(rows.source_events.some(r=>PUBLIC.has(r.provider))||rows.source_teams.some(r=>PUBLIC.has(r.provider))||links.length||auxiliary.affectedDivisionIds.length||auxiliary.affectedCompetitionIds.length);
     if(changed) {
       if(rows.source_teams.length)add("INSERT INTO source_team_state SELECT value,1 FROM json_each(?) WHERE $FENCE ON CONFLICT(source_team_id) DO UPDATE SET content_revision=source_team_state.content_revision+1",JSON.stringify(rows.source_teams.map(r=>r.id)));
-      const eventIds=[...new Set([...rows.source_events.map(r=>r.id),...auxiliary.affectedEventIds])];
+      const eventIds=[...new Set([...rows.source_events.map(r=>r.id),...auxiliary.affectedEventIds,...auxiliary.affectedAnalysisEventIds])];
       if(eventIds.length)add("INSERT INTO source_event_state SELECT value,1 FROM json_each(?) WHERE $FENCE ON CONFLICT(source_event_id) DO UPDATE SET input_revision=source_event_state.input_revision+1",JSON.stringify(eventIds));
       const divisionIds=[...new Set([...[...rows.source_events,...previousEvents].map(r=>r.division_key).filter(Boolean),...auxiliary.affectedDivisionIds])].filter(r=>/^(gotsport|live)\/public\//.test(r));
       if(divisionIds.length){const scopes=divisionIds.map(source_division_id=>({id:`${source_division_id.split('/')[0]}|${source_division_id}`,provider:source_division_id.split('/')[0],source_division_id}));add("INSERT INTO source_division_coverage(id,provider,source_division_id,complete,record_count,scan_id,observed_at,content_revision) SELECT json_extract(value,'$.id'),json_extract(value,'$.provider'),json_extract(value,'$.source_division_id'),0,0,'',?,1 FROM json_each(?) WHERE $FENCE ON CONFLICT(id) DO UPDATE SET content_revision=source_division_coverage.content_revision+1",stamp(),JSON.stringify(scopes));add("UPDATE source_divisions SET content_revision=content_revision+1 WHERE id IN(SELECT value FROM json_each(?)) AND $FENCE",JSON.stringify(divisionIds));}
       const competitionIds=[...new Set([...[...rows.source_events,...previousEvents].map(r=>r.competition_key).filter(Boolean),...auxiliary.affectedCompetitionIds])];
       if(competitionIds.length)add("UPDATE source_competitions SET content_revision=content_revision+1 WHERE id IN(SELECT value FROM json_each(?)) AND $FENCE",JSON.stringify(competitionIds));
-      add(`UPDATE team_projection_state SET pending=1,source_revision=source_revision+1,input_revision=input_revision+1 WHERE team_season_id IN(SELECT team_season_id FROM(${consumerQuery.sql})) AND $FENCE`,...consumerQuery.params);
-      add(`UPDATE team_read_state SET pending=1,status_revision=status_revision+1 WHERE app_team_id IN(SELECT app_team_id FROM(${consumerQuery.sql})) AND $FENCE`,...consumerQuery.params);
+      // Derived arrivals retain their analysis epoch without invalidating the
+      // independently built season membership/presentation snapshot.
+      if(auxiliary.affectedAnalysisEventIds.length){const analysisConsumers=sourceConsumerQuery({genericIds:[],playerIds:[],eventFacts:[],eventIds:auxiliary.affectedAnalysisEventIds,divisionIds:[],competitionIds:[],links:[]});add(`UPDATE team_projection_state SET source_revision=source_revision+1 WHERE team_season_id IN(SELECT team_season_id FROM(${analysisConsumers.sql})) AND $FENCE`,...analysisConsumers.params);}
+      if(projectionChanged){
+        add(`UPDATE team_projection_state SET pending=1,source_revision=source_revision+1,input_revision=input_revision+1 WHERE team_season_id IN(SELECT team_season_id FROM(${consumerQuery.sql})) AND $FENCE`,...consumerQuery.params);
+        add(`UPDATE team_read_state SET pending=1,status_revision=status_revision+1 WHERE app_team_id IN(SELECT app_team_id FROM(${consumerQuery.sql})) AND $FENCE`,...consumerQuery.params);
+      }
     }
     add("UPDATE domain_installation SET source_revision=source_revision+?,public_revision=public_revision+? WHERE id=1 AND $FENCE",changed?1:0,publicChanged?1:0);
     return {changed,statements,affectedTeams:changed?affected:[],ignored_app_records:["spaces","space_teams"].filter((key)=>records[key]?.length)};
@@ -526,10 +532,10 @@ export class DomainRepository {
     const row=await this.db.prepare("SELECT * FROM domain_overrides WHERE app_team_id=? AND kind=? AND entity_id=?").bind(teamId,kind,entityId).first();
     return row?{revision:row.revision,fields:parse(row.fields)}:{revision:0,fields:{}};
   }
-  async setOverride({teamId,kind,entityId,fields,revision=0}) {
+  async setOverride({teamId,kind,entityId,fields,revision=0,scopeEntityId=entityId,seasonId=null,precondition={sql:"1",params:[]}}) {
     requireValue(kind==="player"||kind==="event","Unsupported correction type.");
     const table=kind==="player"?"team_players":"team_events",column=kind==="player"?"player_id":"event_id";
-    requireValue(await this.db.prepare(`SELECT 1 AS ok FROM ${table} WHERE app_team_id=? AND ${column}=?`).bind(teamId,entityId).first(),"Correction is outside this team.","source_scope",403);
+    requireValue(await this.db.prepare(`SELECT 1 AS ok FROM ${table} WHERE app_team_id=? AND ${column}=? AND (? IS NULL OR team_season_id=?)`).bind(teamId,scopeEntityId,seasonId,seasonId).first(),"Correction is outside this team.","source_scope",403);
     const allowed=new Set(kind==="player"?["name","jersey"]:["home_score","away_score","starts_at","local_day","status","type","home_name","away_name","title","venue"]);
     requireValue(fields&&Object.keys(fields).length&&Object.keys(fields).every((key)=>allowed.has(key)),"Unsupported correction fields.");
     const value={...fields};
@@ -541,23 +547,23 @@ export class DomainRepository {
     if ("type"in value) requireValue(["game","practice","event"].includes(value.type),"Invalid event type.");
     const old=await this.getOverride({teamId,kind,entityId});
     requireValue(old.revision===revision,"Correction changed; reload it.","revision_conflict",409);
-    const consumers=(await this.db.prepare(`SELECT DISTINCT app_team_id,team_season_id FROM ${table} WHERE app_team_id=? AND ${column}=?`).bind(teamId,entityId).all()).results;
+    const consumers=(await this.db.prepare(`SELECT DISTINCT app_team_id,team_season_id FROM ${table} WHERE app_team_id=? AND ${column}=? AND (? IS NULL OR team_season_id=?)`).bind(teamId,scopeEntityId,seasonId,seasonId).all()).results;
     const result=await this.domainBatch((guard,token)=>[
       this.db.prepare(`INSERT INTO domain_overrides SELECT ?,?,?,?,1 WHERE ?=0 AND ${guard} ON CONFLICT(app_team_id,kind,entity_id) DO NOTHING RETURNING revision`).bind(teamId,kind,entityId,bounded(value,16000),revision,token),
       this.db.prepare(`UPDATE domain_overrides SET fields=?,revision=revision+1 WHERE app_team_id=? AND kind=? AND entity_id=? AND revision=? AND ?>0 AND ${guard} RETURNING revision`).bind(bounded(value,16000),teamId,kind,entityId,revision,revision,token),
       ...this.dirtyStatements(guard,token,consumers),
-    ],{sql:`EXISTS(SELECT 1 FROM app_teams WHERE id=?) AND NOT EXISTS(SELECT 1 FROM team_lifecycle WHERE team_id=?) AND EXISTS(SELECT 1 FROM ${table} WHERE app_team_id=? AND ${column}=?) AND (${revision===0?"NOT EXISTS(SELECT 1 FROM domain_overrides WHERE app_team_id=? AND kind=? AND entity_id=?)":"EXISTS(SELECT 1 FROM domain_overrides WHERE app_team_id=? AND kind=? AND entity_id=? AND revision=?)"})`,params:[teamId,teamId,teamId,entityId,teamId,kind,entityId,...(revision===0?[]:[revision])]});
+    ],{sql:`EXISTS(SELECT 1 FROM app_teams WHERE id=?) AND NOT EXISTS(SELECT 1 FROM team_lifecycle WHERE team_id=?) AND EXISTS(SELECT 1 FROM ${table} WHERE app_team_id=? AND ${column}=? AND (? IS NULL OR team_season_id=?)) AND (${precondition.sql}) AND (${revision===0?"NOT EXISTS(SELECT 1 FROM domain_overrides WHERE app_team_id=? AND kind=? AND entity_id=?)":"EXISTS(SELECT 1 FROM domain_overrides WHERE app_team_id=? AND kind=? AND entity_id=? AND revision=?)"})`,params:[teamId,teamId,teamId,scopeEntityId,seasonId,seasonId,...precondition.params,teamId,kind,entityId,...(revision===0?[]:[revision])]});
     requireValue(result[1].results.length+result[2].results.length===1,"Correction changed; reload it.","revision_conflict",409);
     await this.projectConsumers(consumers);return {revision:revision+1,affectedTeams:consumers};
   }
-  async resetOverride({teamId,kind,entityId,revision}) {
+  async resetOverride({teamId,kind,entityId,revision,scopeEntityId=entityId,seasonId=null,precondition={sql:"1",params:[]}}) {
     requireValue(kind==="player"||kind==="event","Unsupported correction type.");
-    const table=kind==="player"?"team_players":"team_events",column=kind==="player"?"player_id":"event_id",consumers=(await this.db.prepare(`SELECT DISTINCT app_team_id,team_season_id FROM ${table} WHERE app_team_id=? AND ${column}=?`).bind(teamId,entityId).all()).results;
+    const table=kind==="player"?"team_players":"team_events",column=kind==="player"?"player_id":"event_id",consumers=(await this.db.prepare(`SELECT DISTINCT app_team_id,team_season_id FROM ${table} WHERE app_team_id=? AND ${column}=? AND (? IS NULL OR team_season_id=?)`).bind(teamId,scopeEntityId,seasonId,seasonId).all()).results;
     requireValue(consumers.length,"Correction is outside this team.","source_scope",403);
     await this.domainBatch((guard,token)=>[
       this.db.prepare(`DELETE FROM domain_overrides WHERE app_team_id=? AND kind=? AND entity_id=? AND revision=? AND ${guard}`).bind(teamId,kind,entityId,revision,token),
       ...this.dirtyStatements(guard,token,consumers),
-    ],{sql:`EXISTS(SELECT 1 FROM app_teams WHERE id=?) AND NOT EXISTS(SELECT 1 FROM team_lifecycle WHERE team_id=?) AND EXISTS(SELECT 1 FROM ${table} WHERE app_team_id=? AND ${column}=?) AND EXISTS(SELECT 1 FROM domain_overrides WHERE app_team_id=? AND kind=? AND entity_id=? AND revision=?)`,params:[teamId,teamId,teamId,entityId,teamId,kind,entityId,revision]});
+    ],{sql:`EXISTS(SELECT 1 FROM app_teams WHERE id=?) AND NOT EXISTS(SELECT 1 FROM team_lifecycle WHERE team_id=?) AND EXISTS(SELECT 1 FROM ${table} WHERE app_team_id=? AND ${column}=? AND (? IS NULL OR team_season_id=?)) AND (${precondition.sql}) AND EXISTS(SELECT 1 FROM domain_overrides WHERE app_team_id=? AND kind=? AND entity_id=? AND revision=?)`,params:[teamId,teamId,teamId,scopeEntityId,seasonId,seasonId,...precondition.params,teamId,kind,entityId,revision]});
     await this.projectConsumers(consumers);return {revision:0,affectedTeams:consumers};
   }
   authorize(teamId,actor) { requireValue(actor?.owner===true||actor?.owner===false&&actor.teamId===teamId,"Team is outside this viewer link.","team_forbidden",403); }

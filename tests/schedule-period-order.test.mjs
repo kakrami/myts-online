@@ -2,12 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ReadRepository} from '../src/read-model/repository.js';
 import {eventPresentation} from '../src/domain/presentation.js';
-import {fixture,AT,INPUT} from './fixtures/head-to-head-harness.mjs';
+import {fixture,AT,INPUT,HOME} from './fixtures/head-to-head-harness.mjs';
 
 function scheduleFixture(options) {
   const f=fixture(options),repo=new ReadRepository(f.db,{owner:true},f.options);
+  // Analyzed reads now require the actual published native membership. Keep
+  // these sorting fixtures entitled in both seasons rather than bypass it.
+  f.insert('team_source_attachments',{id:'schedule-history',app_team_id:'team',team_season_id:'history',source_team_id:HOME});
   return {...f,repo,
-    event(id,options={}){return f.event(id,{project:true,status:'SCHEDULED',hs:null,as:null,...options});},
+    event(id,options={}){const row=f.event(id,{project:true,status:'SCHEDULED',hs:null,as:null,...options}),source=f.sqlite.prepare('SELECT home_source_team_id,away_source_team_id FROM source_events WHERE id=?').get(row.source);for(const side of ['home','away'])if(source[side+'_source_team_id'])f.insert('source_event_teams',{source_event_id:row.source,source_team_id:source[side+'_source_team_id'],side});return row;},
     schedule(input={},options={}){return repo.schedule({...INPUT,...input},options);},
     analyzed(id,state='ready',season='season') {
       f.insert('match_analysis',{app_team_id:'team',team_season_id:season,event_id:id,active_run:'analysis-'+id,state,source_revision:1,mutation_revision:0,projected_at:AT,player_count:0,unresolved_goals:0,unresolved_assists:0,tracking_complete:0,over_capacity:0,evidence:'{}',input_hash:id});

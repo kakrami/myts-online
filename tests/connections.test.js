@@ -1,3 +1,4 @@
+// This partial-schema fixture exercises the frozen 731 permit contract. Full current installation is covered separately.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Miniflare} from 'miniflare';
@@ -11,7 +12,7 @@ import {installSyncSchema} from '../src/sync/schema.js';
 import {TEAM_FEATURE_SCHEMA} from '../src/application/team-features.js';
 import {ApplicationSyncService,collectApplicationJob} from '../src/application/sync-service.js';
 import {JobCoordinator} from '../src/sync/coordinator.js';
-import {UPGRADE_DDL,JOURNAL_GUARDS} from '../src/application/installation-epoch.js';
+import {UPGRADE_DDL,JOURNAL_GUARDS} from '../src/application/installation-epoch-v731.js';
 import {CATALOG_SCHEMA} from '../src/application/team-catalog.js';
 
 // Real native D1 transactions and HTTP routes. Only delivery/commit faults and
@@ -21,12 +22,12 @@ let mf,db,repo,security,cookie,maxQueries=0,maxRequestQueries=0;
 test.before(async()=>{
   const root=path.resolve('.'),modules={};
   for(const file of (await readdir('src',{recursive:true})).filter(file=>file.endsWith('.js'))){const name='src/'+file;modules[name]={type:'esm',contents:await readFile(name,'utf8')};}
-  modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};modules['web/app/schedule-query.js']={type:'esm',contents:await readFile(path.join(root,'web/app/schedule-query.js'),'utf8')};
+  modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};for(const name of ['web/app/schedule-query.js','web/app/reporting/encoders.js','web/app/reporting/font-metrics.js'])modules[name]={type:'esm',contents:await readFile(path.join(root,name),'utf8')};
   modules['connection-test-worker.js']={type:'esm',contents:`
     import {applicationRoutes} from './src/application/routes.js';
     import {errorResponse} from './src/application/http.js';
     import {BudgetDB} from './src/sync/budget.js';
-    import {wrapDatabase} from './src/application/installation-epoch.js';
+    import {wrapDatabase} from './src/application/installation-epoch-v731.js';
     const wrap=(native,sql)=>({native,sql,bind(...args){return wrap(native.bind(...args),sql);},all(...args){return native.all(...args);},first(...args){return native.first(...args);},run(...args){return native.run(...args);}});
     export default {async fetch(request,env){
       const fault=request.headers.get('x-test-fault')||'',raw=env.DB;

@@ -1,0 +1,132 @@
+✖ native owner and legacy track authority compile and commit within the real installation writer (11512.294761ms)
+▶ native grouped EventEditor and exact Trace source admission preserve physical originals under the epoch writer
+  ✖ normalized ordinary player season statistics stay single-game and native-depth-safe (235.568862ms)
+  ✖ normalized ordinary player detail reads the published grouped match once (244.564675ms)
+  ✖ normalized Summary report uses the ordinary player query and real snapshot writer (200.625823ms)
+  ✔ normalized native bookmarks preserve original key and require exact opaque token (612.200479ms)
+{"stage":"stale-admission","error":"AssertionError [ERR_ASSERTION]: The input did not match the regular expression /CHECK constraint failed/. Input:\n\n'Error: D1_ERROR: Expression tree is too large (maximum depth 100): SQLITE_ERROR'\n","cause":""}
+✖ native grouped EventEditor and exact Trace source admission preserve physical originals under the epoch writer (13322.408937ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 1
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 27596.154209
+
+✖ failing tests:
+
+test at tests/shared-analysis-source-proof.native.mjs:15:1
+✖ native owner and legacy track authority compile and commit within the real installation writer (11512.294761ms)
+  Error: D1_ERROR: Expression tree is too large (maximum depth 100): SQLITE_ERROR
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async BudgetDB.batch (file:///tmp/myts-published-game-consumers/src/sync/budget.js:22:21)
+      at async ApplicationSyncService.enqueueTrackSource (file:///tmp/myts-published-game-consumers/src/application/sync-service.js:298:20)
+      at async ApplicationSyncService.enqueueAnalysisRefresh (file:///tmp/myts-published-game-consumers/src/application/sync-service.js:309:31)
+      at async TestContext.<anonymous> (file:///tmp/myts-published-game-consumers/tests/shared-analysis-source-proof.native.mjs:29:56)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    [cause]: Error: Expression tree is too large (maximum depth 100): SQLITE_ERROR
+        at D1DatabaseSessionAlwaysPrimary._sendOrThrow (cloudflare-internal:d1-api:189:24)
+        at async cloudflare-internal:d1-api:137:19
+        at async #fetch (file:///workspace/scratch/c731cbcbca8e/myts-714-network/node_modules/miniflare/dist/src/workers/core/entry.worker.js:5040:18)
+        at async ProxyServer.fetch (file:///workspace/scratch/c731cbcbca8e/myts-714-network/node_modules/miniflare/dist/src/workers/core/entry.worker.js:4929:14) {
+      [cause]: undefined
+    }
+  }
+
+test at tests/team-game-consumers.native.mjs:37:11
+✖ normalized ordinary player season statistics stay single-game and native-depth-safe (235.568862ms)
+  Error: D1_ERROR: Expression tree is too large (maximum depth 100): SQLITE_ERROR
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async BudgetDB.batch (file:///tmp/myts-published-game-consumers/src/sync/budget.js:22:21)
+      at async AnalysisReads.summary (file:///tmp/myts-published-game-consumers/src/analysis/reads.js:155:96)
+      at async TestContext.<anonymous> (file:///tmp/myts-published-game-consumers/tests/team-game-consumers.native.mjs:38:138)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async TestContext.<anonymous> (file:///tmp/myts-published-game-consumers/tests/team-game-consumers.native.mjs:37:3)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    [cause]: Error: Expression tree is too large (maximum depth 100): SQLITE_ERROR
+        at D1DatabaseSessionAlwaysPrimary._sendOrThrow (cloudflare-internal:d1-api:189:24)
+        at async cloudflare-internal:d1-api:137:19
+        at async #fetch (file:///workspace/scratch/c731cbcbca8e/myts-714-network/node_modules/miniflare/dist/src/workers/core/entry.worker.js:5040:18)
+        at async ProxyServer.fetch (file:///workspace/scratch/c731cbcbca8e/myts-714-network/node_modules/miniflare/dist/src/workers/core/entry.worker.js:4929:14) {
+      [cause]: undefined
+    }
+  }
+
+test at tests/team-game-consumers.native.mjs:40:11
+✖ normalized ordinary player detail reads the published grouped match once (244.564675ms)
+  Error: D1_ERROR: Expression tree is too large (maximum depth 100): SQLITE_ERROR
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async BudgetDB.batch (file:///tmp/myts-published-game-consumers/src/sync/budget.js:22:21)
+      at async AnalysisReads.summary (file:///tmp/myts-published-game-consumers/src/analysis/reads.js:155:96)
+      at async AnalysisReads.player (file:///tmp/myts-published-game-consumers/src/analysis/reads.js:168:79)
+      at async TestContext.<anonymous> (file:///tmp/myts-published-game-consumers/tests/team-game-consumers.native.mjs:41:137)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async TestContext.<anonymous> (file:///tmp/myts-published-game-consumers/tests/team-game-consumers.native.mjs:40:3)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    [cause]: Error: Expression tree is too large (maximum depth 100): SQLITE_ERROR
+        at D1DatabaseSessionAlwaysPrimary._sendOrThrow (cloudflare-internal:d1-api:189:24)
+        at async cloudflare-internal:d1-api:137:19
+        at async #fetch (file:///workspace/scratch/c731cbcbca8e/myts-714-network/node_modules/miniflare/dist/src/workers/core/entry.worker.js:5040:18)
+        at async ProxyServer.fetch (file:///workspace/scratch/c731cbcbca8e/myts-714-network/node_modules/miniflare/dist/src/workers/core/entry.worker.js:4929:14) {
+      [cause]: undefined
+    }
+  }
+
+test at tests/team-game-consumers.native.mjs:43:11
+✖ normalized Summary report uses the ordinary player query and real snapshot writer (200.625823ms)
+  Error: D1_ERROR: Expression tree is too large (maximum depth 100): SQLITE_ERROR
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async BudgetDB.batch (file:///tmp/myts-published-game-consumers/src/sync/budget.js:22:21)
+      at async Object.all (file:///tmp/myts-published-game-consumers/src/application/team-game-installation-epoch.js:45:120)
+      at async TestContext.<anonymous> (file:///tmp/myts-published-game-consumers/tests/team-game-consumers.native.mjs:44:299)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async TestContext.<anonymous> (file:///tmp/myts-published-game-consumers/tests/team-game-consumers.native.mjs:43:3)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    [cause]: Error: Expression tree is too large (maximum depth 100): SQLITE_ERROR
+        at D1DatabaseSessionAlwaysPrimary._sendOrThrow (cloudflare-internal:d1-api:189:24)
+        at async cloudflare-internal:d1-api:137:19
+        at async #fetch (file:///workspace/scratch/c731cbcbca8e/myts-714-network/node_modules/miniflare/dist/src/workers/core/entry.worker.js:5040:18)
+        at async ProxyServer.fetch (file:///workspace/scratch/c731cbcbca8e/myts-714-network/node_modules/miniflare/dist/src/workers/core/entry.worker.js:4929:14) {
+      [cause]: undefined
+    }
+  }
+
+test at tests/team-game-consumers.native.mjs:23:1
+✖ native grouped EventEditor and exact Trace source admission preserve physical originals under the epoch writer (13322.408937ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /CHECK constraint failed/. Input:
+  
+  'Error: D1_ERROR: Expression tree is too large (maximum depth 100): SQLITE_ERROR'
+  
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///tmp/myts-published-game-consumers/tests/team-game-consumers.native.mjs:52:356)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: D1_ERROR: Expression tree is too large (maximum depth 100): SQLITE_ERROR
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+        at async BudgetDB.batch (file:///tmp/myts-published-game-consumers/src/sync/budget.js:22:21)
+        at async ApplicationSyncService.enqueueTrackSource (file:///tmp/myts-published-game-consumers/src/application/sync-service.js:298:20)
+        at async waitForActual (node:assert:646:5)
+        at async strict.rejects (node:assert:769:25)
+        at async TestContext.<anonymous> (file:///tmp/myts-published-game-consumers/tests/team-game-consumers.native.mjs:52:356)
+        at async Test.run (node:internal/test_runner/test:1389:7)
+        at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+      [cause]: Error: Expression tree is too large (maximum depth 100): SQLITE_ERROR
+          at D1DatabaseSessionAlwaysPrimary._sendOrThrow (cloudflare-internal:d1-api:189:24)
+          at async cloudflare-internal:d1-api:137:19
+          at async #fetch (file:///workspace/scratch/c731cbcbca8e/myts-714-network/node_modules/miniflare/dist/src/workers/core/entry.worker.js:5040:18)
+          at async ProxyServer.fetch (file:///workspace/scratch/c731cbcbca8e/myts-714-network/node_modules/miniflare/dist/src/workers/core/entry.worker.js:4929:14) {
+        [cause]: undefined
+      }
+    },
+    expected: /CHECK constraint failed/,
+    operator: 'rejects',
+    diff: 'simple'
+  }

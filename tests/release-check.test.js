@@ -47,9 +47,9 @@ test('required-only staging includes pinned npm install inputs and a full SHA-25
 });
 
 
-test('production target admission requires completed preserved-origin transition, not a fresh initialization',async()=>{
- const identity=await schemaIdentity(),names=identity.objects.filter(row=>row.type==='table').map(row=>row.name),setup={schema_fingerprint:identity.fingerprint,next_index:identity.schema.length,state:'ready',started_at:'original-start',completed_at:'original-complete'},journal={epoch:'team-connections-v1',from_fingerprint:'e52ac3c69e4cdf8d5b30a8c4587b9080a6220436b3b6d421d72a45781420b003',to_fingerprint:identity.fingerprint,plan_hash:identity.planHash,phase:'complete',writer_mode:null,permit_guard:null,original_cursor:270,original_started_at:setup.started_at,original_completed_at:setup.completed_at};
- assert.equal(validateRemoteDatabase(names,setup,{schema_version:1},identity,{objects:identity.objects,journal}).state,'ready');
- assert.throws(()=>validateRemoteDatabase(names,setup,{schema_version:1},identity,{objects:identity.objects,journal:{...journal,from_fingerprint:null,plan_hash:'fresh'}}),/preserved 7.1.4 transition/);
- assert.throws(()=>validateRemoteDatabase(names,{...setup,state:'initializing'},{schema_version:1},identity,{objects:identity.objects,journal}),/fully ready/);
+test('production target admission requires completed preserved-origin extension, not fresh initialization',async()=>{
+ const {preservedFixture}=await import('./team-game-release-fixture.mjs');const identity=await schemaIdentity(),fixture=preservedFixture(identity);
+ assert.equal(validateRemoteDatabase(fixture.names,fixture.setup,{schema_version:1},identity,fixture).state,'ready');
+ assert.throws(()=>validateRemoteDatabase(fixture.names,fixture.setup,{schema_version:1},identity,{...fixture,journal:{...fixture.journal,from_fingerprint:null,plan_hash:'fresh'}}),/preserved 7.1.4 transition/);
+ assert.throws(()=>validateRemoteDatabase(fixture.names,{...fixture.setup,state:'initializing'},{schema_version:1},identity,fixture),/fully ready/);
 });

@@ -1,3 +1,4 @@
+// This partial-schema fixture exercises the frozen 731 permit contract. Full current installation is covered separately.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
@@ -12,7 +13,7 @@ import {DomainRepository} from '../src/domain/repository.js';
 import {collectApplicationJob,ApplicationSyncService} from '../src/application/sync-service.js';
 import {JobCoordinator} from '../src/sync/coordinator.js';
 import {createSyncRuntime} from '../src/sync/runtime.js';
-import {UPGRADE_DDL,JOURNAL_GUARDS,tableGuards,tableNames,wrapDatabase} from '../src/application/installation-epoch.js';
+import {UPGRADE_DDL,JOURNAL_GUARDS,tableGuards,tableNames,wrapDatabase} from '../src/application/installation-epoch-v731.js';
 
 const AT='2026-10-12T12:00:00.000Z';
 const RECOVERY='connection_recovery_pending',IMPORT='data_import_recovery_pending';
@@ -81,8 +82,9 @@ function fixture(t,{events=25,players=25,missingPlayers=false,recoveryProjection
       const id=await coordinator.enqueue({provider,component,stage,scope:'team',resourceKey:resource,args:{teamId:'team',seasonId:resource,...args},priority:100,recurring:false},[{kind:'team',key:'projection:team:'+resource,teamId:'team'}]);
       if(checkpoint)await db.prepare('UPDATE sync_jobs SET checkpoint=? WHERE id=?').bind(JSON.stringify(checkpoint),id).run();return id;
     },
-    async building(phase='events'){
-      await db.prepare("INSERT INTO team_projection_runs VALUES('building','team','season',1,'building',?)").bind(AT).run();
+    async building(phase='events',{version=1}={}){
+      // A resumable current-format page must not exercise the deliberate legacy restart path.
+      await db.prepare("INSERT INTO team_projection_runs(id,app_team_id,team_season_id,input_revision,state,created_at,team_game_version) VALUES('building','team','season',1,'building',?,?)").bind(AT,version).run();
       return this.enqueue({checkpoint:{runId:'building',inputRevision:1,phase,cursor:''}});
     },
     async step(){assert.notEqual(alarm,null,'Outstanding work has a durable alarm');t.mock.timers.setTime(Math.max(Date.now(),alarm));alarm=null;await runtime.alarm();const last=values.get('last_run');assert.ok(last);assert.ok(last.statements<=48,JSON.stringify(last));return last;},
@@ -123,6 +125,16 @@ test('new player identities, new runs and source-revision restarts retain conser
   assert.equal(f.one("SELECT state FROM team_projection_runs WHERE id='building'").state,'obsolete');
 });
 
+test('legacy format-zero building checkpoints restart conservatively before writing current rows',async t=>{
+  const f=fixture(t,{events:1,players:0});await f.building('events',{version:0});
+  await run(f,'queued');const page=f.pages.at(-1).page;
+  assert.equal(page.checkpoint.phase,'identity');assert.notEqual(page.checkpoint.runId,'building');
+  assert.equal(page.recoveryRequired,true);assert.equal(f.values.get(RECOVERY),true);
+  assert.equal(f.one("SELECT state FROM team_projection_runs WHERE id='building'").state,'obsolete');
+  assert.equal(f.one('SELECT team_game_version FROM team_projection_runs WHERE id=?',page.checkpoint.runId).team_game_version,1);
+  assert.equal(f.one('SELECT COUNT(*) n FROM team_event_rows').n,0);await run(f,'recovering_connections');
+});
+
 test('obsolete cleanup deletes are safe while its final completion still requires recovery',async t=>{
   const f=fixture(t,{events:1,players:1});await f.building();
   const events=await directPage(f,{runId:'building',inputRevision:1,phase:'events',cursor:''});
@@ -131,8 +143,10 @@ test('obsolete cleanup deletes are safe while its final completion still require
   await f.db.batch(players.statements.map(s=>f.db.prepare(s.sql.replaceAll('$FENCE','1')).bind(...s.params)));
   await f.write("UPDATE team_projection_runs SET state='obsolete' WHERE id='building'");
   await f.write("UPDATE sync_jobs SET checkpoint=?",JSON.stringify({phase:'cleanup'}));
-  for(const table of ['team_event_rows','team_player_rows','team_projection_runs']){
+  assert.equal(f.one('SELECT COUNT(*) n FROM team_game_source_rows').n,1,'The fixture includes the normalized child that must be removed first');
+  for(const table of ['team_game_source_rows','team_event_rows','team_player_rows','team_projection_runs']){
     await run(f,'queued');assert.equal(f.pages.at(-1).page.recoveryRequired,false);assert.equal(!!f.values.get(RECOVERY),false);assert.equal(f.one(`SELECT COUNT(*) n FROM ${table}`).n,0);
+    if(table==='team_game_source_rows')assert.equal(f.one('SELECT COUNT(*) n FROM team_event_rows').n,1,'Parent event survives the child-only cleanup page');
   }
   await run(f,'ready');assert.equal(f.pages.at(-1).page.recoveryRequired,true);assert.equal(f.values.get(RECOVERY),true);
 });
@@ -143,8 +157,19 @@ test('an existing durable recovery marker runs before a safe projection page',as
 });
 
 test('owner wake during a safe page survives its result and schedules recovery on restart',async t=>{
-  const f=fixture(t,{events:1,players:0});await f.building();f.hook(async()=>{await f.write("UPDATE app_teams SET timezone='America/Los_Angeles' WHERE id='team'");await f.runtime.wake();});
-  await run(f,'queued');assert.equal(f.pages.at(-1).page.recoveryRequired,false);assert.equal(f.values.get(RECOVERY),true);assert.equal(f.values.get('wake_sequence'),1);assert.equal(f.dirty(),1);
+  const f=fixture(t,{events:1,players:0}),id=await f.building();f.hook(async()=>{await f.runtime.wake();});
+  await run(f,'queued');assert.equal(f.pages.at(-1).page.recoveryRequired,false);assert.equal(f.values.get(RECOVERY),true);assert.equal(f.values.get('wake_sequence'),1);
+  assert.equal(f.one('SELECT pages_saved FROM sync_jobs WHERE id=?',id).pages_saved,1);assert.equal(f.one('SELECT COUNT(*) n FROM team_event_rows').n,1);
+  f.restart();await run(f,'recovering_connections');assert.equal(f.recoveries.length,1);
+});
+
+test('owner timezone change during a safe page rejects stale writes while retaining its durable wake',async t=>{
+  const f=fixture(t,{events:1,players:0}),id=await f.building();
+  f.hook(async()=>{await f.write("UPDATE app_teams SET timezone='America/Los_Angeles' WHERE id='team'");await f.runtime.wake();});
+  // Timezone is now an exact semantic frame input, so the safe-page hint cannot authorize stale writes.
+  const result=await run(f,'retrying');assert.equal(result.committed,undefined);assert.equal(f.pages.at(-1).page.recoveryRequired,false);
+  assert.equal(f.one('SELECT pages_saved FROM sync_jobs WHERE id=?',id).pages_saved,0);assert.equal(f.one('SELECT COUNT(*) n FROM team_event_rows').n,0);
+  assert.equal(f.values.get(RECOVERY),true);assert.equal(f.values.get('wake_sequence'),1);assert.equal(f.dirty(),1);
   f.restart();await run(f,'recovering_connections');assert.equal(f.recoveries.at(-1).dirty.length,1);
 });
 
@@ -230,5 +255,5 @@ test('cleanup never deletes the published pointer even if its run is marked obso
   await f.write("UPDATE team_projection_runs SET state='obsolete' WHERE id='building'");
   await f.write("UPDATE team_projection_state SET published_run_id='building',published_input_revision=input_revision,pending=0");
   await f.write('UPDATE sync_jobs SET checkpoint=?',JSON.stringify({phase:'cleanup'}));
-  await run(f,'ready');assert.equal(f.values.get(RECOVERY),true);assert.equal(f.one('SELECT COUNT(*) n FROM team_events').n,1);assert.equal(f.one('SELECT COUNT(*) n FROM team_projection_runs').n,1);
+  await run(f,'ready');assert.equal(f.values.get(RECOVERY),true);assert.equal(f.one('SELECT COUNT(*) n FROM team_events').n,1);assert.equal(f.one('SELECT COUNT(*) n FROM team_game_source_rows').n,1);assert.equal(f.one('SELECT COUNT(*) n FROM team_projection_runs').n,1);
 });

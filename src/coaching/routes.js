@@ -35,7 +35,7 @@ function writeOrigin(request, url) {
   if (request.headers.get("origin") !== url.origin) throw fail("Open this action in the app.", 403, "origin_invalid");
 }
 function selection(value) {
-  return { team_id: value.team_id, team_season_id: value.team_season_id, event_id: value.event_id, player_id: value.player_id };
+  return { team_id: value.team_id, team_season_id: value.team_season_id, event_id: value.event_id, player_id: value.player_id, game_scope_revision:value.game_scope_revision };
 }
 async function coachingRoutes(request, { actor, db, now, resolveAvailability, resolveRoleHints } = {}) {
   const url = new URL(request.url), path = url.pathname;

@@ -12,7 +12,7 @@ export async function connectionThroughputHarness(){
   const d1LatencyMs=Number(process.env.MYTS_THROUGHPUT_D1_LATENCY_MS||0);
   if(!Number.isFinite(d1LatencyMs)||d1LatencyMs<0||d1LatencyMs>1000)throw Error('Invalid synthetic D1 latency.');
   const qaRoot=path.resolve('.'),root=path.resolve(process.env.MYTS_TEST_PACKAGE_ROOT||qaRoot),modules={};
-  for(const file of ['worker.js','web/app/coach-tactics.js','web/app/schedule-query.js',...(await readdir(path.join(root,'src'),{recursive:true})).filter(file=>file.endsWith('.js')).map(file=>'src/'+file)])modules[file]={type:'esm',contents:await readFile(path.join(root,file),'utf8')};
+  for(const file of ['worker.js','web/app/coach-tactics.js','web/app/schedule-query.js','web/app/reporting/encoders.js','web/app/reporting/font-metrics.js',...(await readdir(path.join(root,'src'),{recursive:true})).filter(file=>file.endsWith('.js')).map(file=>'src/'+file)])modules[file]={type:'esm',contents:await readFile(path.join(root,file),'utf8')};
   const packageVersion=JSON.parse(await readFile(path.join(root,'package.json'),'utf8')).version;
   const sourceHashes=Object.fromEntries(['worker.js','src/domain/connection-materializer.js','src/domain/connection-event-batch.js','src/domain/projector.js','src/application/sync-service.js','src/sync/coordinator.js','src/sync/runtime.js'].filter(file=>modules[file]).map(file=>[file,createHash('sha256').update(modules[file].contents).digest('hex')]));
   const sourceFingerprint=createHash('sha256').update(Object.keys(modules).sort().map(name=>name+'\0'+modules[name].contents).join('\0')).digest('hex');

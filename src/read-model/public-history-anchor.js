@@ -5,6 +5,15 @@ const same=(a,b)=>`(${a}=${b} OR EXISTS(SELECT 1 FROM source_team_links l WHERE(
  * and read-only historical detail; no team/source connection is created. */
 export async function findPublicHistoryAnchor(db,context,current,{now=Date.now(),requester='owner',key='owner',provider=null}={}) {
  if(current.type!=='game'||current.conditional||current.identity_conflict)return null;
+ // A local target never replaces the public/native identity of collection proof.
+ // Only an exact member of the pinned published game may choose that anchor.
+ const members=current._game_scope?.source_members;
+ if(members){
+  const publicMembers=members.filter(m=>['gotsport','live'].includes(m.provider)&&m.entitled===1&&(!provider||m.provider===provider));
+  const originals=[...new Set(publicMembers.map(m=>m.original_event_id))];
+  if(originals.length!==1)return null;
+  current={...current,id:originals[0]};
+ }
     const sql=`WITH anchors AS(
       SELECT a.id,a.generation,'own' AS kind,NULL AS membership_id FROM team_source_attachments a WHERE a.app_team_id=? AND a.team_season_id=? AND a.active=1
       UNION ALL SELECT a.id,a.generation,'division',m.id FROM team_source_attachments a JOIN source_competition_memberships m ON ${same('m.source_team_id','a.source_team_id')} WHERE a.app_team_id=? AND a.team_season_id=? AND a.active=1

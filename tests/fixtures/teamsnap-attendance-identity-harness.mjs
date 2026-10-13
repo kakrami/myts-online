@@ -10,7 +10,7 @@ const PASSWORD='native-attendance-identity-owner-password';
 // synthetic. Instrumentation observes the unchanged 50-SQL / 2-MB guards.
 export async function attendanceIdentityHarness(){
   const qaRoot=path.resolve('.'),root=path.resolve(process.env.MYTS_TEST_PACKAGE_ROOT||qaRoot),modules={};
-  for(const file of ['worker.js','web/app/coach-tactics.js','web/app/schedule-query.js',...(await readdir(path.join(root,'src'),{recursive:true})).filter(file=>file.endsWith('.js')).map(file=>'src/'+file)])modules[file]={type:'esm',contents:await readFile(path.join(root,file),'utf8')};
+  for(const file of ['worker.js','web/app/coach-tactics.js','web/app/schedule-query.js','web/app/reporting/encoders.js','web/app/reporting/font-metrics.js',...(await readdir(path.join(root,'src'),{recursive:true})).filter(file=>file.endsWith('.js')).map(file=>'src/'+file)])modules[file]={type:'esm',contents:await readFile(path.join(root,file),'utf8')};
   const sourceFingerprint=createHash('sha256').update(Object.keys(modules).sort().map(name=>name+'\0'+modules[name].contents).join('\0')).digest('hex');
   const replace=(file,before,after)=>{if(modules[file].contents.split(before).length!==2)throw Error('Native diagnostic marker unavailable: '+file+' '+before);modules[file].contents=modules[file].contents.replace(before,after);};
   replace('worker.js','runtimeOptions:{','runtimeOptions:{alarmDelayMs:1,pageDelayMs:1,');

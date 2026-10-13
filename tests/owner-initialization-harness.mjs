@@ -17,7 +17,7 @@ export function ownerRecord(password=PASSWORD,{revision=1}={}){
 
 
 export async function ownerHarness(){
-  const modules={},files=['worker.js','web/app/coach-tactics.js','web/app/schedule-query.js',...(await readdir(path.join(ROOT,'src'),{recursive:true})).filter(f=>f.endsWith('.js')).map(f=>'src/'+f)];
+  const modules={},files=['worker.js','web/app/coach-tactics.js','web/app/schedule-query.js','web/app/reporting/encoders.js','web/app/reporting/font-metrics.js',...(await readdir(path.join(ROOT,'src'),{recursive:true})).filter(f=>f.endsWith('.js')).map(f=>'src/'+f)];
   for(const file of files)modules[file]={type:'esm',contents:await readFile(path.join(ROOT,file),'utf8')};
   const signature='export async function passwordVerifier(password, salt, iterations) {';
   if(!modules['src/security/crypto.js'].contents.includes(signature))throw new Error('Password verifier test instrument could not be installed.');

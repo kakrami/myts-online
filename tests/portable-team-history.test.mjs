@@ -105,3 +105,50 @@ test('all twenty supported native sections receive complete table graph validati
  }finally{source.close();target.close();}});
 
 test('noncanonical portable native references reject aliases before source writes',async()=>{const source=fixture(),target=fixture();try{const root=source.source();source.team('original',root);await source.event('saved',root,'2024-08-04');const archive=await source.archive('original');target.team('target',target.source());for(const alias of ['%73aved','%ZZ']){const bad=structuredClone(archive);bad.segments.find(s=>s.section==='source_events@public').rows[0].id='gotsport/public/'+alias;await assert.rejects(()=>stage(target,bad),e=>e.code==='data_source_invalid');assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM source_events').get().n,0);}}finally{source.close();target.close();}});
+
+// The connected-history archive remains source-only after team-local matching.
+// Owner intent is deliberately retained at the destination, never inferred from
+// imported verification metadata or transferred from another owner team.
+async function seedScopedDecision(f,teamId,accountId,{withEvents=true,decision='rejected'}={}) {
+ f.insert('provider_accounts',{id:accountId,provider:'teamsnap',native_id:'portable-owner',name:'Synthetic owner'});
+ const privateTeam=f.source('101','teamsnap',accountId),publicTeam=f.source('202','gotsport');
+ f.team(teamId,privateTeam,{account:accountId});
+ f.insert('team_source_connections',{id:'public-root-'+teamId,app_team_id:teamId,source_team_id:publicTeam,scope_mode:'observed_history',created_at:AT});
+ if(!withEvents)return;
+ await f.event('private-game',privateTeam,'2024-08-04',{provider:'teamsnap',accountId,generation:1});
+ await f.event('public-game',publicTeam,'2024-08-04');
+ const seasonId=f.season(teamId,2024),privateEvent=sourceKey('teamsnap','private-game',accountId),publicEvent=sourceKey('gotsport','public-game');
+ const {nativeCanonicalId}=await import('../src/domain/identity.js'),target=await nativeCanonicalId('event',privateEvent);f.insert('events',{id:target,created_at:AT});f.insert('event_source_links',{source_event_id:privateEvent,event_id:target,reason:'source_identity',evidence:'{}'});
+ f.insert('team_game_associations',{app_team_id:teamId,association_id:'local-pair',private_account_id:accountId,private_source_team_id:privateTeam,private_source_event_id:privateEvent,public_anchor_source_event_id:publicEvent,origin_team_season_id:seasonId,target_event_id:target,created_at:AT});
+ const digest='a'.repeat(64);
+ f.insert('team_game_decision_revisions',{app_team_id:teamId,association_id:'local-pair',revision:1,authority:'owner',decision,team_season_id:seasonId,algorithm_version:'portable-scope-test',request_id:'local-request',request_hash:digest,source_snapshot_revision:0,connection_snapshot_hash:digest,owner_state_hash:digest,semantic_hash:digest,proof_hash:digest,proof:'{"owner_confirmation":"synthetic"}',created_at:AT});
+ f.sqlite.prepare('UPDATE team_game_associations SET head_revision=1,owner_revision=1 WHERE app_team_id=?').run(teamId);
+ f.insert('game_bookmarks',{app_team_id:teamId,event_id:target,snapshot:JSON.stringify({id:target,title:'Synthetic saved game'}),saved_at:AT});
+ f.insert('domain_overrides',{app_team_id:teamId,kind:'event',entity_id:target,fields:'{"title":"Local owner title"}',revision:7});
+}
+const savedMatcherIntent=f=>Object.fromEntries(['team_game_associations','team_game_decision_revisions','team_game_publish_batches','team_game_publications','team_game_source_rows','game_bookmarks','domain_overrides'].map(table=>[table,f.sqlite.prepare('SELECT * FROM '+table+' ORDER BY rowid').all().map(row=>({...row}))]));
+test('source archive excludes match decisions and preserves exact destination owner intent',async()=>{
+ const source=fixture(),target=fixture();try{
+  await seedScopedDecision(source,'original','source-account',{decision:'accepted'});
+  const archive=await source.archive('original');
+  assert.ok(archive.segments.length>0);assert.ok(archive.segments.every(row=>row.section.startsWith('source_')));
+  assert.equal(JSON.stringify(archive).includes('owner_confirmation'),false);
+  await seedScopedDecision(target,'target','target-account');const before=savedMatcherIntent(target);
+  const {svc,id}=await stage(target,archive);await finish(target,svc,id);
+  assert.deepEqual(savedMatcherIntent(target),before,'source import does not rebase or overwrite local owner decisions and saved state');
+  assert.equal(target.sqlite.prepare("SELECT decision FROM team_game_decision_revisions WHERE app_team_id='target'").get().decision,'rejected');
+ }finally{source.close();target.close();}
+});
+test('fresh-target source import creates no accepted local game authority and rejects injected decision sections',async()=>{
+ const source=fixture(),target=fixture();try{
+  await seedScopedDecision(source,'original','source-account',{decision:'accepted'});const archive=await source.archive('original');
+  await seedScopedDecision(target,'target','target-account',{withEvents:false});
+  const forged=structuredClone(archive);forged.segments.push({section:'team_game_decision_revisions@public',rows:[{authority:'owner',decision:'accepted'}]});
+  await assert.rejects(()=>stage(target,forged),error=>error.code==='data_manifest_invalid');
+  assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM source_events').get().n,0);
+  const {svc,id}=await stage(target,archive);await finish(target,svc,id);
+  assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM source_events').get().n,2);
+  for(const table of ['team_game_associations','team_game_decision_revisions','team_game_publications','team_game_source_rows','team_game_publish_batches'])assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM '+table).get().n,0,table);
+  assert.equal(target.sqlite.prepare("SELECT COUNT(*) n FROM source_events WHERE provenance='file_import'").get().n,2);
+ }finally{source.close();target.close();}
+});

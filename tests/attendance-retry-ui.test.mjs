@@ -94,7 +94,7 @@ for(const transition of ['close','new-modal','navigation','team','back'])for(con
   if(transition==='navigation')await ui.click('[data-action="nav"][data-view="schedule"]');
   if(transition==='team')await ui.click('[data-action="team-select"][data-value="team-b"]');
   if(transition==='back')await ui.app.action('back');
-  await until(()=>transition==='new-modal'?ui.app.state.modal?.kind==='status':transition==='team'?ui.app.state.team==='team-b'&&ui.app.state.modal===null:ui.app.state.modal===null);
+  await until(()=>['close','back'].includes(transition)?ui.app.state.modal?.kind==='settings':transition==='new-modal'?ui.app.state.modal?.kind==='status':transition==='team'?ui.app.state.team==='team-b'&&ui.app.state.modal===null:ui.app.state.modal===null);
   const modal=ui.app.state.modal,body=ui.query('#accountBody').innerHTML,toast=ui.query('#toast').textContent,route=ui.app.state.routeEpoch;
   gate.resolve(outcome==='success'?queued():failure('sign_in_required','Late failure must not sign out the new screen.',401));
   for(let i=0;i<6;i++)await tick();

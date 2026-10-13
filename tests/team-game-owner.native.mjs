@@ -1,0 +1,27 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {materializationHarness} from './fixtures/connection-materialization-harness.mjs';
+import {resolvePublishedGame,gameScopeFenceSQL} from '../src/domain/team-game-scope.js';
+import {publishedOwnerFixture} from './fixtures/published-game-owner-fixture.mjs';
+const INPUT={team_id:'team',team_season_id:'season',event_id:'ts-source'};
+test('native D1 normalized Coach shared scope, owner CAS and saved-only reachability use the real epoch writer and HTTP budgets',async()=>{
+ const h=await materializationHarness(),f=publishedOwnerFixture();
+ try{await h.initialize();
+  const order=['provider_accounts','app_teams','team_read_state','team_seasons','app_clubs','team_profiles','source_teams','events','source_events','source_event_teams','event_source_links','source_event_logistics','source_component_coverage','players','source_players','player_source_links','source_attendance','team_source_attachments','team_source_connections','team_connection_seasons','team_projection_runs','team_projection_state','team_event_rows','team_player_rows','team_game_associations','team_game_decision_revisions','team_game_publications','team_game_source_rows'];
+  for(const table of order){const rows=f.sql.prepare('SELECT * FROM '+table).all().map(r=>({...r}));for(const row of rows){if(table==='team_projection_runs')row.state='building';if(table==='team_projection_state'){row.published_run_id=null;row.pending=1;}if(table==='team_game_associations')row.head_revision=0;await h.db.batch([h.db.prepare(`INSERT INTO ${table}(${Object.keys(row)}) VALUES(${Object.keys(row).map(()=>'?')})`).bind(...Object.values(row))]);}if(table==='team_game_decision_revisions')await h.db.batch([h.db.prepare('UPDATE team_game_associations SET head_revision=1')]);}
+  await h.db.batch([h.db.prepare("UPDATE team_projection_runs SET state='published'"),h.db.prepare("UPDATE team_projection_state SET published_run_id='run-'||app_team_id,published_input_revision=input_revision,pending=0"),h.db.prepare('UPDATE team_read_state SET pending=0')]);
+  const budgets=[],read=async(event_id='ts-source')=>{const r=await h.request('/api/coach?'+new URLSearchParams({...INPUT,event_id}));assert.equal(r.status,200,JSON.stringify(r));assert.ok(r.statements<=48);budgets.push({kind:'read',event_id,statements:r.statements});return r.data;};
+  let model=await read();assert.equal(model.event_id,'public-event');assert.equal(model.roster[0].availability_source,'attendance:yes');const command=async(action,revision)=>{const r=await h.request('/api/coach',{method:'POST',body:{...INPUT,game_scope_revision:model.game_scope_revision,revision,action}});assert.equal(r.status,200,JSON.stringify(r));assert.ok(r.statements<=48);budgets.push({kind:action.type,statements:r.statements});return r.data;};
+  let state=(await command({type:'create',format:7,half_minutes:25},0)).session;assert.equal(state.revision,1);state=(await command({type:'configure',format:9,half_minutes:90},1)).session;assert.equal(state.half_minutes,90);assert.equal((await read('public-source')).session.revision,2);
+  const stale=await h.request('/api/coach',{method:'POST',body:{...INPUT,game_scope_revision:'obsolete',revision:2,action:{type:'configure',format:7,half_minutes:25}}});assert.equal(stale.status,409);
+  const observed=await resolvePublishedGame(h.db,'team','season','ts-source'),fence=gameScopeFenceSQL(observed);
+  await h.db.batch([h.db.prepare("UPDATE provider_accounts SET active=0,generation=2 WHERE id='account'")]);
+  await assert.rejects(h.db.batch([h.db.prepare(`INSERT INTO coach_write_fences VALUES('native-race',CASE WHEN ${fence.sql} THEN 1 ELSE 0 END)`).bind(...fence.params),h.db.prepare("UPDATE coach_sessions SET revision=revision+1"),h.db.prepare("DELETE FROM coach_write_fences WHERE token='native-race'")]),/coach_team_alive|CHECK constraint/);
+  assert.equal((await h.db.prepare('SELECT revision FROM coach_sessions').first()).revision,2);
+  model=await read();assert.equal(model.available,true);await command({type:'configure',format:7,half_minutes:30},2);
+  await h.db.batch([h.db.prepare("UPDATE team_source_connections SET active=0 WHERE id='root-team-ts'")]);model=await read('public-event');assert.equal(model.state_only,true);assert.equal(model.can_edit,false);assert.equal(model.session.revision,3);assert.equal(model.session.roster[0].name,'player');
+  const denied=await h.request('/api/coach',{method:'POST',body:{...INPUT,event_id:'public-event',revision:3,action:{type:'configure',format:9,half_minutes:20}}});assert.equal(denied.status,409);
+  assert.deepEqual((await h.db.prepare('SELECT event_id,revision FROM coach_sessions').all()).results,[{event_id:'public-event',revision:3}]);assert.equal((await h.db.prepare('PRAGMA foreign_key_check').all()).results.length,0);
+  console.log(JSON.stringify({native_normalized_owner_scope:{source_fingerprint:h.sourceFingerprint,budgets,max_http_statements:Math.max(...budgets.map(x=>x.statements)),private_sources_unchanged:(await h.db.prepare('SELECT id,content_hash FROM source_events ORDER BY id').all()).results,foreign_rows_unchanged:(await h.db.prepare("SELECT event_id,source_ids FROM team_event_rows WHERE app_team_id='foreign'").all()).results,exact_epoch_writer:true,stale_token_rejected:true,stale_commit_rejected:true,account_pause_keeps_local_edit:true,revocation_preserves_saved_only_plan:true}}));
+ }finally{f.close();await h.dispose();}
+});

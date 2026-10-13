@@ -151,7 +151,8 @@ export function createSyncRuntime(collector, options = {}) {
         const stableProjection=result.state==='queued'&&result.stage==='projection'&&projectionRecovery?.jobId===result.jobId&&projectionRecovery?.required===false;
         // Intermediate imports stay coalesced. Provider commits and projection
         // identity, publication, and terminal pages retain immediate recovery.
-        const recover=!!options.recoverConnections&&(importTerminal||importIdle||result.committed&&(['gotsport','live','teamsnap','trace'].includes(result.provider)||result.provider==='domain'&&result.component==='projection'&&!stableProjection));
+        const analysisTerminal=result.provider==='analysis'&&result.component==='match'&&['ready','failed','blocked'].includes(result.state);
+        const recover=!!options.recoverConnections&&(importTerminal||importIdle||analysisTerminal||result.committed&&(['gotsport','live','teamsnap','trace'].includes(result.provider)||result.provider==='domain'&&result.component==='projection'&&!stableProjection));
         if(recover){
           await this.ctx.storage.put('connection_recovery_pending',true);
           // Never clear the deferred obligation before its replacement is

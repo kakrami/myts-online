@@ -23,6 +23,7 @@ import {trackingRoutes} from '../tracking/routes.js';
 import {trackingCaptureService} from './tracking.js';
 import {reportService,dataFileService} from './reports.js';
 import {identityRoutes} from './identity-routes.js';
+import {teamGameIdentityRoutes} from './team-game-identity-routes.js';
 import {TeamLifecycleService} from './team-lifecycle.js';
 import {json,input,actor} from './http.js';
 import {PublicHistoryService} from './public-history.js';
@@ -71,6 +72,7 @@ export async function applicationRoutes(request,env,{db,installation,extraRoutes
   const principal=await security.authenticateRequest(request,ownerRoute?{}:{projection:{teamId:seasonCatalog||teamLogo?decode((seasonCatalog??teamLogo)[1]):url.searchParams.get('team_id'),category:method==='GET'&&(seasonCatalog||teamLogo||SHARED_METADATA.has(path)||path.startsWith('/api/source-teams/'))?'shared_metadata':category(path)}}),access=actor(principal);
   const cursor=new CursorCodec(await security.getCursorSigningKey()),features=new TeamFeatures(db,access,{cursor}),catalog=new TeamCatalog(db,access,{cursor}),analysis=new AnalysisReads(db,access,{cursor}),reads=new FeatureReads(db,access,{cursor,analysisReads:analysis}),jobs=new JobCoordinator(db);
   const selection=input(url);
+  const teamGameResponse=await teamGameIdentityRoutes(request,{db,actor:access,principal,cursor,sync});if(teamGameResponse)return teamGameResponse;
   const identityResponse=await identityRoutes(request,{db,actor:access,cursor,sync});if(identityResponse)return identityResponse;
   const sourceTeamResponse=await sourceTeamRoutes(request,{db,actor:access,cursor});if(sourceTeamResponse)return sourceTeamResponse;
   if(path==='/api/overview'&&method==='GET')return json(await reads.overview(selection));
@@ -83,7 +85,7 @@ export async function applicationRoutes(request,env,{db,installation,extraRoutes
   const award=path.match(/^\/api\/awards(?:\/([^/]+))?$/);if(award){const body=await readAuthBody(request);if(method==='POST'&&!award[1]||method==='PUT'&&award[1])return json(await reads.setAward(selection,{...body,...(award[1]?{id:decode(award[1])}:{})},body.revision??0),award[1]?200:201);if(method==='DELETE'&&award[1])return json(await reads.deleteAward(selection,decode(award[1]),body.revision));}
   const playerDetail=path.match(/^\/api\/players\/([^/]+)$/);if(playerDetail&&method==='GET')return json(await new AnalysisReads(db,access,{cursor}).player(selection,decode(playerDetail[1]),{limit:integer(selection.limit,50),cursor:selection.cursor??null}));
   const matchPlayerDetail=path.match(/^\/api\/match-players\/([^/]+)\/([^/]+)$/);if(matchPlayerDetail&&method==='GET')return json(await new AnalysisReads(db,access,{cursor}).matchPlayer(selection,decode(matchPlayerDetail[1]),decode(matchPlayerDetail[2])));
-  const eventEdit=path.match(/^\/api\/matches\/([^/]+)\/(editor|correction)$/);if(eventEdit){const editor=new EventEditor(db,access,{reads,sync}),id=decode(eventEdit[1]);if(method==='GET'&&eventEdit[2]==='editor')return json(await editor.read(selection,id));if(['PUT','DELETE'].includes(method)&&eventEdit[2]==='correction'){const body=await readAuthBody(request);return json(method==='PUT'?await editor.save(selection,id,body.fields,body.revision):await editor.reset(selection,id,body.revision),202);}}
+  const eventEdit=path.match(/^\/api\/matches\/([^/]+)\/(editor|correction)$/);if(eventEdit){const editor=new EventEditor(db,access,{reads,sync}),id=decode(eventEdit[1]);if(method==='GET'&&eventEdit[2]==='editor')return json(await editor.read(selection,id));if(['PUT','DELETE'].includes(method)&&eventEdit[2]==='correction'){const body=await readAuthBody(request);return json(method==='PUT'?await editor.save({...selection,game_scope_revision:body.game_scope_revision},id,body.fields,body.revision):await editor.reset({...selection,game_scope_revision:body.game_scope_revision},id,body.revision),202);}}
   const analysisResponse=await analysisRoutes(request,{db,actor:access,cursor,enqueueRefresh:args=>sync.enqueueAnalysisRefresh(args)});if(analysisResponse)return analysisResponse;
   if(path==='/api/revisions'&&method==='GET'){
     const context=await metadataContext(reads,catalog,selection),state=await reads.stateQuery(context.selection).first();
@@ -166,7 +168,7 @@ export async function applicationRoutes(request,env,{db,installation,extraRoutes
   if(path==='/api/branding/logo'&&method==='PUT'){const body=await readAuthBody(request,132096);return json(await features.saveLogo(selection.team_id,body.logo,body.revision));}
   if(path==='/api/branding/kits'&&method==='PUT'){const body=await readAuthBody(request);return json(await features.saveKits(selection.team_id,selection.team_season_id,body,body.revision));}
   if(path==='/api/bookmarks'&&method==='GET')return json({data:await features.bookmarks(selection.team_id,{team_filter:selection.team_filter??selection.team_id,period:selection.period??'upcoming',cursor:selection.cursor??null,limit:integer(selection.limit,50),teams_cursor:selection.teams_cursor??null,teams_limit:integer(selection.teams_limit,50)})});
-  const bookmark=path.match(/^\/api\/bookmarks\/([^/]+)$/);if(bookmark&&method==='PUT'){const body=await readAuthBody(request);return json(await features.bookmark(selection.team_id,decode(bookmark[1]),body.saved));}
+  const bookmark=path.match(/^\/api\/bookmarks\/([^/]+)$/);if(bookmark&&method==='PUT'){const body=await readAuthBody(request);return json(await features.bookmark(selection.team_id,decode(bookmark[1]),body.saved,{game_scope_revision:body.game_scope_revision}));}
   if(path==='/api/status'&&method==='GET')return json(await statusModel(db,jobs,reads,selection,access,cursor,catalog));
   if(path==='/api/usage'&&method==='GET'){
     if(!access.owner)throw invalid('Sign in as the owner to view database usage.','owner_required',403);

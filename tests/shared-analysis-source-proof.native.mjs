@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Miniflare} from 'miniflare';
+import {Agent,getGlobalDispatcher,setGlobalDispatcher} from 'undici';
 import {SCHEMA,SEED} from '../src/application/installation-schema.js';
 import {FreshInstallation} from '../src/application/fresh-install.js';
 import {wrapDatabase} from '../src/application/installation-epoch.js';
@@ -12,6 +13,7 @@ import {nativeAnalysisCollectionProof} from '../src/analysis/source-collection-p
 import {analysisFixture} from './fixtures/shared-analysis-fixture.mjs';
 
 test('native owner and legacy track authority compile and commit within the real installation writer',async()=>{
+ const priorDispatcher=getGlobalDispatcher(),dispatcher=new Agent({pipelining:0});setGlobalDispatcher(dispatcher);
  const name='analysis-proof-native',mf=new Miniflare({cf:false,telemetry:{enabled:false},logRequests:false,workers:[{config:{name,compatibilityDate:'2026-09-09',manifest:{mainModule:'entry.js',modulesRoot:process.cwd(),modules:{'entry.js':{type:'esm',contents:'export default {fetch(){return new Response("fixture");}}'}}},env:{DB:{type:'d1',id:name}}}}]});
  try{
   await mf.ready;const raw=await mf.getD1Database('DB',name),password='synthetic-native-proof-password',fresh=new FreshInstallation(raw,{schema:SCHEMA,seed:SEED,bootstrapPassword:password});
@@ -40,5 +42,5 @@ test('native owner and legacy track authority compile and commit within the real
   }
   assert.equal((await db.prepare('SELECT COUNT(*) n FROM sync_observations').first()).n,1,'denied pages cannot save observations');
   console.log(JSON.stringify({native_track_proof:{synthetic:true,real_installation_writer:true,owner_admission_statements:budget.used,prior_route_reserved:20,children:5,commits}}));
- }finally{await mf.dispose();}
+ }finally{await mf.dispose();setGlobalDispatcher(priorDispatcher);await dispatcher.close();}
 });

@@ -4,24 +4,26 @@ import {readFile,readdir} from 'node:fs/promises';
 import path from 'node:path';
 import {Miniflare} from 'miniflare';
 import {V714_OBJECTS,V714_FINGERPRINT,V714_CURSOR} from '../src/application/schema-v714.js';
-import {SCHEMA} from '../src/application/installation-schema.js';
+import {V731_SCHEMA as SCHEMA} from '../src/application/schema-v731.js';
 import {sqlOperation,INSTALLATION_EPOCH} from '../src/application/installation-epoch.js';
 import {nativeCanonicalId} from '../src/domain/identity.js';
 import {TRANSFER_TABLES,TRANSFER_PARENT_NAMES,TRANSFER_PLAN,transferCursor} from '../src/application/transfer-schema-upgrade.js';
-import {schemaIdentity,validateRemoteDatabase} from '../scripts/release-check.mjs';
+import {schemaIdentityV731 as schemaIdentity,validateRemoteDatabaseV731 as validateRemoteDatabase} from '../scripts/release-check.mjs';
 
 const START='2026-10-12T05:20:00.000Z',COMPLETE='2026-10-12T05:29:49.040Z';
 async function harness({mode}={}){
  const root=path.resolve(process.env.MYTS_TEST_PACKAGE_ROOT||'.'),modules={};
  for(const file of(await readdir(path.join(root,'src'),{recursive:true})).filter(file=>file.endsWith('.js')))modules['src/'+file]={type:'esm',contents:await readFile(path.join(root,'src',file),'utf8')};
- modules['worker.js']={type:'esm',contents:await readFile(path.join(root,'worker.js'),'utf8')};
- modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};modules['web/app/schedule-query.js']={type:'esm',contents:await readFile(path.join(root,'web/app/schedule-query.js'),'utf8')};
+ // Historical714 ->731 harness uses its frozen engine, writer and schema.
+ // Current extension acceptance is tested separately; no production fallback.
+ modules['worker.js']={type:'esm',contents:(await readFile(path.join(root,'worker.js'),'utf8')).replace("import {SCHEMA,SEED} from './src/application/installation-schema.js';","import {V731_SCHEMA as SCHEMA,V731_SEED as SEED} from './src/application/schema-v731.js';").replace("from './src/application/schema-upgrade.js'","from './src/application/schema-upgrade-v731.js'").replace("from './src/application/installation-epoch.js'","from './src/application/installation-epoch-v731.js'")};
+ modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};for(const name of ['web/app/schedule-query.js','web/app/reporting/encoders.js','web/app/reporting/font-metrics.js'])modules[name]={type:'esm',contents:await readFile(path.join(root,name),'utf8')};
  modules['upgrade-test-worker.js']={type:'esm',contents:`
   import app,{SyncRuntime} from './worker.js';
   export {SyncRuntime};
-  import {InstallationUpgrade} from './src/application/schema-upgrade.js';
-  import {SCHEMA,SEED} from './src/application/installation-schema.js';
-  import {wrapDatabase} from './src/application/installation-epoch.js';
+  import {InstallationUpgrade} from './src/application/schema-upgrade-v731.js';
+  import {V731_SCHEMA as SCHEMA,V731_SEED as SEED} from './src/application/schema-v731.js';
+  import {wrapDatabase} from './src/application/installation-epoch-v731.js';
   import {BudgetDB} from './src/sync/budget.js';
   export default {async fetch(request,env){
    const body=await request.json(),db=new BudgetDB(env.DB,body.limit??50);

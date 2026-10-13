@@ -1,7 +1,9 @@
+import {publishedGameScopeCTE,resolvePublishedGame,gameScopeFenceSQL,captureGameOwnerState,gameOwnerStateFenceSQL,gameScopeRevision} from '../domain/team-game-scope.js';
+import {attendanceCTE} from '../read-model/attendance.js';
 import {acceptedGameSeason} from '../domain/game-season-state.js';
 import {COACH_SLOTS,COACH_POSITIONS,starterSuggestion,substitutionRecommendations} from '../../web/app/coach-tactics.js';
 import {statisticalSelectionSQL} from '../read-model/inclusion.js';
-import {playerSeasonQuery} from '../analysis/reads.js';
+import {savedMatchAnalysis,analysisCoverageSQL} from '../analysis/eligibility.js';
 
 const POSITIONS = new Set([...COACH_POSITIONS,"LF","RF"]);
 const SLOTS = new Set([...COACH_SLOTS.map(s=>s.id),"LF","RF"]);
@@ -236,12 +238,13 @@ class CoachingService {
   }
   async writeTeam(teamId, statements, gameScope=null) {
     own(this.actor);
-    const token = uuid(), accepted=gameScope?acceptedGameSeason(teamId,gameScope.team_season_id,gameScope.event_id):{sql:'1',params:[]};
+    const token = uuid(), accepted=gameScope?acceptedGameSeason(teamId,gameScope.team_season_id,gameScope.event_id):{sql:'1',params:[]},
+      membership=gameScope?gameScopeFenceSQL(gameScope._game_scope):{sql:'1',params:[]},owners=gameScope?gameOwnerStateFenceSQL(gameScope._owner_state):{sql:'1',params:[]};
     try {
-      return (await this.db.batch([this.db.prepare(`INSERT INTO coach_write_fences VALUES(?,CASE WHEN EXISTS(SELECT 1 FROM app_teams WHERE id=?) AND NOT EXISTS(SELECT 1 FROM team_lifecycle WHERE team_id=?) AND (${accepted.sql}) THEN 1 ELSE 0 END)`).bind(token, teamId, teamId,...accepted.params), ...statements, this.db.prepare("DELETE FROM coach_write_fences WHERE token=?").bind(token)])).slice(1, -1);
+      return (await this.db.batch([this.db.prepare(`INSERT INTO coach_write_fences VALUES(?,CASE WHEN EXISTS(SELECT 1 FROM app_teams WHERE id=?) AND NOT EXISTS(SELECT 1 FROM team_lifecycle WHERE team_id=?) AND (${accepted.sql}) AND (${membership.sql}) AND (${owners.sql}) THEN 1 ELSE 0 END)`).bind(token, teamId, teamId,...accepted.params,...membership.params,...owners.params), ...statements, this.db.prepare("DELETE FROM coach_write_fences WHERE token=?").bind(token)])).slice(1, -1);
     } catch (error) {
       if (String(error.message).includes("coach_team_alive")) {
-        if(gameScope&&!(await this.db.prepare(`SELECT ${accepted.sql} AS accepted`).bind(...accepted.params).first())?.accepted)throw fail("This match moved to another season. Reload before editing.",409,"revision_conflict");
+        if(gameScope)throw fail("This match or its saved plan changed. Reload before editing.",409,"revision_conflict");
         throw fail("This team was removed. Reload before editing.", 409, "team_removed");
       }
       throw error;
@@ -249,7 +252,7 @@ class CoachingService {
   }
   async attendanceAvailability(scope) {
     own(this.actor);
-    const rows = (await this.db.prepare("SELECT player_id,status FROM canonical_attendance WHERE app_team_id=? AND team_season_id=? AND event_id=?").bind(...scopeParams(scope)).all()).results, labels = { No: "no", Yes: "yes", Maybe: "maybe", NR: "nr", Unknown: "unknown" }, result = {};
+    const rows = (await this.db.prepare(`WITH attendance_events AS(SELECT app_team_id,team_season_id,event_id FROM team_events WHERE app_team_id=? AND team_season_id=? AND event_id=?),${attendanceCTE()} SELECT player_id,status FROM attendance_responses`).bind(...scopeParams(scope)).all()).results, labels = { No: "no", Yes: "yes", Maybe: "maybe", NR: "nr", Unknown: "unknown" }, result = {};
     for (const player of new Set(rows.map((p) => p.player_id))) {
       const statuses = new Set(rows.filter((p) => p.player_id === player).map((p) => labels[p.status] ?? "unknown"));
       result[player] = statuses.size === 1 ? [...statuses][0] : "unresolved";
@@ -260,10 +263,13 @@ class CoachingService {
     own(this.actor);
     const season=await this.db.prepare("SELECT include_june FROM team_seasons WHERE app_team_id=? AND id=?").bind(scope.team_id,scope.team_season_id).first();
     const selection={...scope,mode:'season',period:'all',type:'all',search:'',include_june:!!season?.include_june,timezone:'UTC'};
-    const summary=playerSeasonQuery(selection),selected=statisticalSelectionSQL(selection);
+    const selected=statisticalSelectionSQL(selection)+' AND '+analysisCoverageSQL('role_analysis'),prefix=`WITH role_selection AS(SELECT ? AS app_team_id,? AS team_season_id),${publishedGameScopeCTE('role_selection','role_game')},role_analysis AS MATERIALIZED(SELECT a.* FROM ${savedMatchAnalysis} a JOIN role_selection scope ON scope.app_team_id=a.app_team_id AND scope.team_season_id=a.team_season_id)`;
+    // Only positions and recent Trace minutes are needed here. Embedding the
+    // full season/attendance summary inside another SELECT exceeds native D1's
+    // expression depth100; this equivalent position aggregate stays shallow.
     const rows=await this.db.batch([
-      this.db.prepare(`SELECT p.id,p.position,json_extract(o.fields,'$.position') AS assigned_position FROM (${summary.sql}) p LEFT JOIN analysis_overrides o ON o.app_team_id=? AND o.team_season_id=? AND o.kind='player_season' AND o.event_id='' AND o.player_id=p.id`).bind(...summary.params,scope.team_id,scope.team_season_id),
-      this.db.prepare(`WITH recent AS(SELECT p.player_id,p.minutes,ROW_NUMBER() OVER(PARTITION BY p.player_id ORDER BY COALESCE(e.local_day,substr(e.starts_at,1,10)) DESC,e.event_id DESC) AS rank FROM effective_player_matches p JOIN team_events e ON e.app_team_id=p.app_team_id AND e.team_season_id=p.team_season_id AND e.event_id=p.event_id JOIN match_analysis a ON a.app_team_id=p.app_team_id AND a.team_season_id=p.team_season_id AND a.event_id=p.event_id JOIN source_events source ON source.id=a.source_event_id AND source.provider='trace' WHERE p.app_team_id=? AND p.team_season_id=? AND ${selected} AND e.status IN('FINAL','COMPLETED') AND p.minutes>0) SELECT player_id,minutes FROM recent WHERE rank<=5 ORDER BY player_id,rank DESC`).bind(scope.team_id,scope.team_season_id)
+      this.db.prepare(`${prefix},positions AS(SELECT p.player_id,p.position FROM effective_player_matches p JOIN role_analysis a ON a.app_team_id=p.app_team_id AND a.team_season_id=p.team_season_id AND a.event_id=p.event_id AND a.active_run=p.run_id JOIN role_game_targets e ON e.app_team_id=p.app_team_id AND e.team_season_id=p.team_season_id AND e.event_id=p.event_id AND e.locally_available=1 WHERE ${selected}) SELECT t.player_id AS id,json_extract(o.fields,'$.position') AS assigned_position,CASE WHEN count(p.player_id)>0 THEN CASE WHEN count(DISTINCT p.position)=1 THEN min(p.position) WHEN count(DISTINCT p.position)>1 THEN 'Mixed' END ELSE json_extract(o.fields,'$.position') END AS position FROM team_players t LEFT JOIN positions p ON p.player_id=t.player_id LEFT JOIN analysis_overrides o ON o.app_team_id=t.app_team_id AND o.team_season_id=t.team_season_id AND o.kind='player_season' AND o.event_id='' AND o.player_id=t.player_id WHERE t.app_team_id=? AND t.team_season_id=? GROUP BY t.player_id`).bind(scope.team_id,scope.team_season_id,scope.team_id,scope.team_season_id),
+      this.db.prepare(`${prefix},recent AS(SELECT p.player_id,p.minutes,ROW_NUMBER() OVER(PARTITION BY p.player_id ORDER BY COALESCE(e.local_day,substr(e.starts_at,1,10)) DESC,e.event_id DESC) AS rank FROM effective_player_matches p JOIN role_game_targets e ON e.app_team_id=p.app_team_id AND e.team_season_id=p.team_season_id AND e.event_id=p.event_id AND e.locally_available=1 JOIN role_analysis a ON a.app_team_id=p.app_team_id AND a.team_season_id=p.team_season_id AND a.event_id=p.event_id AND a.active_run=p.run_id JOIN source_events source ON source.id=a.source_event_id AND source.provider='trace' WHERE ${selected} AND p.minutes>0) SELECT player_id,minutes FROM recent WHERE rank<=5 ORDER BY player_id,rank DESC`).bind(scope.team_id,scope.team_season_id)
     ]);
     const hints=Object.fromEntries(rows[0].results.map(p=>[p.id,{assigned_position:p.assigned_position??null,resolved_position:p.position??null,recent_trace_minutes:[]}]));
     for(const p of rows[1].results)if(hints[p.player_id])hints[p.player_id].recent_trace_minutes.push(p.minutes);
@@ -276,14 +282,24 @@ class CoachingService {
     const row = await this.db.prepare(`SELECT canonical_id FROM ${view} WHERE input_id=?`).bind(value).first();
     return row?.canonical_id ?? value;
   }
-  async context(scope, { event = false, player = false } = {}) {
+  async context(scope, { event = false, player = false, saved = false } = {}) {
     own(this.actor);
     id(scope.team_id);
     id(scope.team_season_id);
-    const season = await this.db.prepare("SELECT s.* FROM team_seasons s JOIN app_teams t ON t.id=s.app_team_id WHERE s.app_team_id=? AND s.id=?").bind(scope.team_id, scope.team_season_id).first();
+    const season = await this.db.prepare("SELECT s.* FROM team_seasons s JOIN app_teams t ON t.id=s.app_team_id WHERE s.app_team_id=? AND s.id=? AND NOT EXISTS(SELECT 1 FROM team_lifecycle l WHERE l.team_id=t.id)").bind(scope.team_id, scope.team_season_id).first();
     if (!season) throw fail("That team season is unavailable.", 404, "selection_invalid");
     if (event) {
-      scope.event_id = await this.canonicalId("event", scope.event_id);
+      id(scope.event_id);scope._requested_event_id=scope.event_id;
+      const game=await resolvePublishedGame(this.db,scope.team_id,scope.team_season_id,scope.event_id);
+      if(!game?.available){
+        if(saved&&await this.db.prepare('SELECT 1 FROM coach_sessions WHERE app_team_id=? AND team_season_id=? AND event_id=?').bind(...scopeParams(scope)).first()){scope._saved_only=true;scope._saved_reason=game?.reason??'published_game_unavailable';return season;}
+        throw fail('That match is unavailable. Reload its saved game.',409,'game_scope_changed');
+      }
+      scope._game_scope=game;scope.event_id=game.event_id;
+      scope._game_revision=await gameScopeRevision(game);
+      try{scope._owner_state=await captureGameOwnerState(this.db,game,{kinds:['coach_sessions']});}catch(error){
+        if(saved&&error.code==='game_owner_state_bound'&&await this.db.prepare('SELECT 1 FROM coach_sessions WHERE app_team_id=? AND team_season_id=? AND event_id=?').bind(scope.team_id,scope.team_season_id,scope._requested_event_id).first()){scope.event_id=scope._requested_event_id;scope._saved_only=true;scope._saved_reason=error.code;return season;}throw error;
+      }
       const accepted=acceptedGameSeason(scope.team_id,scope.team_season_id,scope.event_id);
       const row = await this.db.prepare(`SELECT * FROM team_events WHERE app_team_id=? AND team_season_id=? AND event_id=? AND (${accepted.sql})`).bind(...scopeParams(scope),...accepted.params).first();
       if (!row) throw fail("That match is unavailable.", 404, "event_not_found");
@@ -327,8 +343,8 @@ class CoachingService {
   }
   async load(scope) {
     own(this.actor);
-    const candidates = (await this.db.prepare("SELECT s.* FROM coach_sessions s JOIN canonical_event_ids c ON c.input_id=s.event_id WHERE s.app_team_id=? AND s.team_season_id=? AND c.canonical_id=?").bind(...scopeParams(scope)).all()).results;
-    if (candidates.length > 1) throw Object.assign(fail("Choose which private Coach plan to retain for this linked match.", 409, "private_identity_conflict"), { conflict: { kind: "session", choices: candidates.map((s) => ({ event_id: s.event_id, revision: s.revision, phase: s.phase, format: s.format, elapsed_ms: s.elapsed_ms, updated_at: s.updated_at })) } });
+    const candidates = (await this.db.prepare("SELECT s.* FROM coach_sessions s WHERE s.app_team_id=? AND s.team_season_id=? AND s.event_id IN(SELECT value FROM json_each(?)) ORDER BY s.event_id LIMIT 257").bind(scope.team_id,scope.team_season_id,JSON.stringify(scope._saved_only?[scope.event_id]:scope._game_scope.original_state_event_ids)).all()).results;
+    if (candidates.length > 1) throw Object.assign(fail("Choose which private Coach plan to retain for this linked match.", 409, "private_identity_conflict"), { conflict: { kind: scope._game_scope.original_event_ids.length>1?"game_sessions":"session", choices: candidates.map((s) => ({ event_id: s.event_id, revision: s.revision, phase: s.phase, format: s.format, elapsed_ms: s.elapsed_ms, updated_at: s.updated_at })) } });
     const row = candidates[0];
     if (!row) return null;
     const key = [scope.team_id, scope.team_season_id, row.event_id], result = await this.db.batch([
@@ -337,14 +353,14 @@ class CoachingService {
       this.db.prepare("SELECT id,player_id,position,period,start_ms,end_ms FROM coach_stints WHERE app_team_id=? AND team_season_id=? AND event_id=? ORDER BY start_ms,id").bind(...key),
       this.db.prepare("SELECT * FROM coach_timeline WHERE app_team_id=? AND team_season_id=? AND event_id=? ORDER BY sequence").bind(...key)
     ]);
-    const mapping = (await this.db.prepare("SELECT c.input_id,c.canonical_id FROM canonical_player_ids c JOIN coach_session_players p ON p.player_id=c.input_id WHERE p.app_team_id=? AND p.team_season_id=? AND p.event_id=?").bind(...key).all()).results, map = Object.fromEntries(mapping.map((p) => [p.input_id, p.canonical_id]));
+    const mapping = scope._saved_only?[]:(await this.db.prepare("SELECT c.input_id,c.canonical_id FROM canonical_player_ids c JOIN coach_session_players p ON p.player_id=c.input_id WHERE p.app_team_id=? AND p.team_season_id=? AND p.event_id=?").bind(...key).all()).results, map = Object.fromEntries(mapping.map((p) => [p.input_id, p.canonical_id]));
     const roster = result[0].results.map((p) => ({ ...p, storage_player_id: p.player_id, player_id: map[p.player_id] ?? p.player_id, available: Boolean(p.available) }));
     if (new Set(roster.map((p) => p.player_id)).size !== roster.length) throw Object.assign(fail("This plan contains two entries for a linked player. Choose the retained entry.", 409, "private_identity_conflict"), { conflict: { kind: "session_player", event_id: row.event_id, revision: row.revision, choices: roster.map((p) => ({ player_id: p.player_id, source_player_id: p.storage_player_id, name: p.name })) } });
     return { ...row, clock_review: Boolean(row.clock_review), players: roster, field: Object.fromEntries(result[1].results.map((p) => [p.position, map[p.player_id] ?? p.player_id])), stints: result[2].results.map((p) => ({ ...p, player_id: map[p.player_id] ?? p.player_id })), history: result[3].results.map((p) => ({ ...p, player_out: map[p.player_out] ?? p.player_out, player_in: map[p.player_in] ?? p.player_in, detail: JSON.parse(p.detail) })) };
   }
   async read(scope) {
     scope = { ...scope };
-    await this.context(scope, { event: true });
+    await this.context(scope, { event: true, saved:true });
     let session, identity_conflict;
     try {
       session = await this.load(scope);
@@ -352,14 +368,21 @@ class CoachingService {
       if (error.code !== "private_identity_conflict") throw error;
       identity_conflict = error.conflict;
     }
+    if(scope._saved_only){
+      if(!session||!await this.db.prepare('SELECT 1 FROM coach_sessions WHERE app_team_id=? AND team_season_id=? AND event_id=? AND revision=? AND write_token=? AND NOT EXISTS(SELECT 1 FROM team_lifecycle WHERE team_id=?)').bind(...scopeParams(scope),session.revision,session.write_token,scope.team_id).first())throw fail('The saved Coach plan changed. Reload it.',409,'revision_conflict');
+      const presented=presentCoachSession(session,this.now());
+      return {owner:true,event_id:scope.event_id,available:false,state_only:true,can_edit:false,reason:scope._saved_reason,game_scope_revision:null,format:session.format,session:presented,roster:presented.roster,profiles:{},role_hints:{},recommendations:[]};
+    }
     const attendance = await this.resolveAvailability(scope), roster = (await this.db.prepare("SELECT player_id AS id,name,jersey FROM team_players WHERE app_team_id=? AND team_season_id=? ORDER BY name COLLATE NOCASE,player_id").bind(scope.team_id, scope.team_season_id).all()).results.map((p) => ({ ...p, available: attendance[p.id] !== "no", availability_source: attendance[p.id] ? `attendance:${attendance[p.id]}` : "attendance:unknown" }));
     const formatRow=await this.db.prepare("SELECT format FROM match_analysis WHERE app_team_id=? AND team_season_id=? AND event_id=?").bind(...scopeParams(scope)).first();
     const profiles=await this.profiles(scope),role_hints=await this.resolveRoleHints(scope),at=this.now(),values=Object.fromEntries(Object.entries(profiles).filter(([,p])=>!p.conflict).map(([key,p])=>[key,p.value]));
-    return { owner: true, event_id: scope.event_id, format: [7,9].includes(formatRow?.format)?formatRow.format:7, session: presentCoachSession(session, at), roster, profiles, role_hints, recommendations: session?suggestCoachSubstitutions(session,values,role_hints,at):[], ...identity_conflict ? { identity_conflict } : {} };
+    await this.assertReadScope(scope);
+    return { owner: true, available:true,state_only:false,can_edit:true,event_id: scope.event_id, game_scope_revision:scope._game_revision, format: [7,9].includes(formatRow?.format)?formatRow.format:7, session: presentCoachSession(session, at), roster, profiles, role_hints, recommendations: session?suggestCoachSubstitutions(session,values,role_hints,at):[], ...identity_conflict ? { identity_conflict } : {} };
   }
   async command(scope, action, expectedRevision) {
     scope = { ...scope };
     await this.context(scope, { event: true });
+    if((scope.game_scope_revision!=null||scope._game_scope.team_game_version===1)&&scope.game_scope_revision!==scope._game_revision)throw fail('This game changed while the plan was open. Reload before editing.',409,'game_scope_changed');
     if (action?.type === "resolve_session_identity") return this.resolveSessionIdentity(scope, action);
     if (action?.type === "resolve_player_identity") return this.resolveSessionPlayerIdentity(scope, action, expectedRevision);
     const r = revision(expectedRevision), existing = await this.load(scope), at = this.now();
@@ -372,17 +395,22 @@ class CoachingService {
       const attendance = await this.resolveAvailability(scope);
       const next2 = { format, half_minutes: half, phase: "setup", period: 1, elapsed_ms: 0, period_start_ms: 0, running_since: null, clock_review: false, field: {}, players: roster.map((p) => ({ ...p, available: attendance[p.player_id] !== "no", availability_source: attendance[p.player_id] ? `attendance:${attendance[p.player_id]}` : "attendance:unknown", minutes_override_ms: null })), stints: [], history: [] };
       await this.persist(scope, null, next2, r, at);
-      return { session: presentCoachSession({ ...next2, revision: 1 }, at) };
+      return { game_scope_revision:scope._game_revision, session: presentCoachSession({ ...next2, revision: 1 }, at) };
     }
     if (!existing || existing.revision !== r) throw fail("The Coach plan changed on another device. Reload before editing.", 409, "revision_conflict");
     if (action?.type === "suggest") {
       const profiles = await this.profiles(scope);
       if (Object.values(profiles).some((p) => p.conflict)) throw fail("Resolve conflicting Coach attributes before requesting a suggestion.", 409, "private_identity_conflict");
-      return { revision: r, suggestion: suggestCoachLineup(existing, Object.fromEntries(Object.entries(profiles).map(([k, p]) => [k, p.value])), await this.resolveRoleHints(scope), at) };
+      await this.assertReadScope(scope);
+      return { game_scope_revision:scope._game_revision,revision: r, suggestion: suggestCoachLineup(existing, Object.fromEntries(Object.entries(profiles).map(([k, p]) => [k, p.value])), await this.resolveRoleHints(scope), at) };
     }
     const next = applyCoachCommand(existing, action, at);
     await this.persist(scope, existing, next, r, at);
-    return { session: presentCoachSession({ ...next, revision: r + 1 }, at) };
+    return { game_scope_revision:scope._game_revision, session: presentCoachSession({ ...next, revision: r + 1 }, at) };
+  }
+  async assertReadScope(scope) {
+    const game=gameScopeFenceSQL(scope._game_scope,{forWrite:false}),owners=gameOwnerStateFenceSQL(scope._owner_state);
+    if(!(await this.db.prepare(`SELECT (${game.sql}) AND (${owners.sql}) AS current`).bind(...game.params,...owners.params).first())?.current)throw fail('This game changed. Reload it.',409,'game_scope_changed');
   }
   resolutionExpected(expected, key, keep) {
     if (!Array.isArray(expected) || expected.length < 2 || expected.length > 100 || new Set(expected.map((p) => p[key])).size !== expected.length || !expected.some((p) => p[key] === keep)) throw fail("Confirm each conflicting record and the one to retain.");
@@ -417,6 +445,7 @@ class CoachingService {
   }
   async resolveSessionIdentity(scope, choice) {
     own(this.actor);
+    if(scope._game_scope.original_event_ids.length>1)throw fail('These are independent game plans. Resolve the game grouping before editing either plan.',409,'private_identity_conflict');
     if (choice?.discard !== true) throw fail("Explicitly confirm discarding the other private plan.");
     const keep = id(choice.keep_event_id), expected = this.resolutionExpected(choice.expected, "event_id", keep), token = uuid(), n = expected.length, key = scopeParams(scope);
     const filter = "s.app_team_id=? AND s.team_season_id=? AND s.event_id IN(SELECT input_id FROM canonical_event_ids WHERE canonical_id=?)";
@@ -430,7 +459,7 @@ class CoachingService {
   async resolveSessionPlayerIdentity(scope, choice, expectedRevision) {
     own(this.actor);
     if (choice?.discard !== true) throw fail("Explicitly confirm discarding the duplicate private entry and its recorded intervals.");
-    const keep = id(choice.keep_player_id), r = revision(expectedRevision), rows = (await this.db.prepare("SELECT s.* FROM coach_sessions s JOIN canonical_event_ids c ON c.input_id=s.event_id WHERE s.app_team_id=? AND s.team_season_id=? AND c.canonical_id=?").bind(...scopeParams(scope)).all()).results;
+    const keep = id(choice.keep_player_id), r = revision(expectedRevision), rows = (await this.db.prepare("SELECT s.* FROM coach_sessions s WHERE s.app_team_id=? AND s.team_season_id=? AND s.event_id IN(SELECT value FROM json_each(?)) ORDER BY s.event_id LIMIT 257").bind(scope.team_id,scope.team_season_id,JSON.stringify(scope._saved_only?[scope.event_id]:scope._game_scope.original_state_event_ids)).all()).results;
     if (rows.length !== 1) throw fail("Choose the retained private match plan first.", 409, "private_identity_conflict");
     const session = rows[0];
     if (session.revision !== r) throw fail("The Coach plan changed on another device.", 409, "revision_conflict");

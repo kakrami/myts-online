@@ -1,3 +1,4 @@
+// This partial-schema fixture exercises the frozen 731 permit contract. Full current installation is covered separately.
 // Feasibility proof only. The production schema/upgrade plan is unchanged.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,9 +20,9 @@ const replacement=Object.fromEntries(names.slice(0,2).map(name=>{
 async function harness(){
  const root=path.resolve('.'),modules={};
  for(const file of(await readdir(path.join(root,'src'),{recursive:true})).filter(file=>file.endsWith('.js')))modules['src/'+file]={type:'esm',contents:await readFile(path.join(root,'src',file),'utf8')};
- modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};modules['web/app/schedule-query.js']={type:'esm',contents:await readFile(path.join(root,'web/app/schedule-query.js'),'utf8')};
+ modules['web/app/coach-tactics.js']={type:'esm',contents:await readFile(path.join(root,'web/app/coach-tactics.js'),'utf8')};for(const name of ['web/app/schedule-query.js','web/app/reporting/encoders.js','web/app/reporting/font-metrics.js'])modules[name]={type:'esm',contents:await readFile(path.join(root,name),'utf8')};
  modules['transfer-proof.js']={type:'esm',contents:`
-  import {UPGRADE_DDL,JOURNAL_GUARDS,tableGuards,wrapDatabase,INSTALLATION_EPOCH} from './src/application/installation-epoch.js';
+  import {UPGRADE_DDL,JOURNAL_GUARDS,tableGuards,wrapDatabase,INSTALLATION_EPOCH} from './src/application/installation-epoch-v731.js';
   import {BudgetDB} from './src/sync/budget.js';
   import {schemaObjects,equalObjects} from './src/application/schema-upgrade.js';
   const names=${JSON.stringify(names)},support=${JSON.stringify(support)},original=${JSON.stringify(original)},replacement=${JSON.stringify(replacement)};
