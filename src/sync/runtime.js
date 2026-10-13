@@ -120,6 +120,14 @@ export function createSyncRuntime(collector, options = {}) {
           await this.ctx.storage.put('report_service_turn',!reportTurn);
           coordinator.reportTurn=reportTurn;
         }
+        if(options.dependencyFairness){
+          const saved=await this.ctx.storage.get('ordinary_service_turn');
+          const turn=Number.isInteger(saved)&&saved>=0&&saved<=2?saved:0;
+          // Persist before claim, like the foreground report turn. A lost reply
+          // can skip one preference, never strand work or clear its alarm.
+          await this.ctx.storage.put('ordinary_service_turn',(turn+1)%3);
+          coordinator.ordinaryTurn=turn;
+        }
         let projectionRecovery = null;
         const result = await coordinator.runOne(async context=>{
           // Record the obligation before any imported source page can commit.

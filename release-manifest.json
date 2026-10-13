@@ -1,6 +1,6 @@
 {
   "service": "myTS",
-  "version": "7.2.8",
+  "version": "7.2.9",
   "review": true,
   "files": [
     {
@@ -124,9 +124,29 @@
       "sha256": "f8603d2dcfa3cb2b63d3a2fca2761a0568a9f90f2a1a91b29bbaea089c47f8e4"
     },
     {
+      "path": "docs/progressive-publication-service.md",
+      "bytes": 4768,
+      "sha256": "6a598e1cb95bce8fc24b38d43b57b06ff27e82b91cd594cc6cfc4e2791b95ca8"
+    },
+    {
+      "path": "docs/progressive-report-release.md",
+      "bytes": 6729,
+      "sha256": "c9cc61ab6444d2d97f2a22f0ca7ffcc2f569c32a061e94c0086b2b74e66b94a1"
+    },
+    {
+      "path": "docs/progressive-root-service-proof.md",
+      "bytes": 4618,
+      "sha256": "a0b8494acdf79ead5f2fff0d802f42d401de122a51a068c56f7c6721219489e0"
+    },
+    {
       "path": "docs/provider-access.md",
       "bytes": 25972,
       "sha256": "2f25bba7d3dd87c68a29ec52a023e01505d473f8b8882a13ad0ce1589c98b81f"
+    },
+    {
+      "path": "docs/report-output-workflow-review.md",
+      "bytes": 8286,
+      "sha256": "3e6883d47bf3c87cfaf8b4c5cb118371578b2767dfb5076d8859290cdbf3de31"
     },
     {
       "path": "docs/report-service-latency.md",
@@ -226,12 +246,12 @@
     {
       "path": "package-lock.json",
       "bytes": 49485,
-      "sha256": "1c08130e5b99f70893c3c3a2e4d480cf0dc7ebda4dff21523ed19f051d8b9037"
+      "sha256": "fba3c51e5fa050438a92101fba6d3e9ec7dcafd33c849d0d50985adb0b46997e"
     },
     {
       "path": "package.json",
       "bytes": 635,
-      "sha256": "f0d069aaad3d9e51e8db0a607ca80edf31ac18df635fa8d4e7d1aa12d181113d"
+      "sha256": "88de2b34b34b8d8444c2cae5d76c915033a3e46d507eb3b450c6aa4b0e3731cc"
     },
     {
       "path": "scripts/release-check.mjs",
@@ -430,8 +450,8 @@
     },
     {
       "path": "src/application/sync-service.js",
-      "bytes": 43195,
-      "sha256": "18c3c52ee569a8ef2e95b6902548ea3e214dd9e7c528f3a3dadb0b83e56d9c0a"
+      "bytes": 43219,
+      "sha256": "475661728a506058945a9cdf59d66cb3943ca67b212213871fd4de3bf8ef23ba"
     },
     {
       "path": "src/application/team-catalog.js",
@@ -461,7 +481,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 30,
-      "sha256": "a3c4a56492f38be767c59944d2531618ee7cee80c0043e4ced4e7786e5a467d0"
+      "sha256": "fd26265d373102047657f77405d4746f844b0e01e42448251323e6534c404b30"
     },
     {
       "path": "src/coaching/routes.js",
@@ -490,8 +510,8 @@
     },
     {
       "path": "src/domain/calendar.js",
-      "bytes": 893,
-      "sha256": "8d6632e4ec069f3bf4c360165655344a6794377e98c56516f4740aa137a7db78"
+      "bytes": 1478,
+      "sha256": "bb60d15579ae5481625f729a5fbe7cc8516075c12b6250989bfdb4cb898809c1"
     },
     {
       "path": "src/domain/connection-commands.js",
@@ -665,8 +685,8 @@
     },
     {
       "path": "src/reporting/encoders.js",
-      "bytes": 15503,
-      "sha256": "ce2ce01ce1223c76290f8bb3538165d56a7f49617afc604944ea7a8efc731908"
+      "bytes": 15505,
+      "sha256": "1e80c0c488a5fb530ee920a10f1742ae0671313c20294b478d9b12fb8780090b"
     },
     {
       "path": "src/reporting/font-metrics.js",
@@ -690,8 +710,8 @@
     },
     {
       "path": "src/reporting/service.js",
-      "bytes": 35254,
-      "sha256": "d367fc17f4522f1d18250c772785902c20797cc9ecec0200696defd1457260d2"
+      "bytes": 36880,
+      "sha256": "4421a689f5b7e6b4776aaaa232c180e36f4adf6910faac094538483e3e0974d5"
     },
     {
       "path": "src/security/crypto.js",
@@ -830,8 +850,8 @@
     },
     {
       "path": "src/sync/coordinator.js",
-      "bytes": 68949,
-      "sha256": "ebc8956cfbc6aefd2d8b906ef0942cb2a72af97d68b6bf163b9a9411b8f14fdc"
+      "bytes": 71389,
+      "sha256": "dd43f0cc66f88d38bda4cb173f4afb88841ced1166d65b391389b8e404262b09"
     },
     {
       "path": "src/sync/errors.js",
@@ -850,8 +870,8 @@
     },
     {
       "path": "src/sync/runtime.js",
-      "bytes": 11088,
-      "sha256": "76166a59b0544c936d3acb56ed04abb32f5f628092d8f08be508b5f875ea83fe"
+      "bytes": 11559,
+      "sha256": "a7251c1b3be6b7954949c5c4179d89dbe5554e44cf8d3c5c51df5716b11449e3"
     },
     {
       "path": "src/sync/schema.js",
@@ -950,8 +970,8 @@
     },
     {
       "path": "web/app/reports.js",
-      "bytes": 7195,
-      "sha256": "162d34db14e49a72170d9fabfb6120bf6a76389ebb8d6f6faee82ead4e77e53e"
+      "bytes": 9914,
+      "sha256": "74afea32d8f28f99573c2fef7482ac700d68aa9763614b6293453ac39f3c8493"
     },
     {
       "path": "web/app/schedule-query.js",
