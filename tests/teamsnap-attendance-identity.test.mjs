@@ -98,24 +98,24 @@ test('same-page repeated numeric/string pairs and conflicting statuses fail befo
     });
   }
   // A duplicate beyond a would-be local byte slice must still reject the entire provider page.
-  const large = Array.from({ length: 25 }, (_, i) => row(i, { status_code: 'x'.repeat(7000) }));
-  large[24] = { ...large[0], id: 9000 };
+  const large = Array.from({ length: 100 }, (_, i) => row(i, { status_code: '\"'.repeat(5000) }));
+  large[99] = { ...large[0], id: 9000 };
   await assert.rejects(() => harness(large).step(), e => e.teamsnapDiagnostic?.reason === 'attendance_duplicate_pair');
 });
 
 test('multiple provider pages retain all pairs and require two full ordered traversals', async () => {
-  const rows = Array.from({ length: 67 }, (_, i) => row(i, { id: i % 2 ? null : 'same-id' }));
+  const rows = Array.from({ length: 267 }, (_, i) => row(i, { id: i % 2 ? null : 'same-id' }));
   const h = harness(rows), { saved, page } = await drain(h);
-  assert.equal(saved.size, 67); assert.deepEqual(h.requests.map(r => r.number), [1, 2, 3, 1, 2, 3]);
-  assert.equal(page.coverage, 'complete'); assert.equal(page.sourceCoverage[0].count, 67); assert.equal(page.checkpoint.refresh.full.pages, 3);
+  assert.equal(saved.size, 267); assert.deepEqual(h.requests.map(r => r.number), [1, 2, 3, 1, 2, 3]);
+  assert.equal(page.coverage, 'complete'); assert.equal(page.sourceCoverage[0].count, 267); assert.equal(page.checkpoint.refresh.full.pages, 3);
 });
 
 test('previous IDs and the bounded eight-page repeat ring use canonical pair keys', async () => {
-  const rows = Array.from({ length: 251 }, (_, i) => row(i));
+  const rows = Array.from({ length: 1001 }, (_, i) => row(i));
   const h = harness(rows); let cursor = {};
   for (let number = 1; number <= 10; number++) {
     const page = await h.step(cursor); cursor = page.checkpoint;
-    const ids = rows.slice((number - 1) * 25, number * 25).map(pair);
+    const ids = rows.slice((number - 1) * 100, number * 100).map(pair);
     assert.deepEqual(cursor.previous_ids, ids);
     assert.equal(cursor.page_hashes.at(-1), await hash([...ids].sort()));
     assert.equal(cursor.page_hashes.length, Math.min(number, 8));
@@ -124,8 +124,8 @@ test('previous IDs and the bounded eight-page repeat ring use canonical pair key
 });
 
 test('adjacent pair overlap and nonadjacent pair-page repeats cannot inflate completeness even when availability IDs change', async () => {
-  const first = Array.from({ length: 25 }, (_, i) => row(i)), second = Array.from({ length: 25 }, (_, i) => row(100 + i));
-  for (const rows of [[...first, ...first], [...first, ...second, ...first], [...first, ...Array.from({ length: 25 }, (_, i) => row(20 + i))]]) {
+  const first = Array.from({ length: 100 }, (_, i) => row(i)), second = Array.from({ length: 100 }, (_, i) => row(200 + i));
+  for (const rows of [[...first, ...first], [...first, ...second, ...first], [...first, ...Array.from({ length: 100 }, (_, i) => row(90 + i))]]) {
     const h = harness(rows, { mutate: (list, { requests }) => list.map((r, i) => ({ ...r, id: 100000 * requests.length + i })) });
     let cursor = {}, completed = false, discarded = 0;
     for (let attempt = 0; attempt < 15; attempt++) {
@@ -138,20 +138,20 @@ test('adjacent pair overlap and nonadjacent pair-page repeats cannot inflate com
 });
 
 test('local byte slices restart for normalized semantic changes and lost replies replay the same pair prefix', async () => {
-  const rows = Array.from({ length: 25 }, (_, i) => row(i, { status_code: 'x'.repeat(7000) })), h = harness(rows);
-  const first = await h.step(); assert.ok(first.checkpoint.offset > 0 && first.checkpoint.offset < 25);
+  const rows = Array.from({ length: 100 }, (_, i) => row(i, { status_code: '\"'.repeat(5000) })), h = harness(rows);
+  const first = await h.step(); assert.ok(first.checkpoint.offset > 0 && first.checkpoint.offset < 100);
   const replay = await h.step(); assert.deepEqual(first.records.attendance.map(semantics), replay.records.attendance.map(semantics));
-  rows[0].status_code = 'y'.repeat(7000);
+  rows[0].status_code = '\\'.repeat(5000);
   const changed = await h.step(first.checkpoint);
   assert.equal(changed.records.attendance[0].fixture_id, 'teamsnap:4000');
-  assert.equal(changed.records.attendance[0].status, 'y'.repeat(7000));
+  assert.equal(changed.records.attendance[0].status, '\\'.repeat(5000));
   assert.equal(changed.checkpoint.offset, first.checkpoint.offset); assert.notEqual(changed.checkpoint.digest, first.checkpoint.digest);
   const { saved, page } = await drain(h, changed.checkpoint);
-  assert.equal(saved.size, 25); assert.equal(page.checkpoint.refresh.full.count, 25);
+  assert.equal(saved.size, 100); assert.equal(page.checkpoint.refresh.full.count, 100);
 });
 
 test('local byte slices continue through unused metadata changes but inspect every pair and team on reread', async () => {
-  const rows = Array.from({ length: 25 }, (_, i) => row(i, { status_code: 'x'.repeat(7000) })), h = harness(rows);
+  const rows = Array.from({ length: 100 }, (_, i) => row(i, { status_code: '\"'.repeat(5000) })), h = harness(rows);
   const first = await h.step(); const offset = first.checkpoint.offset;
   for (const r of rows) { r.id = null; r.item_href = 'https://api.teamsnap.com/v3/availabilities/changed'; r.unused = 'new metadata'; }
   const resumed = await h.step(first.checkpoint);
@@ -180,13 +180,13 @@ test('ordered attendance digest covers exact persisted statuses and excludes gen
 });
 
 test('status changes outside the local slice also invalidate page digest and require a matching traversal', async () => {
-  const rows = Array.from({ length: 25 }, (_, i) => row(i, { status_code: 'x'.repeat(7000) })), h = harness(rows);
-  const first = await h.step(); rows[24].status_code = 'z'.repeat(7000);
+  const rows = Array.from({ length: 100 }, (_, i) => row(i, { status_code: '\"'.repeat(5000) })), h = harness(rows);
+  const first = await h.step(); rows[99].status_code = '\u0001'.repeat(2500);
   const changed = await h.step(first.checkpoint);
   assert.equal(changed.records.attendance[0].fixture_id, 'teamsnap:4000');
   assert.notEqual(changed.checkpoint.digest, first.checkpoint.digest);
   const { saved } = await drain(h, changed.checkpoint);
-  assert.equal(saved.size, 25); assert.equal([...saved.values()].find(r => r.fixture_id === 'teamsnap:4024').status, 'z'.repeat(7000));
+  assert.equal(saved.size, 100); assert.equal([...saved.values()].find(r => r.fixture_id === 'teamsnap:4099').status, '\u0001'.repeat(2500));
 });
 
 test('legacy active and completed attendance proofs migrate once to a fresh full traversal without mutating input', async () => {

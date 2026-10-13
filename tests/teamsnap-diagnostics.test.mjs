@@ -21,14 +21,14 @@ async function rejected(value,reason,counts){
 }
 test('opaque or missing availability IDs are accepted when numeric event/member pairs are valid',async()=>{
  for(const id of [undefined,null,secret,'100:200','1234567890123456']) {
-  const page=await collect(collection([row(id,{event_id:4001})]));
+  const page=await collect(collection([row(id,{event_id:4001})],{info:{total_items:1,page_size:100,page_number:1}}));
   assert.equal(page.records.attendance[0].fixture_id,'teamsnap:4001');assert.equal(page.records.attendance[0].player_id,'teamsnap:100');
   assert.ok(!JSON.stringify(page).includes(secret));
  }
 });
 test('duplicate event/member pairs remain rejected without exposing either identity; duplicate availability IDs alone are harmless',async()=>{
  await rejected(collection([row(1),row('1')]),'attendance_duplicate_pair',{items:2,valid_pairs:2,duplicate_pairs:1});
- const page=await collect(collection([row(1),row('1',{event_id:4002})]));assert.equal(page.records.attendance.length,2);
+ const page=await collect(collection([row(1),row('1',{event_id:4002})],{info:{total_items:2,page_size:100,page_number:1}}));assert.equal(page.records.attendance.length,2);
 });
 test('foreign team guard remains authoritative and produces only a mismatch count',async()=>{
  await rejected(collection([row(1,{team_id:secret})]),'attendance_team_scope',{items:1,foreign_teams:1});
@@ -46,7 +46,7 @@ test('item and recognized action-link failures keep their exact static reason',a
 });
 test('valid, unknown and null statuses retain their original successful normalized records',async()=>{
  for(const [status,expected]of [[0,'No'],['0','No'],[1,'Yes'],['1','Yes'],[2,'Maybe'],['2','Maybe'],[null,'NR'],[secret,'Unknown'],[{notes:secret},'Unknown']]) {
-  const page=await collect(collection([row(1,{status_code:status})]));assert.equal(page.records.attendance[0].normalized_status,expected);assert.equal(page.complete,false);assert.equal(page.checkpoint.previous.count,1);
+  const page=await collect(collection([row(1,{status_code:status})],{info:{total_items:1,page_size:100,page_number:1}}));assert.equal(page.records.attendance[0].normalized_status,expected);assert.equal(page.complete,false);assert.equal(page.checkpoint.previous.count,1);
  }
 });
 test('other providers/components and unknown or differently classified errors keep the exact original generic behavior',async()=>{

@@ -154,7 +154,7 @@ test('production collector refreshes recent events and attendance while old edit
       throw Error('Synthetic refresh failed to converge');
     }
     const initial = await scan(), initialCalls = calls.length, fullReceipt = structuredClone(initial.checkpoint.refresh.full), fullCoverage = structuredClone(coverage.get(kind));
-    assert.equal(saved.size, 60); assert.equal(initial.coverage, 'complete'); assert.equal(initialCalls, 6);
+    assert.equal(saved.size, 60); assert.equal(initial.coverage, 'complete'); assert.equal(initialCalls, kind==='events'?6:2);
     now += INTERVAL;
     source[0].notes = 'old edit'; source[0].status_code = 0; source[0].updated_at = new Date(now).toISOString();
     source[59].notes = 'recent edit'; source[59].status_code = 0; source[59].updated_at = new Date(now).toISOString();

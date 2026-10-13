@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {collectSource,SourceTransport} from '../src/sources/index.js';
 import {teamSnapPageRequest,teamSnapPageMetadata,reduceTeamSnapPage} from '../src/sources/teamsnap-pagination.js';
+import {beginTeamSnapRefresh} from '../src/sources/teamsnap-refresh.js';
 const account={id:'synthetic-account',provider:'teamsnap',native_id:'123',generation:1};
 const event=(id,extra={})=>({id,team_id:321,is_game:true,name:'Game '+id,start_date:'2026-09-01T18:00:00Z',game_type_code:1,game_type:'home',...extra});
 const attendance=id=>({id,team_id:321,event_id:4000+Math.floor(id/11),member_id:100+id%11,status_code:id%3});
@@ -16,9 +17,9 @@ function harness(kind,initial,{change,extraMetadata=0}={}){
 async function drain(h,{cursor={},onPage,limit=1500}={}){const saved=new Map();let pages=0,result;for(;pages<limit;pages++){result=await h.step(cursor);const records=result.fixtures.length?result.fixtures:result.records.attendance||[];for(const r of records)saved.set(r.native_id||r.fixture_id+'|'+r.player_id,r);if(onPage)await onPage(result,{saved,pages,cursor});if(result.complete)return {saved,pages:pages+1,result};cursor=result.checkpoint;}throw new Error('Continuation did not settle');}
 
 test('paged events and attendance retain every row, verify two traversals and report total coverage',async()=>{
- for(const kind of ['events','attendance']){const rows=Array.from({length:67},(_,i)=>kind==='events'?event(4000+i):attendance(5000+i)),h=harness(kind,rows);let firstFinalSaved=false;
- const r=await drain(h,{onPage:(page,{saved})=>{if(!page.complete&&saved.size===67)firstFinalSaved=true;}});
- assert.equal(r.saved.size,67);assert.equal(firstFinalSaved,true);assert.deepEqual(h.requests.map(x=>x.number),[1,2,3,1,2,3]);assert.equal(r.result.sourceCoverage[0].count,67);assert.equal(r.result.coverage,'complete');}
+ for(const kind of ['events','attendance']){const expected=kind==='events'?67:267,rows=Array.from({length:expected},(_,i)=>kind==='events'?event(4000+i):attendance(5000+i)),h=harness(kind,rows);let firstFinalSaved=false;
+ const r=await drain(h,{onPage:(page,{saved})=>{if(!page.complete&&saved.size===expected)firstFinalSaved=true;}});
+ assert.equal(r.saved.size,expected);assert.equal(firstFinalSaved,true);assert.deepEqual(h.requests.map(x=>x.number),[1,2,3,1,2,3]);assert.equal(r.result.sourceCoverage[0].count,expected);assert.equal(r.result.coverage,'complete');}
 });
 
 test('oversized total histories are fetched as bounded pages; byte prefixes resume without truncating Unicode notes',async()=>{
@@ -44,8 +45,10 @@ test('same-count internal reorder and a decreasing total force another full stab
  let removed=false;const shrinking=harness('events',Array.from({length:51},(_,i)=>event(6000+i)),{change:(list,{number})=>{if(number===2&&!removed){removed=true;return list.slice(0,50);}return list;}});const r=await drain(shrinking);assert.equal(r.result.sourceCoverage[0].count,50);assert.ok(shrinking.requests.filter(x=>x.number===1).length>=3);
 });
 
-test('more than 200 pages use bounded checkpoints and finish without a history cutoff',async()=>{
- const h=harness('attendance',Array.from({length:5001},(_,i)=>attendance(10000+i)));let largest=0;const r=await drain(h,{onPage:p=>{largest=Math.max(largest,JSON.stringify(p.checkpoint).length);}});assert.equal(r.saved.size,5001);assert.equal(h.requests.length,402);assert.ok(largest<8192);
+test('saved25 scans retain more than200 pages while new100 scans reduce calls without a history cutoff',async()=>{
+ const prepared=await beginTeamSnapRefresh({kind:'attendance',teamId:'321',accountId:account.id,authorizationGeneration:account.generation,endpoint:'https://api.teamsnap.com/v3/availabilities/search?team_id=321',args:{team_id:'321'}});
+ const fresh=teamSnapPageRequest('attendance','321',prepared.endpoint),legacy={...reduceTeamSnapPage(reduceTeamSnapPage(fresh)),refresh:prepared.refresh};
+ for(const cursor of [legacy,{}]){const h=harness('attendance',Array.from({length:5001},(_,i)=>attendance(10000+i)));let largest=0;const r=await drain(h,{cursor,onPage:p=>{largest=Math.max(largest,new TextEncoder().encode(JSON.stringify(p.checkpoint)).length);}});assert.equal(r.saved.size,5001);assert.equal(h.requests.length,cursor===legacy?402:102);assert.ok(h.requests.every(r=>r.size===(cursor===legacy?25:100)));assert.ok(largest<8192);}
 });
 
 test('next links cannot alter endpoint, team, filters, credentials, page size or page number',()=>{

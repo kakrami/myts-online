@@ -1,3 +1,7 @@
+# myTS 7.2.6 attendance throughput
+
+See [the bounded page preference, compact storage sizing and verification](attendance-throughput-repair.md). This code-only update keeps valid active scan cursors unchanged and uses a larger preference only for new attendance traversals. All response/transaction/checkpoint limits, schema, provider identity, refresh cadence and deployment configuration remain unchanged. Do not reset or restart the live import. Earlier sections retain their historical receipts.
+
 # myTS 7.2.5 Schedule order repair
 
 See [the shared query policy and acceptance](schedule-order-repair.md). This read/UI-only update restores the original Past/Upcoming/Day ordering, known-kickoff-before-TBD local-day ordering and historical-season behavior. It preserves the schema, source jobs, attendance recovery and all saved data. No source refresh or account reconnection is needed. Existing cursors whose effective selection changes are rejected and the browser reloads the first page. Earlier sections are historical receipts.

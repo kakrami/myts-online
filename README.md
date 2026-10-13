@@ -1,6 +1,8 @@
-# myTS 7.2.5
+# myTS 7.2.6
 
-This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.2.5**. This package is not a production deployment.
+This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.2.6**. This package is not a production deployment.
+
+The 7.2.6 attendance update uses compact storage sizing and a validated 100-row request preference for new scans, with bounded compatibility fallback. Existing scans retain their saved page size and continuation. See [the throughput contract and verification](docs/attendance-throughput-repair.md).
 
 The 7.2.5 Schedule repair restores newest-first Past and Analyzed lists, chronological Upcoming and Day lists, known kickoffs before TBD within each local day, and historical-season selection without losing the current-season period preference. See [the query policy and verification](docs/schedule-order-repair.md). This update does not restart provider collection.
 

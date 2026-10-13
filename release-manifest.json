@@ -1,12 +1,12 @@
 {
   "service": "myTS",
-  "version": "7.2.5",
+  "version": "7.2.6",
   "review": true,
   "files": [
     {
       "path": "README.md",
-      "bytes": 9112,
-      "sha256": "8a33f10791391da77e081a55c96e9d52aa66eb71ec631922b6fa5f4db988bc6b"
+      "bytes": 9412,
+      "sha256": "b28a3a76bd58c831c6ac24927f9c79a0771302b8766150740c6bc23df39337a5"
     },
     {
       "path": "docs/acceptance-baseline.md",
@@ -27,6 +27,11 @@
       "path": "docs/attendance-identity-repair.md",
       "bytes": 9239,
       "sha256": "5f94509785c4d6282cb5f70794ccf697729e3091aafaa8a9e54051d5ae308d9a"
+    },
+    {
+      "path": "docs/attendance-throughput-repair.md",
+      "bytes": 10899,
+      "sha256": "6eba92fc61244c6d61f995a49c1ed1ff10b25674f1ee811dd59ffc895de2ba96"
     },
     {
       "path": "docs/coach-original-workflow-handoff.md",
@@ -50,8 +55,8 @@
     },
     {
       "path": "docs/deployment-verification.md",
-      "bytes": 36893,
-      "sha256": "8e2b6d813dc55f07da36a09652e832f7568dfbfb68ccbcb633c2654a1a0c0bef"
+      "bytes": 37394,
+      "sha256": "01de225f82581062334ea0c469b64d819e2675fb01a2d8dbea970fbf397bb34c"
     },
     {
       "path": "docs/domain-contract.md",
@@ -201,12 +206,12 @@
     {
       "path": "package-lock.json",
       "bytes": 49485,
-      "sha256": "8aef1dc7ecec6adecc273610dd071d0da7a317a98a683daa313849b5b8725071"
+      "sha256": "1b2bb6a136240df8b34bc40aca7ea1952f9f538e3100b9967083e45f9b5d46a4"
     },
     {
       "path": "package.json",
       "bytes": 635,
-      "sha256": "87c9bdf3c8755f9c106634470072d33957f59b24ae4997acc332a37013a9d789"
+      "sha256": "60f93e7b2f8de1f8543ba18c54d731ef5938d57092e1d7f4ca94aac4a94c9eab"
     },
     {
       "path": "scripts/release-check.mjs",
@@ -436,7 +441,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 30,
-      "sha256": "2f73c2c634a76d91cadb3c827880cf9fb8d030cd2dddbe0502c5657e6bbd4160"
+      "sha256": "84d8eb7dc9aeaeb747750ffbecee3937b57cf1ac78ad114ed6576524345967e9"
     },
     {
       "path": "src/coaching/routes.js",
@@ -760,8 +765,8 @@
     },
     {
       "path": "src/sources/teamsnap-batch.js",
-      "bytes": 2655,
-      "sha256": "41ec6f186dc4b75a4d312c89afa8fef796afa0a150c960c2bff520ba595b0e41"
+      "bytes": 4889,
+      "sha256": "1388302da62d4cdfe1de425a6f43399569dd537649f72efd085e5df9ee5ba4cb"
     },
     {
       "path": "src/sources/teamsnap-diagnostics.js",
@@ -770,8 +775,8 @@
     },
     {
       "path": "src/sources/teamsnap-pagination.js",
-      "bytes": 7498,
-      "sha256": "5c7f81fcea3445894d38c632f9e31eb22e1e81f55a39e5dea78de5758dc25c41"
+      "bytes": 11746,
+      "sha256": "7d30d0303ed8ead80abf700988bf24fffa415b4846785075c0a03a1affc8d9d6"
     },
     {
       "path": "src/sources/teamsnap-refresh.js",
@@ -780,8 +785,8 @@
     },
     {
       "path": "src/sources/teamsnap.js",
-      "bytes": 20972,
-      "sha256": "fecffa11ca9f240e3106af99950a50be16a0d31ddefd8b9be07c61984a486560"
+      "bytes": 22320,
+      "sha256": "1ee144e225b2cbdb272b842ad22cc2849e157cfa07804536c0fe1d79cac85dc6"
     },
     {
       "path": "src/sources/trace-contracts.js",

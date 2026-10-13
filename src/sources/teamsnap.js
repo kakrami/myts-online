@@ -136,7 +136,7 @@ function attendanceRecord(r, team, accountId) {
 async function collectPagedTeamSnap(context) {
   const {j,args,account,teamId}=context,original=tsURL(args.url || url(API,RELS[j.kind]+"/search",{team_id:teamId}));
   const prepared=await beginTeamSnapRefresh({kind:j.kind,teamId,accountId:account.id,authorizationGeneration:account.generation??0,endpoint:original,args,cursor:context.cursor});
-  const out=await collectPagedTeamSnapRows({...context,cursor:prepared.cursor,endpoint:prepared.endpoint});
+  const out=await collectPagedTeamSnapRows({...context,cursor:prepared.cursor,endpoint:prepared.endpoint,refresh:prepared.refresh});
   const count=out.coverage[0]?.count??0;
   out.coverage=[{provider:"teamsnap",account_id:account.id,scope:key("teamsnap",teamId),...teamSnapRefreshCoverage(prepared.refresh,{complete:out.complete,count})}];
   out.coverageState=prepared.refresh.active.mode==='recent'?'partial':out.complete?'complete':'partial';
@@ -145,13 +145,24 @@ async function collectPagedTeamSnap(context) {
   return out;
 }
 
-async function collectPagedTeamSnapRows({j,args,cursor,transport,credential,account,teamId,out,endpoint}) {
+async function collectPagedTeamSnapRows({j,args,cursor,transport,credential,account,teamId,out,endpoint,refresh}) {
   const team = key("teamsnap",teamId);
-  let state = teamSnapPageRequest(j.kind,teamId,endpoint,cursor);
+  let state = teamSnapPageRequest(j.kind,teamId,endpoint,cursor,{refresh});
   if(state.retry_at > Date.now()) throw Object.assign(new Error("TeamSnap is changing; saved data remains available."),{code:"source_changing",retryAfterMs:state.retry_at-Date.now()});
+  const observationsBefore=transport.observations?.length;
   let raw;
   try { raw = await ts(transport,state.url,credential); }
   catch(error) {
+    // Page100 is a preference, not a claimed provider maximum. A single first-
+    // page HTTP400 may retry the previously working25 partition. Require the
+    // exact newly appended transport observation; never infer from error text.
+    const observation=Number.isInteger(observationsBefore)&&transport.observations?.length===observationsBefore+1?transport.observations[observationsBefore]:null;
+    const requested=new URL(state.url),params=Object.fromEntries(requested.searchParams);
+    const firstPreference=j.kind==='attendance'&&state.size>25&&state.pages===0&&state.count===0&&state.offset===0&&state.pass===1&&state.previous===null&&state.digest===null&&state.rolling===null;
+    if(firstPreference&&error.code==='source_http'&&observation?.code==='source_http'&&observation.status===400&&observation.endpoint===requested.origin+requested.pathname&&
+      observation.params&&Object.keys(observation.params).length===Object.keys(params).length&&Object.entries(params).every(([key,value])=>observation.params[key]===value)) {
+      out.complete=false;out.checkpoint=reduceTeamSnapPage(state,25);return out;
+    }
     if(error.code!=="record_too_large") throw error;
     out.complete=false;out.checkpoint=reduceTeamSnapPage(state);
     out.coverage.push({provider:"teamsnap",account_id:account.id,kind:j.kind,scope:team,complete:false,count:0,observed_at:stamp()});
@@ -173,6 +184,7 @@ async function collectPagedTeamSnapRows({j,args,cursor,transport,credential,acco
     assertTeam(r,teamId);return attendanceRecord(r,team,account.id);
   }):null;
   const pageDigest=await signature(attendance?normalized.map(({fixture_id,player_id,team_id,account_id,status,normalized_status})=>({fixture_id,player_id,team_id,account_id,status,normalized_status})):all),metadata=teamSnapPageMetadata(raw,state,all.length);
+  if(metadata.reducedSize){out.complete=false;out.checkpoint=reduceTeamSnapPage(state,metadata.reducedSize);return out;}
   if(metadata.changed){out.complete=false;out.checkpoint=restartTeamSnapPass(state);return out;}
   const idDigest=await signature([...ids].sort());
   if(state.pages>0 && (ids.some(id=>(state.previous_ids||[]).includes(id)) || (ids.length&&(state.page_hashes||[]).includes(idDigest)))){
