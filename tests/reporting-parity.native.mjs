@@ -5,6 +5,9 @@ import {execFileSync} from 'node:child_process';
 import {freshHarness} from './fresh-harness.js';
 import {ReportingService} from '../src/reporting/service.js';
 import {reports as reportScreen} from '../web/ui-original/screens.js';
+import {DomainRepository} from '../src/domain/repository.js';
+import {attendanceStateQuery} from '../src/read-model/attendance.js';
+import {beginTeamSnapRefresh,finishTeamSnapRefresh,teamSnapRefreshCoverage} from '../src/sources/teamsnap-refresh.js';
 const out=new URL('../tmp/report-native-parity/',import.meta.url);
 
 test('populated original Reports run sorted production queries, capture alarms and complete parsed exports in native D1',async()=>{
@@ -53,7 +56,63 @@ test('populated original Reports run sorted production queries, capture alarms a
   const complexPlayers=await prepare('players','player'),complexAttendance=await prepare('availability','player');await waitSnapshots([complexPlayers,complexAttendance]);for(const id of [complexPlayers,complexAttendance]){const value=await preview(id);assert.equal(value.rows.items.length,2);assert.ok(value.rows.items.some(r=>r.player.length===1024));assert.match(value.scope_note,/Long or complex values/);}
 
   await measure([complexPlayers,complexAttendance]);
+  // The same production query shape must preserve the original Yes / tracked
+  // percentage when TeamSnap cells are missing or their source is incomplete.
+  const attendanceAccount='report-attendance-account',attendanceTeam='report-attendance-team',attendanceNativeTeam='714726',attendanceScope='teamsnap:'+attendanceNativeTeam,attendanceCoverage='teamsnap|'+attendanceAccount+'|attendance|'+attendanceScope;
+  await h.db.batch([
+   statement('provider_accounts',{id:attendanceAccount,provider:'teamsnap',native_id:'attendance',name:'Synthetic attendance account'}),
+   statement('source_teams',{id:attendanceTeam,provider:'teamsnap',scope:attendanceAccount,account_id:attendanceAccount,native_id:attendanceNativeTeam,name:'Synthetic attendance team',name_authority:3,archived:0,evidence:'{}',content_hash:'attendance',observed_at:at}),
+   statement('team_source_attachments',{id:'report-attendance-attachment',app_team_id:team,team_season_id:season,source_team_id:attendanceTeam,account_id:attendanceAccount}),
+   statement('source_component_coverage',{id:attendanceCoverage,provider:'teamsnap',scope:attendanceScope,account_id:attendanceAccount,kind:'attendance',complete:0,record_count:2,scan_id:'synthetic-scan',observed_at:at})
+  ]);
+  for(let i=0;i<2;i++)await h.db.batch([
+   statement('source_players',{id:'attendance-player-'+i,provider:'teamsnap',scope:attendanceAccount,account_id:attendanceAccount,native_id:String(i),name:'Player '+i,evidence:'{}',content_hash:'player-'+i,observed_at:at}),
+   statement('player_source_links',{source_player_id:'attendance-player-'+i,player_id:'report-player-'+i,reason:'native',evidence:'{}',revision:1}),
+   statement('source_roster_memberships',{source_team_id:attendanceTeam,source_player_id:'attendance-player-'+i,active:1,scan_id:'synthetic-roster'}),
+   statement('source_events',{id:'attendance-event-'+i,provider:'teamsnap',scope:attendanceAccount,account_id:attendanceAccount,native_id:String(i),local_day:'2026-09-01',time_precision:'day',type:'game',status:'FINAL',conditional:0,home_source_team_id:attendanceTeam,home_label:'Us',away_label:'Them',title:'Attendance fixture',venue:'Field',evidence:'{}',content_hash:'event-'+i,observed_at:at}),
+   statement('event_source_links',{source_event_id:'attendance-event-'+i,event_id:'report-event-'+i,reason:'native',evidence:'{}',revision:1}),
+   statement('source_event_logistics',{source_event_id:'attendance-event-'+i,source_team_id:attendanceTeam,account_id:attendanceAccount,availability_enabled:1,content_hash:'tracked',observed_at:at}),
+   h.db.prepare('UPDATE team_player_rows SET name=? WHERE run_id=? AND player_id=?').bind('Player '+i,run,'report-player-'+i)
+  ]);
+  await h.db.batch([0,1].map(i=>statement('source_attendance',{id:'report-attendance-'+i,account_id:attendanceAccount,source_team_id:attendanceTeam,source_event_id:'attendance-event-0',source_player_id:'attendance-player-'+i,status:i===0?'Yes':'Maybe',content_hash:'response-'+i,observed_at:at})));
+  const attendanceRoster=await h.request('/api/team?'+new URLSearchParams(scope));assert.equal(attendanceRoster.status,200,JSON.stringify(attendanceRoster.data));
+  assert.deepEqual(attendanceRoster.data.data.players.items.map(row=>[row.id,row.attendance_pct,row.attendance_missing]),[['report-player-0',50,1],['report-player-1',0,1]]);
+  for(let i=0;i<2;i++){
+   const detail=await h.request('/api/players/report-player-'+i+'?'+new URLSearchParams({...scope,tab:'attendance'}));assert.equal(detail.status,200,JSON.stringify(detail.data));
+   assert.equal(detail.data.data.attendance.totals.percentage,i===0?50:0);assert.equal(detail.data.data.attendance.totals.no_response,0);
+   assert.deepEqual(detail.data.data.attendance.events.items.map(row=>[row.id,row.response,row.coverage_state]).sort(),[['report-event-0',i===0?'yes':'maybe','incomplete'],['report-event-1','unavailable','unavailable']]);
+  }
+  const partialPlayers=await prepare('players','player'),partialAttendance=await prepare('availability','player'),partialSchedule=await prepare('matches','location');
+  await waitSnapshots([partialPlayers,partialAttendance,partialSchedule]);await measure([partialPlayers,partialAttendance,partialSchedule]);
+  assert.deepEqual((await preview(partialPlayers)).rows.items.map(row=>row.attendance),['50%','0%']);
+  const partialRows=(await preview(partialAttendance)).rows.items;assert.deepEqual(partialRows.map(row=>[row.yes_pct,row.total,row.no_response]),[[50,2,0],[0,2,0]]);assert.ok(partialRows.every(row=>/1 missing/.test(row._report_note)));
+  const partialPage=await preview(partialSchedule),partialTail=await preview(partialSchedule,partialPage.rows.next_cursor),partialScheduleRows=[...partialPage.rows.items,...partialTail.rows.items];
+  assert.equal(partialScheduleRows.find(row=>row._report_id==='report-event-0').attendance,'50%');assert.equal(partialScheduleRows.find(row=>row._report_id==='report-event-1').attendance,'0%');
+  assert.match(partialScheduleRows.find(row=>row._report_id==='report-event-1')._report_note,/2 missing, 0 unknown, 0 conflicts, 2 incomplete coverage/);
+  assert.equal(partialScheduleRows.filter(row=>row.attendance!==null).length,2);
+  // Replay a real typed refresh checkpoint between admission and capture. The
+  // accepted full-history receipt is unchanged by newer scan progress metadata.
+  await h.db.prepare('UPDATE source_component_coverage SET complete=1 WHERE id=?').bind(attendanceCoverage).run();
+  const admitted=(await guarded.create(scope,{type:'availability'})).data.snapshot_id,beforeRefresh=await attendanceStateQuery(h.db,scope).first(),refreshAt=Date.now();
+  const refreshOptions={kind:'attendance',teamId:attendanceNativeTeam,accountId:attendanceAccount,authorizationGeneration:1,endpoint:'https://api.teamsnap.com/v3/availabilities/search?team_id='+attendanceNativeTeam,args:{team_id:attendanceNativeTeam}};
+  const full=await beginTeamSnapRefresh({...refreshOptions,now:refreshAt}),completed=finishTeamSnapRefresh(full.refresh,{count:2,pages:1,digest:'a'.repeat(64),total:2,now:refreshAt+1}),recent=await beginTeamSnapRefresh({...refreshOptions,cursor:completed,now:refreshAt+2});
+  assert.equal(recent.refresh.active.mode,'recent');
+  const replay=await new DomainRepository(h.db).ingestSourcePage({provider:'teamsnap',component:'attendance',resourceKey:attendanceScope,accountId:attendanceAccount,generation:1,scanId:'newer-refresh-scan',checkpoint:{protocol:'teamsnap-pages-v1',refresh:recent.refresh},sourceCoverage:[{provider:'teamsnap',account_id:attendanceAccount,scope:attendanceScope,...teamSnapRefreshCoverage(recent.refresh,{complete:false,count:0,now:refreshAt+2})}],records:{}});
+  assert.equal(replay.changed,false);assert.deepEqual(await attendanceStateQuery(h.db,scope).first(),beforeRefresh);
+  async function captureGuarded(id){for(let snapshot=await guarded.snapshot(id);snapshot.state==='capturing';snapshot=await guarded.snapshot(id)){const page=await guarded.capture(snapshot);await h.db.batch(page.statements.map(s=>h.db.prepare(s.sql.replaceAll('$FENCE','1')).bind(...s.params)));}}
+  await captureGuarded(admitted);const replayPreview=await preview(admitted);assert.equal(replayPreview.state,'ready');assert.deepEqual(replayPreview.rows.items.map(row=>row.yes_pct),[50,0]);assert.ok(replayPreview.rows.items.every(row=>/1 missing/.test(row._report_note)));
+  for(const format of ['xlsx','pdf']){
+   const exported=await h.request('/api/reports/'+admitted+'/exports',{method:'POST',body:{format}});assert.equal(exported.status,202,JSON.stringify(exported.data));
+   await h.waitFor(async()=>{const row=await h.db.prepare('SELECT state,error_code FROM report_exports WHERE id=?').bind(exported.data.id).first();assert.notEqual(row.state,'failed',JSON.stringify(row));return row.state==='ready';},{timeout:120000});
+   const download=await h.request('/api/reports/exports/'+exported.data.id+'/download',{binary:true});assert.equal(download.status,200);const file=new URL('unchanged-refresh.'+format,out);await writeFile(file,download.data);
+   if(format==='xlsx'){const parsed=JSON.parse(execFileSync('python',['-c',"import json,openpyxl,sys\nw=openpyxl.load_workbook(sys.argv[1],data_only=True)\nprint(json.dumps({'report':list(w['Report'].values),'notes':list(w['Notes'].values)}))",file.pathname],{encoding:'utf8'}));assert.deepEqual(parsed.report.slice(1).map(row=>row.at(-1)),['50%','0%']);assert.match(JSON.stringify(parsed.notes),/1 missing/);}
+   else{const text=execFileSync('pdftotext',['-layout',file.pathname,'-'],{encoding:'utf8'});assert.match(text,/50%/);assert.match(text,/\b0%/);assert.match(text,/1 missing/);}
+  }
+  const changedAttendance=(await guarded.create(scope,{type:'availability'})).data.snapshot_id;
+  await h.db.prepare("UPDATE source_attendance SET status='No' WHERE id='report-attendance-0'").run();await captureGuarded(changedAttendance);
+  const rejected=await preview(changedAttendance);assert.equal(rejected.state,'failed');assert.equal(rejected.error_code,'report_changed');assert.equal(rejected.rows.items.length,0);
+  assert.deepEqual((await preview(admitted)).rows,replayPreview.rows,'already captured native reports remain immutable');
   const captures=(await h.db.prepare("SELECT state,last_saved_at,last_complete_at FROM sync_jobs WHERE provider='reports' AND component='capture'").all()).results;assert.ok(captures.every(j=>j.state==='ready'&&j.last_saved_at&&j.last_complete_at));
-  console.log(JSON.stringify({native_populated_reports:'PASS',rows:137,browser_open:false,manual_runner_requests:0,capture_snapshots:6,actual_parsed_files:4,recursion_character_bound:1024,recursion_step_bound:64,complex1024_key_preserved:true,stale_commit_failed_closed:true,receipts,closedAt}));
+  console.log(JSON.stringify({native_populated_reports:'PASS',rows:137,browser_open:false,manual_runner_requests:0,capture_snapshots:10,actual_parsed_files:6,recursion_character_bound:1024,recursion_step_bound:64,complex1024_key_preserved:true,original_attendance_percentages:true,attendance_evidence_notes_captured:true,unchanged_refresh_preserves_capture:true,changed_response_fails_capture:true,stale_commit_failed_closed:true,receipts,closedAt}));
  }finally{await h.dispose();}
 });

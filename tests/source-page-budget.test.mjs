@@ -54,7 +54,8 @@ test('101 real history memberships commit all three pages including terminal rec
         assert.equal(saved.result.state,page===3?'ready':'queued');
         assert.equal(f.sqlite.prepare('SELECT count(*) n FROM source_events').get().n,Math.min(page*50,101));
       }
-      assert.deepEqual(counts,newOpponent?[45,44,48]:[45,44,46]);
+      // The middle page's unchanged coverage no longer writes an observation-only row.
+      assert.deepEqual(counts,newOpponent?[45,43,48]:[45,43,46]);
       assert.equal(f.sqlite.prepare('SELECT count(*) n FROM source_competition_memberships').get().n,101);
       assert.equal(f.sqlite.prepare("SELECT count(*) n FROM sync_jobs WHERE component IN('event','bridge')").get().n,202);
       assert.equal(f.sqlite.prepare('SELECT pages_saved FROM sync_jobs WHERE id=?').get(f.jobId).pages_saved,3);

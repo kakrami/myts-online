@@ -4,6 +4,7 @@ import {createRequire} from 'node:module';
 import {createApp} from '../web/app/main.js';
 import {createFeatureBridge} from '../web/app/features.js';
 import {createDataFileController} from '../web/app/data-files.js';
+import {createReportsController} from '../web/app/reports.js';
 
 // Deterministic, in-process DOM integration. No browser, listener, provider, or
 // account is used. To run without changing the application's dependencies:
@@ -54,7 +55,7 @@ async function fixture({accounts=[],teams=[],sourceTeams=[source()],resolve:reso
     unexpected.push(call);return failure('unexpected_fixture_route',`Unexpected fixture route: ${call.method} ${call.path}`,500);
   };
   let app;
-  const mount=async()=>{const hooks=createFeatureBridge({dataFiles:createDataFileController()});app=createApp({...hooks,host:dom.window.document.body,fetcher,maintenanceInterval});await app.start();return app;};
+  const mount=async()=>{const hooks=createFeatureBridge({dataFiles:createDataFileController(),reports:createReportsController({fetcher})});app=createApp({...hooks,host:dom.window.document.body,fetcher,maintenanceInterval});await app.start();return app;};
   const query=selector=>dom.window.document.querySelector(selector);
   const click=async(selector)=>{const node=query(selector);assert.ok(node,`Missing clickable element: ${selector}`);assert.notEqual(node.disabled,true,`Disabled element: ${selector}`);node.click();await tick();};
   const fill=(selector,value)=>{const node=query(selector);assert.ok(node,`Missing field: ${selector}`);node.value=value;node.dispatchEvent(new dom.window.Event('input',{bubbles:true}));};
@@ -200,6 +201,7 @@ for(const nextFlow of [false,true])uiTest(`late Trace send result cannot reopen 
     assert.equal(ui.app.state.bootstrap.session.role,'owner');
     assert.deepEqual(ui.calls.find(call=>call.path==='/api/accounts/trace/cancel').body,{attempt:'late-attempt'});
     assert.doesNotMatch(JSON.stringify(ui.savedStorage()),/synthetic@example|late-attempt/);
+    if(!nextFlow){assert.equal(ui.savedStorage()['myts.connection.v1'],undefined);await ui.reload();assert.equal(ui.app.state.modal,null);}
   });
 });
 
@@ -223,6 +225,7 @@ for(const nextFlow of [false,true])uiTest(`late Trace verification cannot reopen
     else assert.equal(ui.app.state.modal,null);
     assert.equal(ui.app.state.bootstrap.session.role,'owner');
     assert.doesNotMatch(JSON.stringify(ui.savedStorage()),/938475|synthetic@example/);
+    if(!nextFlow){assert.equal(ui.savedStorage()['myts.connection.v1'],undefined);await ui.reload();assert.equal(ui.app.state.modal,null);}
   });
 });
 
@@ -298,6 +301,9 @@ uiTest('lost create-and-connect response retries the identical durable command a
     assert.equal(first.body.new_team.name,'United U12');assert.equal(first.body.new_team.timezone_source,'device');assert.equal(Object.hasOwn(first.body.new_team,'season_year'),false);
     const pending=JSON.parse(ui.savedStorage()['myts.connection.v1']).pending;
     assert.equal(pending.requestId,first.body.request_id);
+    await ui.click('[data-action="connection-cancel"]');
+    assert.equal(ui.app.state.modal,null);
+    assert.deepEqual(JSON.parse(ui.savedStorage()['myts.connection.v1']).pending,pending);
     await ui.reload();
     assert.ok(ui.query('[data-action="connection-retry"]'));
     assert.equal(attempts,1,'Refresh must not silently submit an uncertain command.');
@@ -348,6 +354,56 @@ uiTest('an undated archived source connects immediately without a year and opens
     assert.match(ui.query('#root').textContent,/No dated season data/);assert.equal(hasCall(ui,'/api/overview'),false);
     await ui.reload();assert.equal(ui.app.state.season,null);assert.match(ui.query('#root').textContent,/No dated season data/);
     await ui.click('#accountBtn');await until(()=>ui.app.state.modal?.kind==='settings');assert.ok(ui.query('[data-action="source-manage"]'));
+  });
+});
+
+uiTest('explicit Trace Cancel stays dismissed after Settings Reports and a full remount',async()=>{
+  await withUI({teams:[team()],resolve:call=>{
+    if(call.path==='/api/team')return {data:{team:team(),roster:{items:[],total:0}}};
+    if(call.path==='/api/reports')return {data:{type:'season',columns:[],rows:{items:[],total:0},scope_label:'This season',scope_note:'Saved data'}};
+  }},async ui=>{
+    await ui.click('[data-action="nav"][data-view="team"]');
+    await until(()=>ui.app.state.view==='team'&&!ui.query('#root').hasAttribute('aria-busy'),'Team view');
+    await ui.click('#accountBtn');await until(()=>ui.app.state.modal?.kind==='settings');
+    await ui.click('[data-action="source-manage"][data-provider="trace"]');
+    await until(()=>ui.query('form[data-form="trace-send-code"]'),'Trace email form');
+    await ui.click('[data-action="connection-cancel"]');
+    assert.equal(ui.app.state.modal,null);assert.equal(ui.app.state.view,'team');
+    await ui.click('#accountBtn');await until(()=>ui.app.state.modal?.kind==='settings');
+    await ui.click('[data-action="reports"]');
+    await until(()=>ui.app.state.view==='reports'&&!ui.query('#root').hasAttribute('aria-busy'),'Reports view');
+    assert.equal(ui.app.state.modal,null);
+    await ui.reload();
+    assert.equal(ui.app.state.modal,null,'An explicitly cancelled sign-in must not reopen over Overview after reload.');
+    assert.equal(ui.app.connection.value,null);
+    assert.equal(ui.savedStorage()['myts.connection.v1'],undefined);
+    assert.equal(hasCall(ui,'/api/accounts/trace/start'),false);
+  });
+});
+
+for(const dismissal of ['cancel','close','navigation','history'])uiTest(`Trace code ${dismissal} cancels the server attempt and cannot restore on reload`,async()=>{
+  await withUI({teams:[team()],resolve:call=>call.path==='/api/accounts/trace/start'?{attempt:'cancelled-attempt',expires_at:Date.now()+600000}:undefined},async ui=>{
+    await ui.click('#accountBtn');await until(()=>ui.app.state.modal?.kind==='settings');
+    await ui.click('[data-action="source-manage"][data-provider="trace"]');
+    await until(()=>ui.query('form[data-form="trace-send-code"]'),'Trace email form');
+    ui.fill('[name="email"]','synthetic@example.invalid');await ui.submit('form[data-form="trace-send-code"]');
+    await until(()=>ui.query('form[data-form="trace-verify-code"]'),'Trace code form');
+    if(dismissal==='cancel')await ui.click('[data-action="connection-cancel"]');
+    else if(dismissal==='close')await ui.click('[data-close="accountModal"]');
+    else if(dismissal==='navigation')await ui.click('[data-action="nav"][data-view="overview"]');
+    else {
+      const route={...ui.app.captureRoute(),view:'overview',details:[]};
+      ui.dom.window.dispatchEvent(new ui.dom.window.PopStateEvent('popstate',{state:{mytsUi:true,route}}));
+      await until(()=>ui.app.state.modal===null&&!ui.query('#root').hasAttribute('aria-busy'),'history dismissal');
+    }
+    assert.equal(ui.app.state.modal,null);assert.equal(ui.app.connection.value,null);
+    assert.equal(ui.savedStorage()['myts.connection.v1'],undefined);
+    await ui.reload();
+    assert.equal(ui.app.state.modal,null);assert.equal(ui.app.connection.value,null);
+    assert.equal(ui.query('#accountModal').classList.contains('hidden'),true);
+    assert.deepEqual(ui.calls.filter(call=>call.path==='/api/accounts/trace/cancel').map(call=>call.body),[{attempt:'cancelled-attempt'}]);
+    assert.equal(hasCall(ui,'/api/accounts/trace/attempt'),false);
+    assert.equal(ui.calls.filter(call=>call.path==='/api/accounts/trace/start').length,1);
   });
 });
 
@@ -909,6 +965,28 @@ uiTest('maintenance keeps a returned TeamSnap authorization in memory until the 
   });
 });
 
+uiTest('maintenance interruption preserves a pending Trace challenge without cancelling it',async()=>{
+  let updating=false;
+  await withUI({resolve:call=>{
+    if(call.path==='/api/bootstrap'&&updating)return {setup:{state:'upgrading',phase:'events',progress:75},session:{role:'anonymous'},teams:[]};
+    if(call.path==='/api/accounts/trace/start')return {attempt:'maintenance-attempt',expires_at:Date.now()+600000};
+    if(call.path==='/api/accounts/trace/attempt')return {attempt:'maintenance-attempt',stage:'code',expires_at:Date.now()+600000};
+  }},async ui=>{
+    await ui.click('[data-action="source-manage"][data-provider="trace"]');
+    await until(()=>ui.query('form[data-form="trace-send-code"]'),'Trace email form');
+    ui.fill('[name="email"]','synthetic@example.invalid');await ui.submit('form[data-form="trace-send-code"]');
+    await until(()=>ui.query('form[data-form="trace-verify-code"]'),'Trace code form');
+    updating=true;await ui.app.bootstrap();
+    assert.equal(ui.app.connection.active,false);
+    assert.equal(JSON.parse(ui.savedStorage()['myts.connection.v1']).attempt,'maintenance-attempt');
+    updating=false;await ui.app.checkMaintenance();
+    assert.ok(ui.query('form[data-form="trace-verify-code"]'));
+    assert.equal(ui.app.connection.value.attempt,'maintenance-attempt');
+    assert.equal(ui.calls.filter(call=>call.path==='/api/accounts/trace/start').length,1);
+    assert.equal(hasCall(ui,'/api/accounts/trace/cancel'),false);
+  });
+});
+
 uiTest('maintenance preserves the selected saved season and immutable pending connection intent',async()=>{
   let updating=false;
   const saved=team();saved.seasons.push({id:'older-season',year:2024,label:'2024–2025',start_day:'2024-06-01',end_day:'2025-06-01'});
@@ -1085,5 +1163,16 @@ uiTest('Schedule safely restarts an old-order cursor without accepting it under 
    await ui.app.action('schedule-period',{value:'upcoming'});const count=ui.calls.filter(c=>c.path==='/api/schedule').length;
    late.resolve(failure('cursor_selection','The cursor belongs to another selection.',400));await pending;
    assert.equal(ui.calls.filter(c=>c.path==='/api/schedule').length,count);assert.equal(ui.app.state.model.selection.period,'upcoming');
+ });
+});
+
+uiTest('blank provider game titles get one shared accessible fallback without changing identity',async()=>{
+ await withUI({teams:[team()],resolve:call=>{
+  if(call.path==='/api/schedule')return {data:{items:[{id:'live-game',type:'game',title:'',home_name:'White',away_name:'Albion',starts_at:'2026-10-23T18:00:00Z',status:'SCHEDULED'}],total:1}};
+  if(call.path==='/api/calendar')return {data:{days:[]}};
+  if(call.path==='/api/matches/live-game')return {data:{event:{id:'live-game',type:'game',title:' ',home_name:'White',away_name:'Albion',starts_at:'2026-10-23T18:00:00Z',status:'SCHEDULED'},capabilities:{can_bookmark:true}}};
+ }},async ui=>{
+  await ui.app.action('nav',{view:'schedule'});const card=ui.query('[data-action="match"][data-id="live-game"]');assert.equal(card.getAttribute('aria-label'),'Open match details: White vs Albion');
+  await ui.app.action('match',{id:'live-game'});assert.equal(ui.query('#entityTitle').textContent,'White vs Albion');assert.equal(ui.query('[data-action="bookmark"]').dataset.id,'live-game');assert.equal(ui.calls.filter(call=>call.method==='PUT').length,0);
  });
 });

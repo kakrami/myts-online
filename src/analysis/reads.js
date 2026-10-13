@@ -61,6 +61,9 @@ function selectionFilter(selection,options={}) {
 /** One effective canonical season model, including every selected match. */
 export function playerSeasonQuery(selection,options={}) {
   const filter=selectionFilter(selection,options),attendanceFilter=attendanceSelectionFilter(selection,options);
+  // Original attendance is Yes / all selected tracked past events, rounded once.
+  // Missing, unknown, conflicting and incomplete evidence stays explicit in the
+  // counts and event cells; it does not remove an event from that denominator.
   const sql=`WITH selected_events AS(SELECT e.* FROM team_events e WHERE ${filter.sql}),attendance_events AS(SELECT e.* FROM team_events e WHERE ${attendanceFilter.sql}),${attendanceCTE()},
   attendance_totals AS(SELECT player_id,COUNT(*) AS attendance_events,SUM(has_response) AS attendance_responses,SUM(scope_complete) AS attendance_covered_events,SUM(status='Yes') AS yes,SUM(status='No') AS no,SUM(status='Maybe') AS maybe,SUM(status='NR') AS nr,SUM(status IN('Unknown','Unavailable')) AS unknown_responses,SUM(status='Unavailable') AS missing_responses,SUM(status='Conflict') AS attendance_conflicts FROM attendance_native WHERE tracked=1 GROUP BY player_id),
   player_totals AS(SELECT p.player_id,COUNT(*) AS analyzed_matches,SUM(p.appearance) AS apps,SUM(p.started) AS starts,SUM(p.minutes) AS minutes,SUM(p.field_minutes) AS field_minutes,SUM(p.gk_minutes) AS gk_minutes,
@@ -79,7 +82,7 @@ export function playerSeasonQuery(selection,options={}) {
    p.passes_all,p.passes_complete,p.shots,p.shots_made,p.turnovers_won,p.turnovers_lost,p.box_touches,p.player_touches,
    COALESCE(a.yes,0) AS yes,COALESCE(a.no,0) AS no,COALESCE(a.maybe,0) AS maybe,COALESCE(a.nr,0) AS nr,COALESCE(a.attendance_responses,0) AS attendance_responses,COALESCE(a.attendance_conflicts,0) AS attendance_conflicts,
    COALESCE(a.attendance_events,0) AS attendance_events,COALESCE(a.unknown_responses,0) AS attendance_unknown,COALESCE(a.missing_responses,0) AS attendance_missing,
-   CASE WHEN a.attendance_events>0 AND a.attendance_covered_events=a.attendance_events AND COALESCE(a.unknown_responses,0)=0 AND COALESCE(a.attendance_conflicts,0)=0 THEN ROUND(a.yes*100.0/a.attendance_events,1) END AS attendance_pct
+   CASE WHEN a.attendance_events>0 THEN ROUND(a.yes*1.0/a.attendance_events*100) END AS attendance_pct
    FROM team_players t LEFT JOIN player_totals p ON p.player_id=t.player_id LEFT JOIN attendance_totals a ON a.player_id=t.player_id LEFT JOIN analysis_overrides o ON o.app_team_id=t.app_team_id AND o.team_season_id=t.team_season_id AND o.kind='player_season' AND o.player_id=t.player_id AND o.event_id='' WHERE t.app_team_id=? AND t.team_season_id=?) SELECT * FROM effective`;
   return {sql,params:[...filter.params,...attendanceFilter.params,selection.team_id,selection.team_season_id]};
 }

@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
+import {readFile,mkdir,writeFile} from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
 import {REPORT_SCHEMA} from '../src/reporting/schema.js';
 import {SYNC_SCHEMA} from '../src/sync/schema.js';
 import {DOMAIN_SCHEMA} from '../src/domain/schema.js';
@@ -12,6 +14,8 @@ import {AnalysisReads,playerSeasonQuery} from '../src/analysis/reads.js';
 import {FeatureReads} from '../src/read-model/feature-reads.js';
 import {ReportingService} from '../src/reporting/service.js';
 import {CursorCodec} from '../src/read-model/cursor.js';
+import {createOriginalReportsOracle} from './parity/original-reports-fixtures.mjs';
+import {roster,playerDetail,reports as reportScreen} from '../web/ui-original/screens.js';
 
 const AT='2026-10-12T12:00:00.000Z',INPUT={team_id:'team',team_season_id:'season'};
 function fixture(){
@@ -54,11 +58,128 @@ function fixture(){
   return {id:canonical,source,account,sourceTeam};
  }
  function response(e,p,status){insert('source_attendance',{id:e.source+'|'+p.source,account_id:e.account,source_team_id:e.sourceTeam,source_event_id:e.source,source_player_id:p.source,status,content_hash:'response',observed_at:AT});}
- const cursor=new CursorCodec(new Uint8Array(32).fill(9),{now:()=>now}),options={cursor,now:()=>now},analysis=new AnalysisReads(db,{owner:true},options),features=new FeatureReads(db,{owner:true},{...options,analysisReads:analysis}),reports=new ReportingService(db,{...options,coordinator:{enqueue:async()=> 'test-job'}});
- const commit=page=>{sqlite.exec('BEGIN');try{for(const s of page.statements)sqlite.prepare(s.sql.replaceAll('$FENCE','1')).run(...s.params);sqlite.exec('COMMIT');}catch(error){sqlite.exec('ROLLBACK');throw error;}};
+ const cursor=new CursorCodec(new Uint8Array(32).fill(9),{now:()=>now}),options={cursor,now:()=>now},analysis=new AnalysisReads(db,{owner:true},options),features=new FeatureReads(db,{owner:true},{...options,analysisReads:analysis}),reports=new ReportingService(db,{...options,coordinator:{enqueue:async()=> 'test-job'},fontLoader:()=>readFile(new URL('../web/assets/report-font.ttf',import.meta.url))});
+ const commit=page=>{sqlite.exec('BEGIN');try{for(const s of page.statements)sqlite.prepare(s.sql.replaceAll('$FENCE','1')).run(...s.params.map(value=>value instanceof ArrayBuffer?new Uint8Array(value):value));sqlite.exec('COMMIT');}catch(error){sqlite.exec('ROLLBACK');throw error;}};
  const query=q=>sqlite.prepare(q.sql).all(...q.params).map(row=>({...row}));
  return {sqlite,db,insert,player,event,response,analysis,features,reports,query,commit,options,setNow:value=>{now=Date.parse(value);},close:()=>sqlite.close()};
 }
+
+async function assertPercentageSurfaces(f,p,expected){
+ const summary=(await f.analysis.summary(INPUT,p.id)).data;
+ assert.equal(summary.attendance_pct,expected,'shared season percentage matches the original');
+ const team=await f.analysis.team(INPUT),row=team.data.players.items.find(row=>row.id===p.id);
+ assert.equal(row.attendance_pct,expected,'roster uses the shared percentage');
+ const detail=await f.analysis.player(INPUT,p.id,{tab:'attendance'});
+ assert.equal(detail.data.stats.attendance_pct,expected);assert.equal(detail.data.attendance.totals.percentage,expected);
+ if(expected!==null){
+  assert.match(roster(team),new RegExp('data-label="Attend\\.">'+expected+'%<'));
+  assert.match(playerDetail(detail),new RegExp('<span>Attendance</span><b>'+expected+'%</b>'));
+  assert.match(playerDetail(detail,{tab:'attendance'}),new RegExp('<span>Attendance</span><b>'+expected+'%</b>'));
+ }
+ const selection=(await f.analysis.base.context(INPUT)).selection;
+ for(const type of ['players','availability']){
+  const key=type==='players'?'attendance':'yes_pct',value=expected===null?null:type==='players'?expected+'%':expected;
+  const rows=f.query(await f.reports.query(type,selection));assert.equal(rows.find(row=>row.id===p.id)[key],value,type+' report query');
+  const created=await f.reports.create(INPUT,{type}),id=created.data.snapshot_id;
+  for(let snapshot=await f.reports.snapshot(id);snapshot.state==='capturing';snapshot=await f.reports.snapshot(id))f.commit(await f.reports.capture(snapshot));
+  const preview=(await f.reports.preview(id)).data;
+  assert.equal(preview.state,'ready');assert.equal(preview.rows.items.find(row=>row._report_id===p.id)[key],value,type+' captured report');
+  if(type==='players')assert.match(preview.scope_note,/attendance uses all past included tracked events, including practices/);
+  if(summary.attendance_unknown>0||summary.attendance_conflicts>0){
+   const note=preview.rows.items.find(row=>row._report_id===p.id)._report_note;
+   assert.ok(note.includes(summary.attendance_missing+' missing, '+(summary.attendance_unknown-summary.attendance_missing)+' unknown, '+summary.attendance_conflicts+' conflicting'),type+' captures distinct attendance diagnostics');
+   assert.match(note,/Yes % uses all selected tracked events/);
+  }
+  const label=type==='players'?'Attendance':'Yes %';
+  assert.match(reportScreen(preview),new RegExp('data-label="'+label+'">'+(expected===null?'':expected+'%')+'</td>'));
+ }
+ return {summary,detail:detail.data};
+}
+
+test('original attendance percentages include missing responses across roster, player and captured reports',async t=>{
+ for(const [status,code,expected] of [['Yes',1,50],['Maybe',2,0],['NR',null,0],['Unknown',99,0],['missing',undefined,0]])await t.test(status+' plus missing',async()=>{
+  const f=fixture();try{
+   const p=f.player('player'),a=f.event('first',{type:'practice',status:'SCHEDULED'});f.event('missing',{type:'event',status:'SCHEDULED'});
+   if(status!=='missing')f.response(a,p,status);
+   const original=createOriginalReportsOracle({now:AT,players:[{id:p.id,name:'player'}],events:['first','missing'].map(id=>({id,_date:'2026-09-01',is_availability_enabled:true})),availability:status==='missing'?[]:[{event_id:a.id,member_id:p.id,status_code:code}]});
+   assert.equal(original.playerAvailability({id:p.id}).pct,expected);
+   assert.equal(original.reportRows('players')[0].Attendance,expected+'%');assert.equal(original.reportRows('availability')[0]['Yes %'],expected+'%');
+   const {summary,detail}=await assertPercentageSurfaces(f,p,expected);
+   assert.equal(summary.attendance_events,2);assert.equal(summary.attendance_missing,status==='missing'?2:1);
+   assert.equal(summary.nr,status==='NR'?1:0,'missing is never reclassified as provider NR');
+   assert.equal(summary.attendance_unknown,status==='missing'||status==='Unknown'?2:1);
+   assert.equal(detail.attendance.events.items.find(row=>row.id==='missing').response,'unavailable');
+  }finally{f.close();}
+ });
+});
+
+test('original attendance rounds once in original arithmetic order',async t=>{
+ for(const [yes,total,expected]of [[47,95,49],[29,200,14]])await t.test(yes+' of '+total,async()=>{
+ const f=fixture();try{
+  const p=f.player('player'),events=[],availability=[];
+  for(let i=0;i<total;i++){const e=f.event('event-'+i,{type:'practice',status:'SCHEDULED'});f.response(e,p,i<yes?'Yes':'No');events.push({id:e.id,_date:'2026-09-01',is_availability_enabled:true});availability.push({event_id:e.id,member_id:p.id,status_code:i<yes?1:0});}
+  const original=createOriginalReportsOracle({now:AT,players:[{id:p.id,name:'player'}],events,availability});
+  assert.equal(original.playerAvailability({id:p.id}).pct,expected);
+  await assertPercentageSurfaces(f,p,original.playerAvailability({id:p.id}).pct);
+ }finally{f.close();}
+ });
+});
+
+test('original denominator survives incomplete coverage and conflicts without altering response evidence',async()=>{
+ const f=fixture();try{
+  const p=f.player('player'),yes=f.event('yes'),conflict=f.event('conflict');f.response(yes,p,'Yes');f.response(conflict,p,'Yes');f.response(conflict,f.player('alias',{alias:p.id}),'No');
+  f.sqlite.prepare("UPDATE source_component_coverage SET complete=0 WHERE id='coverage-source-a'").run();
+  const {summary,detail}=await assertPercentageSurfaces(f,p,50);
+  assert.equal(summary.attendance_events,2);assert.equal(summary.yes,1);assert.equal(summary.attendance_conflicts,1);assert.equal(summary.nr,0);
+  assert.deepEqual(detail.attendance.events.items.map(row=>[row.id,row.response,row.coverage_state]).sort(),[['conflict','conflict','human_review'],['yes','yes','incomplete']]);
+  const viewer=new AnalysisReads(f.db,{owner:false,teamId:'team'},f.options),view=(await viewer.player(INPUT,p.id,{tab:'attendance'})).data;
+  assert.equal(view.attendance.totals.percentage,50);assert.equal(view.capabilities.can_edit,false);assert.equal(view.capabilities.can_coach,false);
+  await assert.rejects(viewer.summary({...INPUT,team_id:'other'},p.id),error=>error.code==='team_forbidden');
+ }finally{f.close();}
+});
+
+test('original Schedule report keeps percentage with missing evidence and captures separate diagnostics',async()=>{
+ const f=fixture();try{
+  const p=f.player('yes-player'),missing=f.player('missing-player'),events=[];
+  for(const [id,props] of [['past',{}],['future',{day:'2026-10-13'}],['cancelled',{status:'CANCELLED'}],['untracked',{enabled:0}]]){
+   const e=f.event(id,props);f.response(e,p,'Yes');events.push({id,_date:props.day||'2026-09-01',_cancelled:props.status==='CANCELLED',is_availability_enabled:props.enabled!==0});
+  }
+  f.sqlite.prepare("UPDATE source_component_coverage SET complete=0 WHERE id='coverage-source-a'").run();
+  const original=createOriginalReportsOracle({now:AT,players:[{id:p.id},{id:missing.id}],events,items:events.map(event=>({id:event.id,kind:'event',date:event._date,event})),availability:events.map(e=>({event_id:e.id,member_id:p.id,status_code:1}))});
+  const selection=(await f.analysis.base.context(INPUT)).selection,rows=f.query(await f.reports.query('matches',selection));
+  for(const id of ['past','future']){const row=rows.find(row=>row.id===id);assert.equal(row.attendance,original.reportRows('matches').find(row=>row.Date===(id==='past'?'2026-09-01':'2026-10-13')).Attendance);assert.equal(row.attendance,'50%');assert.match(row._report_note,/1 missing, 0 unknown, 0 conflicts/);assert.match(row._report_note,/2 incomplete coverage/);}
+  assert.equal(rows.find(row=>row.id==='cancelled').attendance,'');assert.equal(rows.find(row=>row.id==='untracked').attendance,null);
+  const created=await f.reports.create(INPUT,{type:'matches'}),id=created.data.snapshot_id;
+  for(let snapshot=await f.reports.snapshot(id);snapshot.state==='capturing';snapshot=await f.reports.snapshot(id))f.commit(await f.reports.capture(snapshot));
+  const preview=(await f.reports.preview(id)).data,past=preview.rows.items.find(row=>row._report_id==='past');
+  assert.equal(past.attendance,'50%');assert.match(past._report_note,/1 missing/);assert.match(reportScreen(preview),/Evidence notes/);
+  f.sqlite.prepare("UPDATE source_attendance SET status='No'").run();
+  assert.deepEqual((await f.reports.preview(id)).data.rows,preview.rows,'a ready snapshot remains immutable after source changes');
+  const snapshot=await f.reports.snapshot(id),out=new URL('../tmp/attendance-percentage-parity/',import.meta.url);await mkdir(out,{recursive:true});
+  for(const format of ['xlsx','pdf']){
+   const status=await f.reports.requestExport(id,format);
+   for(let step=0;;step++){assert.ok(step<20,'small report encoding must finish');const page=await f.reports.encode(snapshot,status.id,format);f.commit(page);if(page.complete)break;}
+   const download=await f.reports.download(status.id),file=new URL('schedule.'+format,out);await writeFile(file,new Uint8Array(await download.arrayBuffer()));
+   if(format==='xlsx'){
+    const workbook=JSON.parse(execFileSync('python',['-c',"import json,openpyxl,sys\nw=openpyxl.load_workbook(sys.argv[1],data_only=True)\nprint(json.dumps({'report':list(w['Report'].values),'notes':list(w['Notes'].values)}))",file.pathname],{encoding:'utf8'}));
+    assert.deepEqual(workbook.report.slice(1).map(row=>row.at(-1)??''),preview.rows.items.map(row=>row.attendance??''));
+    assert.match(JSON.stringify(workbook.notes),/1 missing, 0 unknown, 0 conflicts, 2 incomplete coverage/);
+   }else{
+    const text=execFileSync('pdftotext',['-layout',file.pathname,'-'],{encoding:'utf8'});assert.equal((text.match(/50%/g)||[]).length,2);assert.match(text,/1 missing/);assert.match(text,/2 incomplete coverage/);
+   }
+  }
+ }finally{f.close();}
+});
+
+test('zero eligible tracked events remains blank across attendance surfaces',async()=>{
+ const f=fixture();try{
+  const p=f.player('player');
+  for(const [id,props] of [['untracked',{enabled:0}],['future',{day:'2026-10-13'}],['cancelled',{status:'CANCELLED'}],['june',{day:'2026-06-15'}],['excluded',{}]]){const e=f.event(id,props);f.response(e,p,'Yes');}
+  f.insert('season_inclusion_rules',{team_season_id:'season',kind:'event',resource_key:'excluded',included:0});
+  const {summary}=await assertPercentageSurfaces(f,p,null);assert.equal(summary.attendance_events,0);
+  const original=createOriginalReportsOracle({players:[{id:p.id,name:'player'}]});assert.equal(original.reportRows('players')[0].Attendance,'');assert.equal(original.reportRows('availability')[0]['Yes %'],'');
+ }finally{f.close();}
+});
 
 test('attendance counts past scheduled practices and other events, while preserving June and saved exclusion',async()=>{
  const f=fixture();try{
@@ -68,12 +189,12 @@ test('attendance counts past scheduled practices and other events, while preserv
   const summary=(await f.analysis.summary(INPUT,p.id)).data;
   assert.equal(summary.selected_matches,3,'statistical final-game selection is unchanged, including undated final source data');
   assert.equal((await f.features.attendance(await f.features.featureContext(INPUT),'untracked')).coverage,'untracked','explicitly disabled tracking wins over retained historical responses');
-  assert.equal(summary.attendance_events,3);assert.equal(summary.yes,1);assert.equal(summary.no,1);assert.equal(summary.maybe,1);assert.equal(summary.attendance_pct,33.3);
+  assert.equal(summary.attendance_events,3);assert.equal(summary.yes,1);assert.equal(summary.no,1);assert.equal(summary.maybe,1);assert.equal(summary.attendance_pct,33);
   const detail=(await f.analysis.player({...INPUT,type:'games',mode:'day',date:'2026-10-12'},p.id,{tab:'attendance'})).data;
   assert.deepEqual(detail.attendance.events.items.map(e=>e.id).sort(),['game','meeting','practice']);
   assert.equal(detail.matches.total,0,'attendance must not inherit the match log day or game-only filter');
   const report=f.query(await f.reports.query('availability',(await f.analysis.base.context(INPUT)).selection))[0];
-  assert.equal(report.total,3);assert.equal(report.yes_pct,33.3);
+  assert.equal(report.total,3);assert.equal(report.yes_pct,33);
   f.sqlite.prepare('UPDATE team_seasons SET include_june=1 WHERE id=?').run('season');
   assert.equal((await f.analysis.summary(INPUT,p.id)).data.attendance_events,4);
  }finally{f.close();}
@@ -93,10 +214,10 @@ test('event, player and report views distinguish explicit NR, missing, unknown a
   for(const [label,response] of [['NR','no_response'],['missing','unavailable'],['Unknown','unknown'],['Conflict','conflict']]){
    const detail=(await f.analysis.player(INPUT,players[label].id,{tab:'attendance'})).data;
    assert.equal(detail.attendance.events.items[0].response,response);assert.equal(detail.attendance.totals.no_response,label==='NR'?1:0);
-   if(label!=='NR')assert.equal(detail.attendance.totals.percentage,null);
+   assert.equal(detail.attendance.totals.percentage,0);
   }
   const rows=f.query(await f.reports.query('matches',(await f.analysis.base.context(INPUT)).selection));
-  assert.match(rows[0].attendance,/1 NR, 1 missing, 1 unknown, 1 conflicts/);
+  assert.equal(rows[0].attendance,'14%');assert.match(rows[0]._report_note,/1 NR, 1 missing, 1 unknown, 1 conflicts/);
   const availability=f.query(await f.reports.query('availability',(await f.analysis.base.context(INPUT)).selection));
   assert.equal(availability.find(r=>r.id===players.missing.id).missing,1);assert.equal(availability.find(r=>r.id===players.missing.id).unknown,0);
   assert.equal(availability.find(r=>r.id===players.Unknown.id).missing,0);assert.equal(availability.find(r=>r.id===players.Unknown.id).unknown,1);
@@ -114,7 +235,7 @@ test('event coverage is exact-source qualified and never manufactures historical
   f.response(e,p,'Yes');const detail=await f.features.attendance(context,e.id);
   assert.equal(detail.players.items[0].response,'yes');assert.equal(detail.players.items[0].coverage_state,'incomplete');assert.equal(detail.coverage,'partial');
   const summary=(await f.analysis.summary(input,p.id)).data;
-  assert.equal(summary.yes,1);assert.equal(summary.attendance_pct,null,'another complete account cannot certify this response');
+  assert.equal(summary.yes,1);assert.equal(summary.attendance_pct,100,'coverage remains incomplete without suppressing the recorded Yes percentage');
   assert.equal((await f.analysis.player(input,p.id,{tab:'attendance'})).data.attendance.events.total,1,'inactive current roster membership does not erase projected historical evidence');
  }finally{f.close();}
 });

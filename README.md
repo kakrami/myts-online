@@ -1,12 +1,14 @@
-# myTS 7.2.6
+# myTS 7.2.7
 
-This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.2.6**. This package is not a production deployment.
+This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.2.7**. This package is not a production deployment.
+
+The 7.2.7 workflow repair restores original attendance percentages, per-view page scrolling and explicit sign-in cancellation, while separating unchanged refresh observations from report-content changes. See [the scope and verification](docs/live-workflow-parity-repair.md). Trace member date normalization and deterministic source-contract failures are also corrected; see [the Trace contract repair](docs/trace-member-contract-repair.md) for the exact evidence and remaining live acceptance.
 
 The 7.2.6 attendance update uses compact storage sizing and a validated 100-row request preference for new scans, with bounded compatibility fallback. Existing scans retain their saved page size and continuation. See [the throughput contract and verification](docs/attendance-throughput-repair.md).
 
 The 7.2.5 Schedule repair restores newest-first Past and Analyzed lists, chronological Upcoming and Day lists, known kickoffs before TBD within each local day, and historical-season selection without losing the current-season period preference. See [the query policy and verification](docs/schedule-order-repair.md). This update does not restart provider collection.
 
-The 7.2.4 attendance repair uses validated event/member identities within the connected TeamSnap account and team. It corrects the numeric availability-ID assumption confirmed by live diagnostics and official provider fixtures. See [the identity contract, migration and recovery](docs/attendance-identity-repair.md). Real attendance completion still requires the deployed retry.
+The 7.2.4 attendance repair uses validated event/member identities within the connected TeamSnap account and team. It corrects the numeric availability-ID assumption confirmed by live diagnostics and official provider fixtures. See [the identity contract, migration and recovery](docs/attendance-identity-repair.md). Real attendance completion with all app tabs closed was verified on 2026-10-13; the latest workflow ledger records that receipt.
 
 The 7.2.2 connection throughput repair batches shared season reconciliation under the existing transaction limits and removes redundant recovery alarms from safe projection-only pages. See [the diagnosis and verification boundary](docs/connection-throughput-repair.md). Existing saved cursors and the deployed schema remain compatible.
 

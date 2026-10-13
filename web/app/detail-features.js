@@ -1,6 +1,6 @@
 import * as screens from '../ui-original/screens.js';
 import * as forms from '../ui-original/forms.js';
-import {escapeHTML as e,unwrap,button,icon,empty,pickerHTML} from '../ui-original/presentation.js';
+import {escapeHTML as e,unwrap,button,icon,empty,pickerHTML,eventTitle} from '../ui-original/presentation.js';
 import {bindSwipe,bindPitch} from '../ui-original/interactions.js';
 import {guardedRead,guardedCommand} from './feature-requests.js';
 import {createPublicHistoryController} from './public-history.js';
@@ -34,7 +34,7 @@ export function createDetailFeatures({routes={},coach,lineup}={}){
  async function paint(detail,api,request=local(api).request,epoch=api.state.routeEpoch){
   const s=local(api);if(!currentOperation(api,s,detail,request,epoch))return;const model=unwrap(s.model);const tab=detail.tab??'overview';let html='',title='',actionsHTML='';
   if(detail.kind==='match'){
-   title=model.event?.title??'Match';
+   title=eventTitle({type:'game',...model.event});
    let panelHTML='';if(tab==='coach'){api.requireOwner();panelHTML=await coach.panel(model.event?.id??detail.id,api);if(panelHTML==null||!currentOperation(api,s,detail,request,epoch))return;}
    html=screens.matchDetail(s.model,{tab,panelHTML});const event=model.event??{};
    if(model.capabilities?.can_bookmark)actionsHTML=button('bookmark',icon(event.bookmarked?'bookmark-fill':'bookmark'),{className:'icon-btn',html:true,title:event.bookmarked?'Remove bookmark':'Bookmark game',data:{id:event.id,saved:!event.bookmarked}});

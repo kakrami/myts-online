@@ -32,7 +32,8 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
   const discoveryRefresh=new RevisionRefresh(discoveryTransport,()=>refreshAccountChooser(),error=>showError(error));
   let interactionEpoch=0,maintenanceTimer=null,maintenanceChecking=false,maintenanceReturn=null,maintenanceOAuth=null;
   let unbind=null,gestureCleanup=null,modalGestureCleanup=null,pendingDiscard=null,historyHandling=false,toastTimer=null;
-  const logoCache=new Map();
+  const logoCache=new Map(),viewPositions=new Map();
+  let previousScrollRestoration=null,renderedDetail=null,scrollHistoryTimer=null;
   const root=()=>host.querySelector("#root"), role=()=>state.bootstrap?.session?.role??"anonymous";
   const categories=()=>new Set(role()==='owner'?['overview','schedule','competitions','team','bookmarks','reports','matches','players']:state.bootstrap?.session?.categories??[]);
   const canView=view=>role()==='owner'||(role()==='viewer'&&categories().has(view));
@@ -68,11 +69,11 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     if(target)target.innerHTML=`<div class="login-error" role="alert">${e(message)}</div>`;
     else notice(message);
     handlers.onError?.(error,api);
-    if(ownerSessionExpired(error) && role()!=="anonymous"){dismissConnection();logoCache.clear();handlers.closeDetail?.(api);refresh.stop();closeModal();state.details=[];state.bootstrap={...state.bootstrap,session:{role:"anonymous"},teams:[]};state.team=null;state.season=null;transport.select({role:"anonymous"});discoveryTransport.select({role:"anonymous"});setDetail(host,{open:false,bodyHTML:"",actionsHTML:""});host.querySelector("#accountBody").innerHTML="";updateShell(host,{...shellModel(),login_error:message});}
+    if(ownerSessionExpired(error) && role()!=="anonymous"){dismissConnection();logoCache.clear();handlers.closeDetail?.(api);refresh.stop();closeModal();state.details=[];state.bootstrap={...state.bootstrap,session:{role:"anonymous"},teams:[]};state.team=null;state.season=null;transport.select({role:"anonymous"});discoveryTransport.select({role:"anonymous"});presentDetail({open:false,bodyHTML:"",actionsHTML:""});host.querySelector("#accountBody").innerHTML="";updateShell(host,{...shellModel(),login_error:message});}
   }
   function guarded(epoch,result) {return !result.discarded && epoch===state.routeEpoch && state.active;}
   function requireOwner(){if(role()!=="owner")throw new AppError("Sign in as the owner to manage this team.","owner_required",403);}
-  function updateContext(team,season){logoCache.clear();handlers.contextChanged?.(api);state.team=team;state.season=season;state.details=[];setDetail(host,{open:false,bodyHTML:"",actionsHTML:""});closeModal();state.model=null;state.routeEpoch++;const today=localDay(selectedTeam()?.timezone),bounds=selectedSeason();state.filters.date=bounds?.start_day&&today<bounds.start_day ? bounds.start_day : bounds?.end_day&&today>=bounds.end_day ? addDays(bounds.end_day,-1) : today;transport.select({role:role(),team_id:team,team_season_id:season,viewer:!!viewerToken});discoveryTransport.select({role:role(),team_id:team,team_season_id:season});refresh.stop();updateShell(host,shellModel());}
+  function updateContext(team,season){logoCache.clear();handlers.contextChanged?.(api);state.team=team;state.season=season;state.details=[];presentDetail({open:false,bodyHTML:"",actionsHTML:""});closeModal();state.model=null;state.routeEpoch++;const today=localDay(selectedTeam()?.timezone),bounds=selectedSeason();state.filters.date=bounds?.start_day&&today<bounds.start_day ? bounds.start_day : bounds?.end_day&&today>=bounds.end_day ? addDays(bounds.end_day,-1) : today;transport.select({role:role(),team_id:team,team_season_id:season,viewer:!!viewerToken});discoveryTransport.select({role:role(),team_id:team,team_season_id:season});refresh.stop();updateShell(host,shellModel());}
   async function protectedLogo(ref){if(!ref?.team_id)return null;const key=`${role()}:${ref.club_id??ref.team_id}:${ref.revision??0}`;if(!logoCache.has(key)){if(logoCache.size>=50)logoCache.delete(logoCache.keys().next().value);logoCache.set(key,transport.read('logo:'+key,`/api/teams/${encodeURIComponent(ref.team_id)}/logo`).then(result=>result.discarded?null:safeImageURL(unwrap(result.data).logo)).catch(error=>{if(error.name==='AbortError')return null;return null;}));}return logoCache.get(key);}
   async function hydrateModel(envelope){const epoch=state.routeEpoch,m=unwrap(envelope),events=[...(m.event?[m.event]:[]),...pageItems(m.events),...pageItems(m.items),...pageItems(m.matches),...pageItems(m.next_event?[m.next_event]:[]),...(m.latest_result?[m.latest_result]:[]),...(m.competitions?.items??[]).flatMap(c=>pageItems(c.events))];const refs=[];for(const event of events)for(const side of [event.home,event.away])if(side?.logo_ref)refs.push(side);for(let offset=0;offset<refs.length;offset+=4){await Promise.all(refs.slice(offset,offset+4).map(async side=>{const logo=await protectedLogo(side.logo_ref);if(epoch===state.routeEpoch&&state.active&&logo)side.logo=logo;}));if(epoch!==state.routeEpoch)return envelope;}return envelope;}
   async function hydrateCatalog(){const epoch=state.routeEpoch,rows=(state.bootstrap?.teams??[]).filter(t=>t.owner_logo_available);for(let offset=0;offset<rows.length;offset+=4){await Promise.all(rows.slice(offset,offset+4).map(async team=>{const logo=await protectedLogo({team_id:team.id,club_id:team.club_id,revision:team.logo_revision});if(epoch===state.routeEpoch&&state.active)team.display_logo=logo;}));if(epoch!==state.routeEpoch)return;}if(epoch===state.routeEpoch&&state.active)updateShell(host,shellModel());}
@@ -94,10 +95,21 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
   async function seasonsPage(cursor=null,trail=[]){const loaded=await readSeasons(state.team,{cursor,trail});if(!loaded)return;selectedTeam().seasons=loaded.rows;state.seasonCatalog=loaded.catalog;updateShell(host,shellModel());}
   function selection(){return {...context(),...state.filters};}
   function scheduleSelection(){return scheduleQuery(state.filters,{seasonEnd:selectedSeason()?.end_day,today:localDay(selectedTeam()?.timezone)});}
-  function captureRoute(){return {team:state.team,season:state.season,view:state.view,filters:{...state.filters},scroll:root()?.scrollTop??0};}
+  const pageScroll=()=>Math.max(0,Number(window.scrollY??document.scrollingElement?.scrollTop)||0);
+  const scrollKey=(route={team:state.team,season:state.season,view:state.view})=>JSON.stringify([role(),viewerToken,route.team,route.season,route.view]);
+  function restorePageScroll(value){const position=Math.max(0,Number(value)||0);if(pageScroll()!==position)window.scrollTo({top:position,left:window.scrollX||0,behavior:"instant"});}
+  function rememberPage(){viewPositions.set(scrollKey(),pageScroll());if(viewPositions.size>200)viewPositions.delete(viewPositions.keys().next().value);}
+  function rememberDetail(){const detail=state.details.at(-1);if(detail&&renderedDetail===detail)detail.scroll=Math.max(0,host.querySelector('#entityBody')?.scrollTop??0);}
+  function presentDetail(options){
+    const detail=state.details.at(-1);if(options.open!==false)rememberDetail();
+    setDetail(host,options);renderedDetail=options.open===false?null:detail;
+    if(options.open!==false&&detail){const body=host.querySelector('#entityBody');if(body)body.scrollTop=detail.scroll??0;}
+  }
+  function captureRoute(){return {team:state.team,season:state.season,view:state.view,filters:{...state.filters},scroll:pageScroll()};}
+  function recordScroll(event){if(!state.active||historyHandling)return;if(event.target===host.querySelector('#entityBody'))rememberDetail();else if(event.target===document||event.target===window)rememberPage();else return;clearTimeout(scrollHistoryTimer);scrollHistoryTimer=setTimeout(()=>{scrollHistoryTimer=null;if(state.active&&!historyHandling)saveHistory(true);},120);}
   function scopeMatches(route){return route.team===state.team&&route.season===state.season;}
-  async function restoreDetailOrigin(detail){const origin=detail?.origin;if(!origin||scopeMatches(origin))return;const prepared=await prepareContext(origin.team,origin.season);if(!prepared)return;installContext(prepared);state.view=origin.view;state.filters={...state.filters,...origin.filters};await renderView();root().scrollTop=origin.scroll??0;void refresh.start(pathFor(routes.revisions));}
-  function saveHistory(replace=false){if(historyHandling)return;const value={mytsUi:true,route:{...captureRoute(),details:state.details.slice(-20)}};history[replace ? "replaceState" : "pushState"](value,"");}
+  async function restoreDetailOrigin(detail){const origin=detail?.origin;if(!origin)return;if(scopeMatches(origin)){restorePageScroll(origin.scroll);return;}const intent=interactionEpoch,prepared=await prepareContext(origin.team,origin.season);if(!prepared||intent!==interactionEpoch)return;installContext(prepared);state.view=origin.view;state.filters={...state.filters,...origin.filters};await renderView({scroll:origin.scroll??0});void refresh.start(pathFor(routes.revisions));}
+  function saveHistory(replace=false){clearTimeout(scrollHistoryTimer);scrollHistoryTimer=null;if(historyHandling)return;const value={mytsUi:true,route:{...captureRoute(),details:state.details.slice(-20)}};history[replace ? "replaceState" : "pushState"](value,"");}
   function resolveDiscard(accepted){const pending=pendingDiscard;pendingDiscard=null;host.querySelector("#confirmModal").classList.add("hidden");if(accepted)state.editorDirty=false;pending?.resolve(accepted);}
   async function canLeave(){
     if(!state.editorDirty)return true;
@@ -108,11 +120,16 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
   }
   async function restoreHistory(event){
     const route=event.state?.mytsUi&&event.state.route;if(!route||!state.active||role()==="anonymous"||!canView(route.view))return;
-    if(!await canLeave()){saveHistory();return;}
-    interactionEpoch++;
-    const prepared=await prepareContext(route.team,route.season);if(!prepared)return;
-    historyHandling=true;
-    try{installContext(prepared);state.filters={...state.filters,...route.filters};state.view=route.view;state.details=(route.details??[]).filter(detail=>canDetail(detail.kind));await renderView();root().scrollTop=route.scroll??0;const detail=state.details.at(-1);if(detail&&handlers.openDetail)await handlers.openDetail(detail,api);else setDetail(host,{open:false});void refresh.start(pathFor(routes.revisions));}catch(error){showError(error);}finally{historyHandling=false;}
+    const intent=++interactionEpoch;rememberPage();rememberDetail();clearTimeout(scrollHistoryTimer);scrollHistoryTimer=null;historyHandling=true;
+    try{
+      const allowed=await canLeave();if(intent!==interactionEpoch)return;
+      if(!allowed){historyHandling=false;saveHistory();return;}
+      const prepared=await prepareContext(route.team,route.season);if(!prepared||intent!==interactionEpoch)return;
+      installContext(prepared);state.filters={...state.filters,...route.filters};state.view=route.view;state.details=(route.details??[]).filter(detail=>canDetail(detail.kind));
+      await renderView({scroll:route.scroll??0});if(intent!==interactionEpoch)return;
+      const detail=state.details.at(-1);if(detail&&handlers.openDetail)await handlers.openDetail(detail,api);else presentDetail({open:false});
+      if(intent===interactionEpoch)void refresh.start(pathFor(routes.revisions));
+    }catch(error){if(intent===interactionEpoch)showError(error);}finally{if(intent===interactionEpoch)historyHandling=false;}
   }
   async function bootstrap({accept=()=>true,preferredTeam=state.team,preferredSeason=state.season}={}){
     const result=await transport.read("bootstrap",routes.bootstrap+(preferredTeam?"?"+new URLSearchParams({preferred_team_id:preferredTeam,...(preferredSeason?{preferred_season_id:preferredSeason}:{})}):""));if(result.discarded||!state.active||!accept())return false;
@@ -130,7 +147,7 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     const team=model.teams?.find(t=>t.id===preferredTeam)??model.teams?.find(t=>t.id===(model.selected_team?.id??model.selection?.team_id??model.selected_team_id))??model.teams?.[0];
     const season=team?.seasons?.find(s=>s.id===preferredSeason)??team?.seasons?.find(s=>s.id===(model.selected_season?.id??model.selection?.team_season_id??model.selected_season_id))??team?.seasons?.[0];
     updateContext(team?.id??null,season?.id??null);if(restore&&scopeMatches(restore))state.filters={...state.filters,...restore.filters};if(role()==="viewer"&&!canView(state.view))state.view=["overview","schedule","competitions","team","bookmarks","reports"].find(canView)??"unavailable";
-    if(role()==="anonymous"){root().innerHTML="";setDetail(host,{open:false,bodyHTML:"",actionsHTML:""});host.querySelector("#accountBody").innerHTML="";saveHistory(true);return true;}
+    if(role()==="anonymous"){root().innerHTML="";presentDetail({open:false,bodyHTML:"",actionsHTML:""});host.querySelector("#accountBody").innerHTML="";saveHistory(true);return true;}
     if(!state.team){root().innerHTML=role()==="owner"?`${empty("Connect an account and choose your team.")}<div class="action-row">${button("source-manage","Connect TeamSnap",{data:{provider:"teamsnap"}})}${button("source-manage","Connect Trace",{data:{provider:"trace"}})}${button("search","Find a GotSport team")}</div>`:empty("This shared team is no longer available.");saveHistory(true);return true;}
     await renderView();if(!accept())return false;void hydrateCatalog();saveHistory(true);void refresh.start(pathFor(routes.revisions));return true;
   }
@@ -160,36 +177,37 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     for(let i=-3;i<=3;i++){const day=addDays(date,i);if(bounds?.start_day&&day<bounds.start_day){if(!previous)days.push({label:"Previous",season_id:neighbors.previous?.id,available:!!neighbors.previous,boundary:"end"});previous=true;continue;}if(bounds?.end_day&&day>=bounds.end_day){if(!next)days.push({label:"Next",season_id:neighbors.next?.id,available:!!neighbors.next,boundary:"start"});next=true;continue;}const count=counts.get(day);days.push({day,today:day===localDay(selection.timezone),kinds:count?.kinds??[],total:count?.total??0});}
     return {...envelope,data:{mode:selection.mode,filter:selection.type,period:selection.period,selected_day:date,month_label:formatDate(date,{month:"short",day:undefined}),season_label:selectedSeason()?.label,days,events:page}};
   }
-  async function renderView({append=false,cursor=null}={}){
+  async function renderView({append=false,cursor=null,scroll}={}){
     if(!state.team)return;if(!canView(state.view)){root().innerHTML=empty("No dashboard sections are available through this viewer link.");updateShell(host,shellModel());return;}
-    const epoch=++state.routeEpoch,captured=captureRoute();gestureCleanup?.();gestureCleanup=null;
+    const epoch=++state.routeEpoch,captured=captureRoute();let repaintScroll=pageScroll();const paint=html=>{repaintScroll=pageScroll();root().innerHTML=html;};gestureCleanup?.();gestureCleanup=null;
     if(!state.season){
       state.model=null;root().classList.remove('schedule-day-view');root().removeAttribute('aria-busy');
       const available=selectedTeam()?.seasons??[];
-      root().innerHTML=empty(available.length?'Season data is available. Choose a season to view your team.':'No dated season data is available yet. Seasons will appear here as saved dates are resolved.')+`<div class="action-row">${available.length?button('season','View '+available[0].label,{data:{value:available[0].id}}):''}${role()==='owner'?button('status-open','View import progress')+button('settings','Settings'):''}</div>`;
-      updateShell(host,shellModel());return;
+      paint(empty(available.length?'Season data is available. Choose a season to view your team.':'No dated season data is available yet. Seasons will appear here as saved dates are resolved.')+`<div class="action-row">${available.length?button('season','View '+available[0].label,{data:{value:available[0].id}}):''}${role()==='owner'?button('status-open','View import progress')+button('settings','Settings'):''}</div>`);
+      updateShell(host,shellModel());restorePageScroll(scroll??repaintScroll);return;
     }
     root().setAttribute("aria-busy","true");
     try{
       const route=routes[state.view];
-      if(!route){root().innerHTML=empty("This dashboard section is unavailable.");return;}
+      if(!route){paint(empty("This dashboard section is unavailable."));return;}
       const params={...(state.view==="schedule" ? scheduleSelection() : {}),...(handlers.viewParams?.(state.view,api)??{}),...(cursor?{cursor}:{})};
       const result=await transport.read("view",pathFor(route,params));if(!guarded(epoch,result)||!scopeMatches(captured))return;
       let envelope=await hydrateModel(result.data);if(!guarded(epoch,result))return;
       if(append && state.model){if(handlers.append)envelope=handlers.append(state.view,state.model,envelope,api);else{const old=unwrap(state.model),page=unwrap(envelope);if(!Array.isArray(old.items)||!Array.isArray(page.items))throw new AppError("This saved list cannot load a further page.","page_contract");envelope={...envelope,data:{...page,items:[...old.items,...page.items]}};}}
       state.model=envelope;
-      if(handlers.present?.[state.view]){const markup=await handlers.present[state.view](envelope,api);if(!guarded(epoch,result))return;root().innerHTML=markup;}
-      else if(state.view==="overview")root().innerHTML=screens.overview({...envelope,data:{...unwrap(envelope),team_name:selectedTeam()?.name}});
+      if(handlers.present?.[state.view]){const markup=await handlers.present[state.view](envelope,api);if(!guarded(epoch,result))return;paint(markup);}
+      else if(state.view==="overview")paint(screens.overview({...envelope,data:{...unwrap(envelope),team_name:selectedTeam()?.name}}));
       else if(state.view==="schedule"){
         const range={from:addDays(state.filters.date,-3),to:addDays(state.filters.date,4)},cal=await transport.read("calendar-counts",pathFor(routes.calendar,{...scheduleSelection(),...range}));if(!guarded(epoch,cal))return;
-        const neighbors=await scheduleNeighbors();if(!neighbors||!guarded(epoch,cal))return;root().innerHTML=screens.schedule(scheduleModel(envelope,cal.data,neighbors));root().classList.toggle("schedule-day-view",state.filters.mode==="day");
+        const neighbors=await scheduleNeighbors();if(!neighbors||!guarded(epoch,cal))return;paint(screens.schedule(scheduleModel(envelope,cal.data,neighbors)));root().classList.toggle("schedule-day-view",state.filters.mode==="day");
         const gestures=[".schedule-day-surface",".schedule-date-window"].map(selector=>root().querySelector(selector)).filter(Boolean).map(node=>bindSwipe(node,{onStep:direction=>void action("day",{day:addDays(state.filters.date,direction)})}));gestureCleanup=()=>gestures.forEach(cleanup=>cleanup());
-      }else if(screens[state.view])root().innerHTML=screens[state.view](envelope);
-      else if(handlers.renderView){const markup=await handlers.renderView(state.view,envelope,{state,context:context()});if(!guarded(epoch,result))return;root().innerHTML=markup;}
-      else root().innerHTML=empty("This dashboard section is unavailable.");
+      }else if(screens[state.view])paint(screens[state.view](envelope));
+      else if(handlers.renderView){const markup=await handlers.renderView(state.view,envelope,{state,context:context()});if(!guarded(epoch,result))return;paint(markup);}
+      else paint(empty("This dashboard section is unavailable."));
       updateShell(host,shellModel());applyCapabilities();handlers.afterRender?.(state.view,api);
       if(unwrap(envelope).windowed)root().insertAdjacentHTML('afterbegin',`<p class="scope-caption">Showing the latest 200 loaded rows. Full totals cover this selection. ${button('list-restart','Return to first page',{className:'text-action'})}</p>`);
       if(envelope.projection_pending)root().insertAdjacentHTML("afterbegin",'<p class="scope-caption" role="status">Saved data is updating in the background.</p>');
+      if(guarded(epoch,result)&&scopeMatches(captured)){restorePageScroll(scroll??repaintScroll);rememberPage();saveHistory(true);}
     }catch(error){if(epoch!==state.routeEpoch)return;if(cursor&&(error.code==="cursor_restart"||state.view==="schedule"&&error.code==="cursor_selection")){notice("The list changed. Reloading this selection.");return renderView();}showError(error,{target:root()});}
     finally{if(epoch===state.routeEpoch)root()?.removeAttribute("aria-busy");}
   }
@@ -218,7 +236,11 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
   async function cancelTrace(attempt){if(!attempt)return;try{await transport.command(routes.traceCancel,{attempt});}catch(error){if(ownerSessionExpired(error)&&state.active)showError(error);else if(state.active)notice('Trace cancellation could not be confirmed. Do not use the old code; the attempt will expire.');}}
   function dismissConnection(){
     if(!connection.active)return;
-    const attempt=connection.value?.attempt;connection.update({attempt:null,attemptExpires:null});connection.dismiss();
+    const attempt=connection.value?.attempt;
+    // Closing the UI abandons pre-command intent. Only an uncertain saved
+    // command needs recovery; page/maintenance interruptions use dismiss().
+    if(connection.value?.pending){connection.update({attempt:null,attemptExpires:null});connection.dismiss();}
+    else connection.clear();
     if(attempt)void cancelTrace(attempt);
   }
   function loadingConnection(message){connectionModal({title:providerLabel(connection.value.provider),kind:'connection-loading',html:`<p class="modal-copy" role="status">${e(message)}</p>${button('connection-cancel','Cancel')}`});}
@@ -421,17 +443,17 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     if(modal?.kind==="settings")await (handlers.actions?.settings ? handlers.actions.settings({},api) : settings());else if(modal?.kind==="calendar")await calendar();else if(modal&&handlers.refreshModal)await handlers.refreshModal(modal,api);if(intent===interactionEpoch&&handlers.refreshDetail&&state.details.length)await handlers.refreshDetail(state.details.at(-1),api);
   }
   async function action(name,data={}){
-    interactionEpoch++;
+    if(name==="discard-confirm"||name==="discard-cancel"){resolveDiscard(name==="discard-confirm");return;}
+    if(name==="back"&&pendingDiscard){resolveDiscard(false);return;}
+    interactionEpoch++;historyHandling=false;
     try{
       if(!state.season&&["included-games","branding-kits","branding-kits-reset","reports","report-export","award-add","calendar","tracking-capture","source-identities","trace-tracks"].includes(name)){notice("Choose a dated season first.");return;}
-      if(name==="discard-confirm"||name==="discard-cancel"){resolveDiscard(name==="discard-confirm");return;}
-      if(name==="back"&&pendingDiscard){resolveDiscard(false);return;}
       if(name==="close-modal"&&state.editorDirty&&["editor","inclusion","inclusion-reset","coach-editor","branding","branding-kits","branding-kits-reset","award-editor","team-editor","identity","tracks"].includes(state.modal?.kind)&&!await canLeave())return;
       if(["nav","team-select","season-select","season","close-detail","back","match","player","team","competition","match-player"].includes(name)&&!await canLeave())return;
       if(["detail-tab","h2h-range","analysis-team","analysis-period","analysis-kind","analysis-more","analysis-previous","lineup-edit","player-edit","match-edit","included-games","settings","add-team","source-manage","search","account-teams","branding-logo","branding-kits","branding-kits-reset","data-files","share-copy","status-open","usage","award-add","award-edit","team-rename","team-remove","source-identities","identity-evidence","identity-kind","trace-tracks"].includes(name)&&state.editorDirty&&!await canLeave())return;
-      if(name==="nav"){if(!canView(data.view))throw new AppError("This dashboard section is not shared through this link.","share_scope_denied",403);handlers.closeDetail?.(api);state.view=data.view;state.details=[];setDetail(host,{open:false});closeModal();root()?.classList.remove("schedule-day-view");if(data.view==="schedule"&&(data.filter||data.period)){state.filters.mode="season";state.filters.type=data.filter??"all";state.filters.period=data.filter==="analyzed"?"all":data.period??"upcoming";}saveHistory();return renderView();}
-      if(name==="team-select"){const prepared=await prepareContext(data.value);if(!prepared)return;installContext(prepared);saveHistory();await renderView();void refresh.start(pathFor(routes.revisions));return;}
-      if(name==="season-select"||name==="season"){const prepared=await prepareContext(state.team,data.value);if(!prepared)return;installContext(prepared);if(data.boundary)state.filters.date=data.boundary==="start"?prepared.season.start_day:addDays(prepared.season.end_day,-1);saveHistory();await renderView();void refresh.start(pathFor(routes.revisions));return;}
+      if(name==="nav"){if(!canView(data.view))throw new AppError("This dashboard section is not shared through this link.","share_scope_denied",403);rememberPage();rememberDetail();saveHistory(true);handlers.closeDetail?.(api);state.view=data.view;state.details=[];presentDetail({open:false});closeModal();root()?.classList.remove("schedule-day-view");if(data.view==="schedule"&&(data.filter||data.period)){state.filters.mode="season";state.filters.type=data.filter??"all";state.filters.period=data.filter==="analyzed"?"all":data.period??"upcoming";}const position=data.filter||data.period?0:viewPositions.get(scrollKey())??0;saveHistory();return renderView({scroll:position});}
+      if(name==="team-select"){rememberPage();saveHistory(true);const intent=interactionEpoch,prepared=await prepareContext(data.value);if(!prepared||intent!==interactionEpoch)return;installContext(prepared);saveHistory();await renderView({scroll:viewPositions.get(scrollKey())??0});void refresh.start(pathFor(routes.revisions));return;}
+      if(name==="season-select"||name==="season"){rememberPage();saveHistory(true);const intent=interactionEpoch,prepared=await prepareContext(state.team,data.value);if(!prepared||intent!==interactionEpoch)return;installContext(prepared);if(data.boundary)state.filters.date=data.boundary==="start"?prepared.season.start_day:addDays(prepared.season.end_day,-1);saveHistory();await renderView({scroll:data.boundary?0:viewPositions.get(scrollKey())??0});void refresh.start(pathFor(routes.revisions));return;}
       if(name==='teams-more')return teamsPage(data.cursor,[...state.teamCatalog?.trail??[],state.teamCatalog?.cursor??null]);
       if(name==='teams-previous'){const trail=[...state.teamCatalog?.trail??[]],cursor=trail.pop()??null;return teamsPage(cursor,trail);}
       if(name==='seasons-more')return seasonsPage(data.cursor,[...state.seasonCatalog?.trail??[],state.seasonCatalog?.cursor??null]);
@@ -474,12 +496,12 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
       if(name==="source-team-select")return sourceTeamChoice(data);
       if(name==="theme-cycle"){const intent=interactionEpoch;state.theme=["light","dark","soccer"][(["light","dark","soccer"].indexOf(state.theme)+1)%3];applyTheme(state.theme);if(handlers.saveTheme)await handlers.saveTheme(state.theme,api);if(intent===interactionEpoch&&state.modal?.kind==="settings"){if(handlers.actions?.settings)await handlers.actions.settings({},api);else await settings();}return;}
       if(name==="sign-out"){dismissConnection();connection.clear();await transport.command(routes.ownerLogout,{});refresh.stop();state.team=null;state.season=null;transport.select({role:"anonymous"});await bootstrap();return;}
-      if(name==="close-detail"){const detail=state.details[0];handlers.closeDetail?.(api);state.details=[];setDetail(host,{open:false});await restoreDetailOrigin(detail);saveHistory(true);return;}
-      if(name==="back"){if(state.modal){closeModal();return;}if(state.details.length){const detail=state.details.pop(),previous=state.details.at(-1);if(previous&&handlers.openDetail)await handlers.openDetail(previous,api);else {handlers.closeDetail?.(api);setDetail(host,{open:false});await restoreDetailOrigin(detail);}saveHistory(true);}return;}
+      if(name==="close-detail"){rememberDetail();const detail=state.details[0];handlers.closeDetail?.(api);state.details=[];presentDetail({open:false});await restoreDetailOrigin(detail);saveHistory(true);return;}
+      if(name==="back"){if(state.modal){closeModal();return;}if(state.details.length){rememberDetail();const detail=state.details.pop(),previous=state.details.at(-1);if(previous&&handlers.openDetail)await handlers.openDetail(previous,api);else {handlers.closeDetail?.(api);presentDetail({open:false});await restoreDetailOrigin(detail);}saveHistory(true);}return;}
       if(['match','player','match-player','competition','team'].includes(name)&&!canDetail(name))throw new AppError('These details are not shared through this link.','share_scope_denied',403);
-      if(['match','player','match-player','competition'].includes(name)&&data.team_season_id&&(data.team_season_id!==state.season||(data.team_id&&data.team_id!==state.team))){const origin=captureRoute(),prepared=await prepareContext(data.team_id??state.team,data.team_season_id);if(!prepared)return;installContext(prepared);await renderView();void refresh.start(pathFor(routes.revisions));data={...data,origin};}
+      if(['match','player','match-player','competition'].includes(name)&&data.team_season_id&&(data.team_season_id!==state.season||(data.team_id&&data.team_id!==state.team))){rememberPage();rememberDetail();saveHistory(true);const intent=interactionEpoch,origin=captureRoute(),prepared=await prepareContext(data.team_id??state.team,data.team_season_id);if(!prepared||intent!==interactionEpoch)return;installContext(prepared);await renderView();if(intent!==interactionEpoch)return;void refresh.start(pathFor(routes.revisions));data={...data,origin};}
       if(handlers.actions?.[name])return handlers.actions[name](data,api);
-      if(["match","player","team","competition","match-player"].includes(name)&&handlers.openDetail){const detail={kind:name,id:data.id,tab:data.tab??"overview",origin:captureRoute(),...data};state.details.push(detail);saveHistory();return handlers.openDetail(detail,api);}
+      if(["match","player","team","competition","match-player"].includes(name)&&handlers.openDetail){rememberPage();rememberDetail();saveHistory(true);const detail={kind:name,id:data.id,tab:data.tab??"overview",origin:captureRoute(),scroll:0,...data};state.details.push(detail);saveHistory();return handlers.openDetail(detail,api);}
       notice("This action is unavailable for the selected saved record.");
     }catch(error){showError(error);}
   }
@@ -514,11 +536,11 @@ export function createApp({host=document.body,fetcher=fetch,routes={},handlers={
     }else if(connection.active)connectionError(error);else showError(error);}
     finally{controls.forEach(node=>node.disabled=false);}
   }
-  const api={state,transport,host,context,selection,pathFor,applyCapabilities,action,bootstrap,renderView,refreshSavedState:reloadVisible,checkMaintenance,settings,canView,hydrateModel,followSourceTeam,changeConnectionScope,manageSource,accountTeams,searchGotSport,resumeConnection,connection,openModal,closeModal,setDetail:options=>{setDetail(host,options);applyCapabilities();},requireOwner,notice,showError,captureRoute,canLeave};
+  const api={state,transport,host,context,selection,pathFor,applyCapabilities,action,bootstrap,renderView,refreshSavedState:reloadVisible,checkMaintenance,settings,canView,hydrateModel,followSourceTeam,changeConnectionScope,manageSource,accountTeams,searchGotSport,resumeConnection,connection,openModal,closeModal,setDetail:options=>{presentDetail(options);applyCapabilities();},requireOwner,notice,showError,captureRoute,canLeave};
   return {
     ...api,
-    async start(){state.active=true;mountShell(host,{mode:"login",owner_login:false,login_title:"Opening myTS",login_help:"Checking your saved dashboard…"});unbind=bindShell(host,{onAction:action,onSubmit:submit,onInput:(name,value,event)=>{if(connection.active&&event.target.closest('form')?.dataset.form==='gotsport-search'&&['q','state','age','gender'].includes(name))connection.update({draft:{...connection.value.draft,[name]:value}});if(handlers.inputs?.[name])handlers.inputs[name](value,api,event);else if(["player-correction","match-correction","included-games","coach-profile","coach-availability","coach-clock-correction","branding-kits","branding-logo","award-save","team-rename"].includes(event.target.closest("form")?.dataset.form))state.editorDirty=true;},onInteraction:(name,event)=>handlers.interactions?.[name]?.(event,api)});window.addEventListener("popstate",restoreHistory);transport.select({role:"anonymous",viewer:!!viewerToken});discoveryTransport.select({role:"anonymous"});try{if(!await oauthReturn()){await bootstrap();if(role()==='owner'&&connection.value)await resumeConnection();}}catch(error){const loginError=host.querySelector("#loginError");loginError.textContent=error.message;loginError.classList.remove("hidden");updateShell(host,{...shellModel(),login_error:error.message});showError(error);}return api;},
-    stop(){connection.dismiss();if(maintenanceOAuth)for(const key of Object.keys(maintenanceOAuth))maintenanceOAuth[key]=null;maintenanceOAuth=null;clearTimeout(maintenanceTimer);maintenanceTimer=null;clearTimeout(toastTimer);logoCache.clear();state.active=false;handlers.cleanup?.(api);state.routeEpoch++;refresh.stop();discoveryRefresh.stop();transport.abortAll();discoveryTransport.abortAll();window.removeEventListener("popstate",restoreHistory);unbind?.();gestureCleanup?.();modalGestureCleanup?.();state.traceAttempt=null;state.attachChoice=null;if(pendingDiscard)resolveDiscard(false);},
+    async start(){state.active=true;previousScrollRestoration=history.scrollRestoration;history.scrollRestoration="manual";window.addEventListener("scroll",recordScroll,{passive:true});host.addEventListener("scroll",recordScroll,{capture:true,passive:true});mountShell(host,{mode:"login",owner_login:false,login_title:"Opening myTS",login_help:"Checking your saved dashboard…"});unbind=bindShell(host,{onAction:action,onSubmit:submit,onInput:(name,value,event)=>{if(connection.active&&event.target.closest('form')?.dataset.form==='gotsport-search'&&['q','state','age','gender'].includes(name))connection.update({draft:{...connection.value.draft,[name]:value}});if(handlers.inputs?.[name])handlers.inputs[name](value,api,event);else if(["player-correction","match-correction","included-games","coach-profile","coach-availability","coach-clock-correction","branding-kits","branding-logo","award-save","team-rename"].includes(event.target.closest("form")?.dataset.form))state.editorDirty=true;},onInteraction:(name,event)=>handlers.interactions?.[name]?.(event,api)});window.addEventListener("popstate",restoreHistory);transport.select({role:"anonymous",viewer:!!viewerToken});discoveryTransport.select({role:"anonymous"});try{if(!await oauthReturn()){await bootstrap();if(role()==='owner'&&connection.value)await resumeConnection();}}catch(error){const loginError=host.querySelector("#loginError");loginError.textContent=error.message;loginError.classList.remove("hidden");updateShell(host,{...shellModel(),login_error:error.message});showError(error);}return api;},
+    stop(){rememberPage();rememberDetail();saveHistory(true);connection.dismiss();if(maintenanceOAuth)for(const key of Object.keys(maintenanceOAuth))maintenanceOAuth[key]=null;maintenanceOAuth=null;clearTimeout(maintenanceTimer);maintenanceTimer=null;clearTimeout(toastTimer);logoCache.clear();state.active=false;handlers.cleanup?.(api);state.routeEpoch++;refresh.stop();discoveryRefresh.stop();transport.abortAll();discoveryTransport.abortAll();window.removeEventListener("popstate",restoreHistory);window.removeEventListener("scroll",recordScroll);host.removeEventListener("scroll",recordScroll,true);if(previousScrollRestoration!=null)history.scrollRestoration=previousScrollRestoration;viewPositions.clear();unbind?.();gestureCleanup?.();modalGestureCleanup?.();state.traceAttempt=null;state.attachChoice=null;if(pendingDiscard)resolveDiscard(false);},
   };
 }
 export async function startApp(options={}){const app=createApp(options);await app.start();return app;}

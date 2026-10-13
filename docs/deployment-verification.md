@@ -1,3 +1,9 @@
+The 7.2.7 Trace follow-up remains schema-compatible and preserves queued member cursors; see [Trace member contract repair](trace-member-contract-repair.md). Its synthetic full-cycle receipt does not replace real connected-provider acceptance.
+
+# myTS 7.2.7 live workflow parity
+
+See [the exact workflow repairs and acceptance limits](live-workflow-parity-repair.md). This code-only update preserves the completed attendance import and existing schema/configuration. It repairs original attendance percentages, page/detail scroll ownership, explicit Trace cancellation and observation-only report invalidation. No source restart or account reconnection is required. Earlier receipts remain historical.
+
 # myTS 7.2.6 attendance throughput
 
 See [the bounded page preference, compact storage sizing and verification](attendance-throughput-repair.md). This code-only update keeps valid active scan cursors unchanged and uses a larger preference only for new attendance traversals. All response/transaction/checkpoint limits, schema, provider identity, refresh cadence and deployment configuration remain unchanged. Do not reset or restart the live import. Earlier sections retain their historical receipts.

@@ -9,7 +9,7 @@ export class SyncError extends Error {
   }
 }
 const blocked = new Set(['authentication_required', 'authorization_revoked', 'human_verification', 'account_access_lost', 'source_access_denied']);
-const permanent = new Set(['unsupported_response', 'invalid_job', 'contract_violation', 'record_too_large']);
+const permanent = new Set(['unsupported_response', 'invalid_job', 'contract_violation', 'source_contract', 'record_too_large']);
 export function classifyFailure(error) {
   const code = typeof error?.code === 'string' && /^[a-z0-9_]{1,64}$/.test(error.code) ? error.code : 'collector_failed';
   const requestedKind = error?.failureKind || (blocked.has(code) ? 'blocked' : permanent.has(code) ? 'permanent' : 'temporary');
@@ -23,6 +23,7 @@ export function classifyFailure(error) {
     source_access_denied: 'This source denied automated access.',
     unsupported_response: 'This source returned an unsupported data format.',
     contract_violation: 'The collector result did not satisfy its storage contract.',
+    source_contract: 'Native source data did not satisfy its storage contract.',
     record_too_large: 'A source record exceeded its documented bound.',
     rate_limited: 'This source asked us to wait before retrying.',
     collector_timeout: 'This source did not respond in time.',

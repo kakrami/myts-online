@@ -1,5 +1,5 @@
 import {sourceKey} from './repository.js';
-import {auxiliaryKey} from './auxiliary.js';
+import {auxiliaryKey,traceMembershipTime} from './auxiliary.js';
 import {nativeCanonicalId} from './identity.js';
 import {localMidnight} from './calendar.js';
 import {calendarDay} from '../read-model/selection.js';
@@ -26,6 +26,13 @@ const nativeReference=value=>{
   return `${provider}:${native}`;
 };
 const providerOf=r=>r.provider||nativeReference(r.source_team_id||r.source_division_id||r.source_event_id).split(':')[0];
+// Preserve a valid native absolute-date spelling across a portable round trip
+// only when it agrees with the saved numeric projection. Legacy evidence that
+// used permissive coercion (blank/boolean/array) keeps the old column fallback.
+function importedMemberTime(evidence,key,value) {
+  if(Object.hasOwn(evidence,key))try{if(traceMembershipTime(evidence[key])===(value??null))return evidence[key];}catch{}
+  return value;
+}
 
 const definitions={
     source_roster_snapshots:{table:'connection_roster_evidence',select:"r.source_player_id,r.source_event_id,r.valid_from,r.valid_until,r.certainty AS original_certainty,r.basis AS original_basis,r.name,r.jersey,r.position,r.observed_at,c.source_team_id,c.account_id,s.year AS season_year",where:"r.connection_id IN(SELECT id FROM connection_roots) AND EXISTS(SELECT 1 FROM team_connection_seasons m WHERE m.connection_id=r.connection_id AND m.team_season_id=r.team_season_id AND m.active=1 AND m.excluded=0) AND(r.source_event_id IS NULL OR r.source_event_id IN(SELECT id FROM selected_events))",accountColumn:'c.account_id',join:'JOIN team_source_connections c ON c.id=r.connection_id JOIN team_seasons s ON s.id=r.team_season_id',order:'r.connection_id,r.team_season_id,r.source_player_id,r.basis_key'},
@@ -176,7 +183,7 @@ async function importedPage(repo,scope,section,rows,{validated=null,shapeOnly=fa
     else if(table==='source_standings')push('standings',{division_id:nativeReference(row.source_division_id),pool_id:row.pool_id,team_id:row.participant_key.startsWith('registration:')?row.participant_key:nativeReference(row.participant_key),rank:row.rank,scan_id:'',payload:JSON.stringify({...evidence,name:row.name,mp:row.played,w:row.wins,d:row.draws,l:row.losses,gf:row.goals_for,ga:row.goals_against,gd:row.goal_difference,pts:row.points}),observed_at});
     else if(table==='source_attendance'){need(['Yes','No','Maybe','NR','Unknown'].includes(row.status),'Invalid normalized attendance.');push('attendance',{...privateBase(),player_id:nativeReference(row.source_player_id),status_code:row.source_status,normalized_status:row.status});}
     else if(table==='source_trace_components')push('trace_parts',{...privateBase(),part:row.native_key,value:JSON.stringify({...evidence,half:row.half,availability:row.availability,start:row.start_seconds,end:row.end_seconds,duration:row.duration_seconds,population:row.population})});
-    else if(table==='source_game_members')push('trace_parts',{...privateBase(),part:row.native_key,value:JSON.stringify({...evidence,user_id:row.source_player_id?nativeReference(row.source_player_id).slice(6):null,gid:row.gid,side:row.side,name:row.name,jersey:row.jersey,dummy:!!row.dummy,position:row.position,join_time:row.join_time,leave_time:row.leave_time})});
+    else if(table==='source_game_members')push('trace_parts',{...privateBase(),part:row.native_key,value:JSON.stringify({...evidence,user_id:row.source_player_id?nativeReference(row.source_player_id).slice(6):null,gid:row.gid,side:row.side,name:row.name,jersey:row.jersey,dummy:!!row.dummy,position:row.position,join_time:importedMemberTime(evidence,'join_time',row.join_time),leave_time:importedMemberTime(evidence,'leave_time',row.leave_time)})});
     else if(table==='source_game_moments')push('trace_parts',{...privateBase(),part:row.native_key,value:JSON.stringify({...evidence,game_clip_id:row.clip_id,half:row.half,time:row.time_seconds,duration:row.duration_seconds,type:row.type,title:row.title,side:row.side})});
     else if(table==='source_tracking_segments')push('trace_parts',{...privateBase(),part:`tracking:${row.half}:${row.gid}:${row.chunk}:${row.page_offset}`,value:JSON.stringify({player_id:row.source_player_id?nativeReference(row.source_player_id):null,segments:parse(row.segments)})});
     else if(table==='source_stat_summaries')push('trace_stats',{...privateBase(),player_id:row.source_player_id?nativeReference(row.source_player_id):row.track_gid?'track:'+encodeURIComponent(row.track_gid):'team',track_gid:row.track_gid,side:row.side,period:row.period,state:row.state,value:JSON.stringify({stats:safeEvidence(parse(row.summary),{imported:true}),heatmap:row.heatmap_cells?parse(row.heatmap_cells):null,heatmap_state:row.heatmap_state||'unpublished'})});
