@@ -1,6 +1,6 @@
 {
   "name": "myts",
-  "version": "7.2.17",
+  "version": "7.2.18",
   "private": true,
   "type": "module",
   "scripts": {

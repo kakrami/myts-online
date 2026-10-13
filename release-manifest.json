@@ -1,6 +1,6 @@
 {
   "service": "myTS",
-  "version": "7.2.17",
+  "version": "7.2.18",
   "review": true,
   "files": [
     {
@@ -12,6 +12,11 @@
       "path": "docs/acceptance-baseline.md",
       "bytes": 22591,
       "sha256": "fd9904062a25c2f5b1dd7307cdc495d062f257ecaab5561cc562924c406a8757"
+    },
+    {
+      "path": "docs/acceptance-suite-repair.md",
+      "bytes": 6031,
+      "sha256": "17b8ea6093e503a04874123e11d5f67d7c127c3e2c633a7f389760b8f98b5fac"
     },
     {
       "path": "docs/analysis-published-game-scope.md",
@@ -359,6 +364,21 @@
       "sha256": "d2e31829636d6b0802f6ad7bd7bdc4a01b40f9aff6ed930ee2afda7415159e11"
     },
     {
+      "path": "docs/trace-full-half-local-receipt.json",
+      "bytes": 3270,
+      "sha256": "fa6bf151c086414db11c804593221222f6a13e3d67ddb1a05fdabf67a97e8293"
+    },
+    {
+      "path": "docs/trace-full-half-review.md",
+      "bytes": 5170,
+      "sha256": "04fe41d01dbee9e226d212409d26c77095acc81c48a3447836c42a5b6787f17b"
+    },
+    {
+      "path": "docs/trace-input-availability.md",
+      "bytes": 17523,
+      "sha256": "63a8f42de6e846cba927399199c29a02494138a572c9425c3531772cedc6cb33"
+    },
+    {
       "path": "docs/trace-member-contract-repair.md",
       "bytes": 6340,
       "sha256": "bb150981c612ac1fcd2c75d4a1d41168647b1187ec77707b773fd6606d0cada5"
@@ -391,12 +411,12 @@
     {
       "path": "package-lock.json",
       "bytes": 49487,
-      "sha256": "325b3a977445a70ce74f05844f010d46bceb525ad52dad54d990bd2e4cfad292"
+      "sha256": "ac31f14493a04fc98f7ee1a221af726695938c0ff8e65ad8ddf855762bb35fd0"
     },
     {
       "path": "package.json",
       "bytes": 636,
-      "sha256": "a991f8f8c6db46b43bfad68451256d18c8e70681697d2a13db0852de6f7e059d"
+      "sha256": "6f992fdd312e29848b51623e5a0f59b4152bfbe4004d6fc2a25de67f5ee7e10e"
     },
     {
       "path": "scripts/release-check.mjs",
@@ -440,8 +460,8 @@
     },
     {
       "path": "src/analysis/resolver-adapter.js",
-      "bytes": 14146,
-      "sha256": "37530f6be375c1ea8bdf58479cb9ab9e3b4dd366367725a5984fd2e366dc2958"
+      "bytes": 14333,
+      "sha256": "622cd36e539d46dccf97fdabf69b13fb6ecd4cf92ffa9681c61e10e317736510"
     },
     {
       "path": "src/analysis/resolver/allocation.js",
@@ -666,7 +686,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 31,
-      "sha256": "0317e32480e7d91aafa7207d35085e5c995b714425663e1f6b0263295c560f26"
+      "sha256": "2d423a7a6e0d50eeb0675c3afd96a9acd4b509d1dcac451165fe0793a2799bc7"
     },
     {
       "path": "src/coaching/routes.js",
@@ -765,8 +785,8 @@
     },
     {
       "path": "src/domain/repository.js",
-      "bytes": 70370,
-      "sha256": "d761525cafead984befdfed2bd8594dc7827a119394ff2fa25c38682ce8465e6"
+      "bytes": 70433,
+      "sha256": "843fdc719d9cffd2954426d1951dac32cd4243419216f74680d2b67e835935b2"
     },
     {
       "path": "src/domain/schema.js",
@@ -1020,8 +1040,8 @@
     },
     {
       "path": "src/sources/http.js",
-      "bytes": 6897,
-      "sha256": "498f6a4ef6f54be52f77cd040ccbe824ed77e59f7ec6597f13cc624a9d9e7cb6"
+      "bytes": 7126,
+      "sha256": "5d4aa2ce11994d510ab335aa42004774e74a9ee4e56ad620c4f96cb189b59047"
     },
     {
       "path": "src/sources/index.js",
@@ -1060,8 +1080,8 @@
     },
     {
       "path": "src/sources/trace.js",
-      "bytes": 41025,
-      "sha256": "c5d3005bd8f0ff2fca8ffc34a9938c9d05f967e2c232efcbf6e3679e8da9f008"
+      "bytes": 42441,
+      "sha256": "f2d7701170de27e36074746b574a73f204b160376e3125d7a7fdb810ee2c88fb"
     },
     {
       "path": "src/sources/tracking-capture.js",
@@ -1075,8 +1095,8 @@
     },
     {
       "path": "src/sync/coordinator.js",
-      "bytes": 74367,
-      "sha256": "6199d995d416d40522f0853bedb9c28c758dab716b02fcfdad50ec17a5af01ea"
+      "bytes": 75812,
+      "sha256": "1be8ae1f3428a8084e1268d34b5c3cca102ed23b85657c12100215e2925e0d3e"
     },
     {
       "path": "src/sync/errors.js",
@@ -1090,8 +1110,8 @@
     },
     {
       "path": "src/sync/public-history.js",
-      "bytes": 14982,
-      "sha256": "2c9617883196ddc0b57945a70d349567b84f43e99c6697507176ba93f4286287"
+      "bytes": 15140,
+      "sha256": "f4a8ea0b9dfde63a74681f6f0f052eeeea70c6fac52bce75a46e7f2d0083f84b"
     },
     {
       "path": "src/sync/runtime.js",
