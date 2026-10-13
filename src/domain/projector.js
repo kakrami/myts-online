@@ -36,7 +36,7 @@ export async function buildProjectionPage(repo,teamId,seasonId,checkpoint={}) {
   const state=await repo.db.prepare('SELECT p.*,r.content_revision FROM team_projection_state p JOIN team_read_state r ON r.app_team_id=p.app_team_id WHERE p.team_season_id=? AND p.app_team_id=?').bind(seasonId,teamId).first();
   const statements=[],add=(sql,...params)=>statements.push({sql,params}),affectedTeams=[];
   let cp={...checkpoint},revision=state.input_revision;
-  const response=(complete=false,extra={})=>({statements,checkpoint:cp,complete,changed:false,revision:state.content_revision,input_revision:revision,affectedTeams,...extra});
+  const response=(complete=false,extra={})=>({statements,checkpoint:cp,complete,changed:false,recoveryRequired:true,revision:state.content_revision,input_revision:revision,affectedTeams,...extra});
   if(cp.phase==='cleanup') {
     // Old runs may be deleted in bounded slices while a newer source revision is
     // already pending. The published pointer is protected in every delete.
@@ -47,7 +47,7 @@ export async function buildProjectionPage(repo,teamId,seasonId,checkpoint={}) {
     if(counts.events)add('DELETE FROM team_event_rows WHERE rowid IN(SELECT rowid FROM team_event_rows WHERE run_id=? LIMIT 200) AND run_id IS NOT (SELECT published_run_id FROM team_projection_state WHERE team_season_id=?) AND $FENCE',old,seasonId);
     else if(counts.players)add('DELETE FROM team_player_rows WHERE rowid IN(SELECT rowid FROM team_player_rows WHERE run_id=? LIMIT 200) AND run_id IS NOT (SELECT published_run_id FROM team_projection_state WHERE team_season_id=?) AND $FENCE',old,seasonId);
     else add("DELETE FROM team_projection_runs WHERE id=? AND state='obsolete' AND id IS NOT (SELECT published_run_id FROM team_projection_state WHERE team_season_id=?) AND $FENCE",old,seasonId);
-    return response();
+    return response(false,{recoveryRequired:false});
   }
   if(!cp.runId&&state.pending===0&&state.published_input_revision===revision){cp={phase:'cleanup'};return response();}
   let run=cp.runId?await repo.db.prepare('SELECT * FROM team_projection_runs WHERE id=? AND app_team_id=? AND team_season_id=?').bind(cp.runId,teamId,seasonId).first():null;
@@ -119,7 +119,7 @@ export async function buildProjectionPage(repo,teamId,seasonId,checkpoint={}) {
     const playerColumns=connectionManaged?`p.id,p.provider,p.scope,${evidenceColumn('authority')} AS roster_authority,${evidenceColumn('name')} AS name,${evidenceColumn('jersey')} AS jersey,l.player_id AS canonical_id`:'p.id,p.provider,p.scope,p.name,p.jersey,l.player_id AS canonical_id';
     const columnParams=connectionManaged?[seasonId,teamId,seasonId,teamId,seasonId,teamId]:[],relationParams=connectionManaged?[teamId,seasonId]:[cp.runId];
     const page=(await repo.db.prepare(`${roots} SELECT ${playerColumns} FROM source_players p LEFT JOIN player_source_links l ON l.source_player_id=p.id WHERE p.id>? AND (${relation}) ORDER BY p.id LIMIT ${pageSize}`).bind(teamId,seasonId,...columnParams,cp.cursor||'',...relationParams).all()).results;
-    if(!page.length){cp={...cp,phase:'publish',cursor:''};return response();}
+    if(!page.length){cp={...cp,phase:'publish',cursor:''};return response(false,{recoveryRequired:false});}
     const missing=await Promise.all(page.filter(p=>!p.canonical_id).map(async p=>({source_id:p.id,id:await nativeCanonicalId('player',p.id)})));
     if(missing.length){add("INSERT OR IGNORE INTO players SELECT json_extract(value,'$.id'),? FROM json_each(?) WHERE $FENCE",stamp(),JSON.stringify(missing));add("INSERT OR IGNORE INTO player_source_links(source_player_id,player_id,reason,evidence) SELECT json_extract(value,'$.source_id'),json_extract(value,'$.id'),'source_identity','{}' FROM json_each(?) WHERE $FENCE",JSON.stringify(missing));for(const p of page)if(!p.canonical_id)p.canonical_id=missing.find(m=>m.source_id===p.id).id;}
     const existingIds=page.filter(p=>!missing.some(m=>m.source_id===p.id)).map(p=>p.canonical_id);
@@ -128,18 +128,21 @@ export async function buildProjectionPage(repo,teamId,seasonId,checkpoint={}) {
     const corrections=(await repo.db.prepare("SELECT entity_id,fields FROM domain_overrides WHERE app_team_id=? AND kind='player' AND entity_id IN(SELECT value FROM json_each(?))").bind(teamId,JSON.stringify(canonical)).all()).results,overrides=new Map(corrections.map(r=>[r.entity_id,parse(r.fields)]));
     const rows=[...groups(combined)].map(([playerId,sources])=>({run_id:cp.runId,...playerPresentation(teamId,seasonId,playerId,sources,overrides.get(playerId)||{})}));
     jsonInsert(add,'team_player_rows',rows,{conflict:'run_id,app_team_id,team_season_id,player_id'});
-    cp={...cp,cursor:page.at(-1).id};return response();
+    // Existing player identities only update this unpublished run. New
+    // identities keep conservative recovery, like correspondence pages.
+    cp={...cp,cursor:page.at(-1).id};return response(false,{recoveryRequired:missing.length!==0});
   }
   if(cp.phase==='events') {
     const page=connectionManaged?(await repo.db.prepare(`${roots} SELECT DISTINCT c.canonical_id AS id FROM source_events e JOIN event_source_links l ON l.source_event_id=e.id JOIN canonical_event_ids c ON c.input_id=l.event_id JOIN team_event_season_resolutions resolution ON resolution.event_id=c.canonical_id AND resolution.app_team_id=? AND resolution.team_season_id=? WHERE ${SELECTED} AND c.canonical_id>? ORDER BY c.canonical_id LIMIT ${pageSize}`).bind(teamId,seasonId,teamId,seasonId,cp.cursor||'').all()).results:(await repo.db.prepare(`${roots} SELECT DISTINCT l.event_id AS id FROM source_events e JOIN event_source_links l ON l.source_event_id=e.id WHERE ${SELECTED} AND (${nativeWindow} OR EXISTS(SELECT 1 FROM domain_overrides o WHERE o.app_team_id=? AND o.kind='event' AND o.entity_id=l.event_id)) AND l.event_id>? ORDER BY l.event_id LIMIT ${pageSize}`).bind(teamId,seasonId,...seasonWindow(season),teamId,cp.cursor||'').all()).results;
-    if(!page.length){cp={...cp,phase:'players',cursor:''};return response();}
+    if(!page.length){cp={...cp,phase:'players',cursor:''};return response(false,{recoveryRequired:false});}
     const ids=page.map(e=>e.id),rows=(await repo.db.prepare(`${roots} SELECT DISTINCT ${eventColumns.map(c=>`e.${c}`).join(',')},c.canonical_id AS canonical_id,t.side AS own_side FROM source_events e JOIN event_source_links l ON l.source_event_id=e.id JOIN canonical_event_ids c ON c.input_id=l.event_id JOIN source_event_teams t ON t.source_event_id=e.id WHERE t.source_team_id IN(SELECT id FROM sources) AND c.canonical_id IN(SELECT value FROM json_each(?)) ORDER BY e.provider,e.id`).bind(teamId,seasonId,JSON.stringify(ids)).all()).results;
     const corrections=(await repo.db.prepare("SELECT entity_id,fields FROM domain_overrides WHERE app_team_id=? AND kind='event' AND entity_id IN(SELECT value FROM json_each(?))").bind(teamId,JSON.stringify(ids)).all()).results,overrides=new Map(corrections.map(r=>[r.entity_id,parse(r.fields)]));
     const maps=await metadata(repo.db,rows),review=(await repo.db.prepare("SELECT a,b FROM source_event_correspondences WHERE status='review' AND (a IN(SELECT value FROM json_each(?)) OR b IN(SELECT value FROM json_each(?)))").bind(JSON.stringify(rows.map(e=>e.id)),JSON.stringify(rows.map(e=>e.id))).all()).results;
     const memberships=connectionManaged?new Map((await repo.db.prepare('SELECT * FROM team_event_season_resolutions WHERE app_team_id=? AND team_season_id=? AND event_id IN(SELECT value FROM json_each(?))').bind(teamId,seasonId,JSON.stringify(ids)).all()).results.map(row=>[row.event_id,row])):new Map();
     const projected=[];
     for(const [eventId,sources]of groups(rows)){const membership=memberships.get(eventId),identityConflict=membership?.state==='conflict'||review.some(p=>sources.some(s=>[p.a,p.b].includes(s.id))),fields={...(overrides.get(eventId)||{}),...(membership?{starts_at:membership.starts_at,local_day:membership.effective_day}: {})},value=eventPresentation(team,season,eventId,sources,fields,maps.competitionIds,maps.divisionIds,identityConflict);if(value)projected.push({run_id:cp.runId,...value});}
-    jsonInsert(add,'team_event_rows',projected,{conflict:'run_id,app_team_id,team_season_id,event_id'});cp={...cp,cursor:page.at(-1).id};return response();
+    // These rows are invisible until publish and cannot dirty root demand.
+    jsonInsert(add,'team_event_rows',projected,{conflict:'run_id,app_team_id,team_season_id,event_id'});cp={...cp,cursor:page.at(-1).id};return response(false,{recoveryRequired:false});
   }
   if(cp.phase==='publish') {
     add("UPDATE team_projection_runs SET state='obsolete' WHERE app_team_id=? AND team_season_id=? AND state='published' AND id<>? AND $FENCE",teamId,seasonId,cp.runId);

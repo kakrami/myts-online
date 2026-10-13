@@ -86,7 +86,7 @@ export async function collectApplicationJob({db,env,lease,args,checkpoint}, opti
     const projection = await repo.buildProjectionPage(args.teamId,args.seasonId,checkpoint);
     const children=(projection.affectedTeams||[]).slice(0,127).map(affected=>projectionSpec(affected.app_team_id,affected.team_season_id));
     if(projection.published)children.push(analysisCatalogSpec(args.teamId,args.seasonId,args.requestId));
-    return {statements:projection.statements,checkpoint:projection.checkpoint,children,complete:projection.complete,coverage:projection.complete?'complete':'partial',publishContent:false,rowsSaved:projection.rowsSaved||0};
+    return {statements:projection.statements,checkpoint:projection.checkpoint,children,complete:projection.complete,recoveryRequired:projection.recoveryRequired,coverage:projection.complete?'complete':'partial',publishContent:false,rowsSaved:projection.rowsSaved||0};
   }
   const transport = options.transportFactory ? options.transportFactory(env) : new SourceTransport(env);
   try {

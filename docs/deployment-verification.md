@@ -1,3 +1,7 @@
+# myTS 7.2.2 connection throughput repair
+
+See [the bounded repair and measured acceptance](connection-throughput-repair.md). This is a code-only update of the existing 7.2.1 installation. The 731-statement schema, upgrade plan, original setup timestamps, data, credentials, root identities and deployment configuration are unchanged. Queued connection reconciliation resumes from its current canonical cursor; do not reset or restart the provider scan. Final native and artifact receipts are required before deployment. The following 7.2.1 and 7.2.0 sections preserve earlier receipts and recovery instructions; they are not new acceptance claims for 7.2.2.
+
 # myTS 7.2.1 TeamSnap collection repair
 
 See [the repair, exact scope and live recovery](teamsnap-pagination-repair.md). This code-only patch preserves the completed 7.2.0 schema, original setup timestamps, database and account/connection identities. Deployment alone does not retry permanent failed jobs; use the existing TeamSnap Manage → Update now after verifying version 7.2.1. The following 7.2.0 transition ledger is historical and remains applicable only when starting from the exact older 7.1.4 installation.

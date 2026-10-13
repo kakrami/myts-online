@@ -112,21 +112,30 @@ export function createSyncRuntime(collector, options = {}) {
         // Persist recovery before external work. An interrupted invocation cannot
         // strand a running lease until somebody opens the browser.
         await this.arm(started + (options.leaseMs ?? 45000) + (options.alarmDelayMs ?? 500));
+        let projectionRecovery = null;
         const result = await coordinator.runOne(async context=>{
           // Record the obligation before any imported source page can commit.
           // A restarted alarm can recover it even if the final commit's reply
           // or subsequent storage promotion was interrupted.
           if(options.recoverConnections&&context.lease.provider==='reports'&&context.lease.component==='data-import')await this.ctx.storage.put('data_import_recovery_pending',true);
-          return collector(context);
+          const {id,provider,component,stage}=context.lease;
+          const page=await collector(context);
+          // This internal hint applies only to the page collected for this
+          // projection lease, never providers, imports, or a later invocation.
+          if(provider==='domain'&&component==='projection'&&stage==='projection')projectionRecovery={jobId:id,required:page?.recoveryRequired};
+          return page;
         },{env:this.env});
         // A page may legitimately use the whole invocation. It has already
         // saved its checkpoint: schedule another bounded invocation rather
         // than turn the due-queue read into a fictitious source failure.
         const importTerminal=result.provider==='reports'&&result.component==='data-import'&&['ready','failed','blocked','retrying'].includes(result.state);
         const importIdle=result.state==='idle'&&!!options.recoverConnections&&await this.ctx.storage.get('data_import_recovery_pending');
-        // Intermediate import pages stay coalesced. Explicit owner wakes and
-        // provider/projection commits still request their immediate recovery.
-        const recover=!!options.recoverConnections&&(importTerminal||importIdle||result.committed&&(['gotsport','live','teamsnap','trace'].includes(result.provider)||result.provider==='domain'&&result.component==='projection'));
+        // Only a successful nonterminal projection page may opt out. Existing
+        // durable markers and concurrent owner wakes are never cleared here.
+        const stableProjection=result.state==='queued'&&result.stage==='projection'&&projectionRecovery?.jobId===result.jobId&&projectionRecovery?.required===false;
+        // Intermediate imports stay coalesced. Provider commits and projection
+        // identity, publication, and terminal pages retain immediate recovery.
+        const recover=!!options.recoverConnections&&(importTerminal||importIdle||result.committed&&(['gotsport','live','teamsnap','trace'].includes(result.provider)||result.provider==='domain'&&result.component==='projection'&&!stableProjection));
         if(recover){
           await this.ctx.storage.put('connection_recovery_pending',true);
           // Never clear the deferred obligation before its replacement is

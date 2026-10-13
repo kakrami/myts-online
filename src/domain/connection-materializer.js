@@ -1,4 +1,5 @@
 import {nativeCanonicalId} from './identity.js';
+import {buildConnectionEventBatch} from './connection-event-batch.js';
 import {localMidnight} from './calendar.js';
 import {resolveEventDate,datedPeriodYears,qualifiedRosterPeriod,observedDay} from './connection-evidence.js';
 import {prepareGameSeasonMove} from './game-season-state.js';
@@ -16,8 +17,8 @@ function jsonWrite(add,table,rows,keys){
 }
 function rootCondition(root){return {sql:`EXISTS(SELECT 1 FROM team_source_connections r JOIN app_teams t ON t.id=r.app_team_id WHERE r.id=? AND r.app_team_id=? AND r.active=1 AND r.generation=? AND r.input_revision=? AND t.timezone=? AND NOT EXISTS(SELECT 1 FROM team_lifecycle l WHERE l.team_id=t.id) AND ((r.scope_mode='fixed_seasons' AND EXISTS(SELECT 1 FROM source_teams source WHERE source.id=r.source_team_id AND source.provenance='file_import')) OR r.account_id IS NULL OR EXISTS(SELECT 1 FROM provider_accounts a WHERE a.id=r.account_id AND a.generation=?)))`,params:[root.id,root.app_team_id,root.generation,root.input_revision,root.timezone,root.account_generation]};}
 function assertion(add,condition){add(`INSERT INTO domain_team_preconditions(id,expected_input,actual_input) SELECT 1,1,CASE WHEN ${condition.sql} THEN 1 ELSE 0 END WHERE $FENCE ON CONFLICT(id) DO UPDATE SET expected_input=excluded.expected_input,actual_input=excluded.actual_input`,...condition.params);}
-async function seasonPlan(db,root,year,add){
-  const saved=await db.prepare('SELECT * FROM team_seasons WHERE app_team_id=? AND year=?').bind(root.app_team_id,year).first();if(saved)return saved;
+async function seasonPlan(db,root,year,add,cached){
+  const saved=cached!==undefined?cached:await db.prepare('SELECT * FROM team_seasons WHERE app_team_id=? AND year=?').bind(root.app_team_id,year).first();if(saved)return saved;
   const id=await nativeCanonicalId('team-season',`${root.app_team_id}:${year}`),start=`${year}-06-01`,end=`${year+1}-06-01`;
   add('INSERT OR IGNORE INTO team_seasons(id,app_team_id,year,start_day,end_day,start_at,end_at,include_june) SELECT ?,?,?,?,?,?,?,0 WHERE $FENCE',id,root.app_team_id,year,start,end,localMidnight(start,root.timezone),localMidnight(end,root.timezone));
   add('INSERT OR IGNORE INTO team_projection_state(team_season_id,app_team_id) SELECT ?,? WHERE $FENCE',id,root.app_team_id);
@@ -25,8 +26,8 @@ async function seasonPlan(db,root,year,add){
   add('UPDATE app_teams SET season_year=? WHERE id=? AND season_year=0 AND $FENCE',year,root.app_team_id);
   return null;
 }
-async function membershipPlan(db,root,season,basis,add){
-  const member=await db.prepare('SELECT m.*,a.active AS attachment_active,a.generation AS attachment_generation FROM team_connection_seasons m LEFT JOIN team_source_attachments a ON a.id=m.attachment_id WHERE m.connection_id=? AND m.team_season_id=?').bind(root.id,season.id).first();
+async function membershipPlan(db,root,season,basis,add,cached){
+  const member=cached!==undefined?cached:await db.prepare('SELECT m.*,a.active AS attachment_active,a.generation AS attachment_generation FROM team_connection_seasons m LEFT JOIN team_source_attachments a ON a.id=m.attachment_id WHERE m.connection_id=? AND m.team_season_id=?').bind(root.id,season.id).first();
   if(member?.excluded||root.scope_mode==='fixed_seasons'&&(!member||!member.active))return false;
   if(member?.active===1&&member.generation===root.generation&&member.attachment_active===1&&member.attachment_generation===root.generation)return true;
   const attachmentId=member?.attachment_id||await nativeCanonicalId('connection-season',`${root.id}:${season.id}`);
@@ -44,7 +45,7 @@ function dirtySeasons(add,teamId,ids){
  * seasons. Every page carries root/account/input fences in the same transaction
  * as canonical membership, roster evidence and downstream projection dirtiness. */
 export async function buildConnectionPage(db,{connectionId,teamId,generation,checkpoint={}}){
-  const root=await db.prepare(`SELECT r.*,t.timezone,s.evidence,s.provenance,a.generation AS account_generation,a.active AS account_active FROM team_source_connections r JOIN app_teams t ON t.id=r.app_team_id JOIN source_teams s ON s.id=r.source_team_id LEFT JOIN provider_accounts a ON a.id=r.account_id WHERE r.id=? AND r.app_team_id=? AND r.active=1 AND r.generation=? AND NOT EXISTS(SELECT 1 FROM team_lifecycle l WHERE l.team_id=t.id)`).bind(connectionId,teamId,generation).first();
+  const root=await db.prepare(`SELECT r.*,${checkpoint.phase==='events'?`EXISTS(SELECT 1 FROM event_aliases alias CROSS JOIN event_source_links link ON link.event_id=alias.merged_id JOIN source_event_teams owned ON owned.source_event_id=link.source_event_id WHERE owned.source_team_id=r.source_team_id OR EXISTS(SELECT 1 FROM source_team_links peer WHERE (peer.a=r.source_team_id AND peer.b=owned.source_team_id) OR(peer.b=r.source_team_id AND peer.a=owned.source_team_id)))`:'0'} AS has_event_aliases,t.timezone,s.evidence,s.provenance,a.generation AS account_generation,a.active AS account_active FROM team_source_connections r JOIN app_teams t ON t.id=r.app_team_id JOIN source_teams s ON s.id=r.source_team_id LEFT JOIN provider_accounts a ON a.id=r.account_id WHERE r.id=? AND r.app_team_id=? AND r.active=1 AND r.generation=? AND NOT EXISTS(SELECT 1 FROM team_lifecycle l WHERE l.team_id=t.id)`).bind(connectionId,teamId,generation).first();
   if(!root)throw fail('This connection or its authorization has changed.');
   const newPass=()=>({phase:'boundaries',after:'',inputRevision:root.input_revision,passRevision:root.input_revision,generation:root.generation,timezone:root.timezone});
   let cp=checkpoint.generation===root.generation&&checkpoint.timezone===root.timezone&&checkpoint.phase?{...checkpoint}:newPass();
@@ -89,7 +90,11 @@ export async function buildConnectionPage(db,{connectionId,teamId,generation,che
     cp={...cp,after:cp.period};delete cp.period;delete cp.years;delete cp.yearIndex;return response();
   }
   if(cp.phase==='events'){
-    const next=await db.prepare(`${sources} SELECT DISTINCT c.canonical_id AS id FROM source_event_teams st JOIN event_source_links l ON l.source_event_id=st.source_event_id JOIN canonical_event_ids c ON c.input_id=l.event_id WHERE st.source_team_id IN(SELECT id FROM sources) AND c.canonical_id>? ORDER BY c.canonical_id LIMIT 1`).bind(...rootParams(connectionId),cp.after).first();
+    const batch=root.has_event_aliases?{legacy:{}}:await buildConnectionEventBatch(db,root,cp.after);
+    if(batch.empty){cp={...cp,phase:'roster',after:'',yearIndex:0};return response();}
+    if(!batch.fallback&&!batch.legacy){statements.push(...batch.statements);affectedTeams.push(...batch.affectedTeams);cp={...cp,after:batch.after};return response();}
+    if(batch.legacy){
+    const next=batch.legacy.id?{id:batch.legacy.id}:await db.prepare(`${sources} SELECT DISTINCT c.canonical_id AS id FROM source_event_teams st JOIN event_source_links l ON l.source_event_id=st.source_event_id JOIN canonical_event_ids c ON c.input_id=l.event_id WHERE st.source_team_id IN(SELECT id FROM sources) AND c.canonical_id>? ORDER BY c.canonical_id LIMIT 1`).bind(...rootParams(connectionId),cp.after).first();
     if(!next){cp={...cp,phase:'roster',after:'',yearIndex:0};return response();}
     const sourceRows=(await db.prepare(`${teamSources} SELECT DISTINCT e.*,competition.starts_on AS competition_start,competition.ends_on AS competition_end,(SELECT json_group_array(json_object('start',json_extract(native.evidence,'$.season_start_date'),'end',json_extract(native.evidence,'$.season_end_date'))) FROM source_event_teams member JOIN source_teams native ON native.id=member.source_team_id WHERE member.source_event_id=e.id AND native.id IN(SELECT id FROM sources)) AS native_periods,EXISTS(SELECT 1 FROM source_event_teams owned WHERE owned.source_event_id=e.id AND (owned.source_team_id=? OR EXISTS(SELECT 1 FROM source_team_links link WHERE (link.a=? AND link.b=owned.source_team_id) OR (link.b=? AND link.a=owned.source_team_id)))) AS own_connection FROM source_events e LEFT JOIN source_competitions competition ON competition.id=e.competition_key AND competition.account_id IS e.account_id JOIN event_source_links l ON l.source_event_id=e.id JOIN canonical_event_ids c ON c.input_id=l.event_id JOIN source_event_teams st ON st.source_event_id=e.id WHERE c.canonical_id=? AND st.source_team_id IN(SELECT id FROM sources) ORDER BY e.id LIMIT 97`).bind(teamId,root.source_team_id,root.source_team_id,root.source_team_id,next.id).all()).results;
     if(sourceRows.length>96)throw fail('This game has too many linked observations to resolve safely.','record_size');
@@ -97,11 +102,15 @@ export async function buildConnectionPage(db,{connectionId,teamId,generation,che
     const previous=accepted.previous?parse(accepted.previous):null,override={fields:accepted.fields};
     let choice=resolveEventDate({timezone:root.timezone,sources:sourceRows,fields:parse(override?.fields),previous,verifiedYears:sourceRows.flatMap(source=>datedPeriodYears(source.competition_start,source.competition_end).concat((parse(source.native_periods)||[]).flatMap(period=>datedPeriodYears(period.start,period.end))))});
     if(choice.year!==null&&(choice.year<2000||choice.year>2100))choice={...choice,state:'pending',year:null,day:null,starts_at:null,local_day:null,basis:'date_outside_supported_range'};
+      batch.fallback={id:next.id,sourceRows,previous,choice};
+    }
+    const next={id:batch.fallback.id},sourceRows=batch.fallback.sourceRows,previous=batch.fallback.previous;
+    let choice=batch.fallback.choice;
     let season=null,allowed=false,recordConflict=false;const membershipOffset=statements.length;
     if(choice.year!==null){
-      if(root.scope_mode==='fixed_seasons')season=await db.prepare('SELECT s.* FROM team_seasons s JOIN team_connection_seasons m ON m.team_season_id=s.id WHERE m.connection_id=? AND m.active=1 AND m.excluded=0 AND s.year=?').bind(connectionId,choice.year).first();
-      else {season=await seasonPlan(db,root,choice.year,add);if(!season)return response();}
-      if(season)allowed=await membershipPlan(db,root,season,choice.basis==='dated_metadata'?'dated_metadata':'events',add);
+      if(root.scope_mode==='fixed_seasons')season=batch.legacy?await db.prepare('SELECT s.* FROM team_seasons s JOIN team_connection_seasons m ON m.team_season_id=s.id WHERE m.connection_id=? AND m.active=1 AND m.excluded=0 AND s.year=?').bind(connectionId,choice.year).first():batch.fallback.member?.active&&!batch.fallback.member.excluded?batch.fallback.season:null;
+      else {season=await seasonPlan(db,root,choice.year,add,batch.fallback.season);if(!season)return response();}
+      if(season)allowed=await membershipPlan(db,root,season,choice.basis==='dated_metadata'?'dated_metadata':'events',add,batch.fallback.member);
     }
     const requestedChoice={...choice};let scopeConflict=false;
     if(!allowed&&choice.basis==='owner'&&choice.year!==null&&previous?.team_season_id&&previous.year!==choice.year){

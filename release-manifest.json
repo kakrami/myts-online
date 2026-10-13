@@ -1,12 +1,12 @@
 {
   "service": "myTS",
-  "version": "7.2.1",
+  "version": "7.2.2",
   "review": true,
   "files": [
     {
       "path": "README.md",
-      "bytes": 8021,
-      "sha256": "a1858fcedb6bbdeefe28c62c183a3f0a617b904f6c396f24161560135acdc748"
+      "bytes": 8364,
+      "sha256": "46eb570c2e7b730edc0ed623ae910389da8ac84fcf16600743c95a257791aa65"
     },
     {
       "path": "docs/acceptance-baseline.md",
@@ -29,14 +29,19 @@
       "sha256": "91346a7ac8f53004cdf1830863251db1464304f0ef14d7dc9228b4452801d097"
     },
     {
+      "path": "docs/connection-throughput-repair.md",
+      "bytes": 10155,
+      "sha256": "9b4e712f41d49d965c07e553773aa6cb46c3509688b152c1b850ee3f058e3656"
+    },
+    {
       "path": "docs/data-files-contract.md",
       "bytes": 14451,
       "sha256": "d39580883f775a908ef9f4038e92137b410db84d18553ea812f0f176c24c3e4e"
     },
     {
       "path": "docs/deployment-verification.md",
-      "bytes": 34507,
-      "sha256": "e802dad5b121293aa58e111ccabc77f8ef2d9e2c97211329d363c1b567d40b52"
+      "bytes": 35167,
+      "sha256": "1076bb247c69c2c5959e8346c83a5b87ad725db9fddc5a4395b57ef0cc189e1c"
     },
     {
       "path": "docs/domain-contract.md",
@@ -181,12 +186,12 @@
     {
       "path": "package-lock.json",
       "bytes": 49485,
-      "sha256": "b7594ad95d798c63291b0cbe7e9a69170686b204b0e4d968efd8f3f6c01d4bf1"
+      "sha256": "ea8bc2763833e846e9f1223b0378f1a954b4744ba86ba3707aa0e2dad962a4cf"
     },
     {
       "path": "package.json",
       "bytes": 635,
-      "sha256": "4134af29390cec5c13ed7a718715477530075208f0828867ba24ef58c7fb6ff8"
+      "sha256": "71c4548f1a5c7051e0a22e129edc807b79f6b0a06db128d450579b5a759c8448"
     },
     {
       "path": "scripts/release-check.mjs",
@@ -385,8 +390,8 @@
     },
     {
       "path": "src/application/sync-service.js",
-      "bytes": 39221,
-      "sha256": "e8c7284bdba91dac2152d3fb7f4086000c94924a7499fc3bc7adb4555db7e022"
+      "bytes": 39266,
+      "sha256": "c47d0f6806b1d791ed2f27f2b0243b84eaee0b4fb8792b447b03927e1115e6ad"
     },
     {
       "path": "src/application/team-catalog.js",
@@ -416,7 +421,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 30,
-      "sha256": "bf403aae907381fef48c731bc0eae337a34d6536db0c780c942dff6b89bf2af9"
+      "sha256": "bf0302338a311b0909760c133b9d4ed58c1b983d619a2f1df4a284ea1f171dfa"
     },
     {
       "path": "src/coaching/routes.js",
@@ -454,14 +459,19 @@
       "sha256": "ea82de79ba1db83acebb27790ce35864571335701be0512856dd1806dea19e1a"
     },
     {
+      "path": "src/domain/connection-event-batch.js",
+      "bytes": 17436,
+      "sha256": "091944e205cace72d339b4780d1920fdaa9a0a2a99ff4559d739cf6618eb12b5"
+    },
+    {
       "path": "src/domain/connection-evidence.js",
       "bytes": 4079,
       "sha256": "48548f249d55cc7676385ee9e033bc673982521171f29ca042831d0e337fc5e7"
     },
     {
       "path": "src/domain/connection-materializer.js",
-      "bytes": 30675,
-      "sha256": "2575969492b400a082e103b6fbe975534efa543d057a2f7bfaa659ca3848e7c0"
+      "bytes": 32050,
+      "sha256": "bcd381c86dcc026f5558d3340a634d8091b48aa7bb64597be04ec93f0ef662df"
     },
     {
       "path": "src/domain/connection-periods.js",
@@ -505,8 +515,8 @@
     },
     {
       "path": "src/domain/projector.js",
-      "bytes": 25115,
-      "sha256": "989e70f12f8986fbe7196d05f1dab1ba865089b9877e81271d1a89a8da2ef1db"
+      "bytes": 25521,
+      "sha256": "7361555d26b2157b0f26b60240941d1de17c12dfdd1e2f73cbb0d01a515fbfa7"
     },
     {
       "path": "src/domain/repository.js",
@@ -795,8 +805,8 @@
     },
     {
       "path": "src/sync/runtime.js",
-      "bytes": 9819,
-      "sha256": "af2bea6e50945eede943d974df85c736e322e419439d6795a3c18ccdd6e03a3e"
+      "bytes": 10596,
+      "sha256": "239b2dd70a396f72424da04ae1b49c8dfb194253a89d010f2ddff64eeb24a9a7"
     },
     {
       "path": "src/sync/schema.js",
