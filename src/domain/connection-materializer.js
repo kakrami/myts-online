@@ -1,5 +1,5 @@
 import {nativeCanonicalId} from './identity.js';
-import {buildConnectionEventBatch} from './connection-event-batch.js';
+import {buildConnectionEventBatch,readConnectionEventChanges} from './connection-event-batch.js';
 import {localMidnight} from './calendar.js';
 import {resolveEventDate,datedPeriodYears,qualifiedRosterPeriod,observedDay} from './connection-evidence.js';
 import {prepareGameSeasonMove} from './game-season-state.js';
@@ -125,13 +125,18 @@ export async function buildConnectionPage(db,{connectionId,teamId,generation,che
     // Never let a second root overwrite an already accepted game with an
     // out-of-scope observation. Canonical membership is one row per logical team.
     const canonicalSeason=allowed?season?.id:previous?.team_season_id??null;
+    const membershipChanged=statements.length>membershipOffset,canonical=[];
     if(!previous||allowed||recordConflict||!previous.team_season_id){
       assertion(add,{sql:`COALESCE((SELECT revision FROM team_event_season_resolutions WHERE app_team_id=? AND event_id=?),0)=?`,params:[teamId,next.id,previous?.revision??0]});
       if(move){assertion(add,move.precondition);statements.push(...move.statements);}
-      jsonWrite(add,'team_event_season_resolutions',[{app_team_id:teamId,event_id:next.id,team_season_id:canonicalSeason,state:canonicalSeason?choice.state:'pending',effective_day:choice.day,starts_at:choice.starts_at,local_day:choice.local_day,basis:choice.basis,evidence:JSON.stringify(choice.evidence),revision:(previous?.revision??0)+1}],['app_team_id','event_id']);
+      canonical.push({app_team_id:teamId,event_id:next.id,team_season_id:canonicalSeason,state:canonicalSeason?choice.state:'pending',effective_day:choice.day,starts_at:choice.starts_at,local_day:choice.local_day,basis:choice.basis,evidence:JSON.stringify(choice.evidence),revision:(previous?.revision??0)+1});
     }
     const own=sourceRows.filter(row=>row.own_connection);
-    jsonWrite(add,'connection_event_resolutions',own.map(event=>({connection_id:connectionId,source_event_id:event.id,team_season_id:allowed?season.id:null,state:allowed?choice.state:choice.year!==null?'excluded':choice.state,effective_day:scopeConflict?requestedChoice.day:choice.day,basis:scopeConflict?'season_scope_conflict':choice.basis,source_hash:event.content_hash,generation:root.generation})),['connection_id','source_event_id']);
+    const receipts=own.map(event=>({connection_id:connectionId,source_event_id:event.id,team_season_id:allowed?season.id:null,state:allowed?choice.state:choice.year!==null?'excluded':choice.state,effective_day:scopeConflict?requestedChoice.day:choice.day,basis:scopeConflict?'season_scope_conflict':choice.basis,source_hash:event.content_hash,generation:root.generation}));
+    const changes=await readConnectionEventChanges(db,root,{canonical,receipts,targets:own.map(event=>({id:event.id,season_id:allowed?season.id:null}))});
+    if(membershipChanged&&allowed)changes.dirty.add(season.id);
+    jsonWrite(add,'team_event_season_resolutions',canonical.filter(row=>changes.canonicalIds.has(row.event_id)),['app_team_id','event_id']);
+    jsonWrite(add,'connection_event_resolutions',receipts,['connection_id','source_event_id']);
     // Participation is evidence for these games only. It is not a claim that a
     // current roster member or jersey belonged to an entire historical season.
 
@@ -141,7 +146,7 @@ export async function buildConnectionPage(db,{connectionId,teamId,generation,che
     }
     add(`DELETE FROM connection_roster_evidence WHERE connection_id=? AND basis<>'imported_snapshot' AND source_event_id IN(SELECT value FROM json_each(?)) AND team_season_id IS NOT ? AND $FENCE`,connectionId,JSON.stringify(own.map(event=>event.id)),allowed?season.id:null);
     add(`DELETE FROM connection_roster_evidence WHERE connection_id=? AND source_event_id IN(SELECT value FROM json_each(?)) AND ((basis='game' AND NOT EXISTS(SELECT 1 FROM source_game_members m WHERE basis_key='game:'||m.id AND m.source_player_id=connection_roster_evidence.source_player_id AND m.source_team_id=? AND m.dummy=0)) OR (basis='attendance' AND NOT EXISTS(SELECT 1 FROM source_attendance a WHERE basis_key='attendance:'||a.id AND a.source_player_id=connection_roster_evidence.source_player_id AND a.source_team_id=?))) AND $FENCE`,connectionId,JSON.stringify(own.map(event=>event.id)),root.source_team_id,root.source_team_id);
-    dirtySeasons(add,teamId,[previous?.team_season_id,allowed?season?.id:null]);for(const id of new Set([previous?.team_season_id,allowed?season?.id:null].filter(Boolean)))affectedTeams.push({app_team_id:teamId,team_season_id:id});
+    dirtySeasons(add,teamId,[...changes.dirty]);for(const id of changes.dirty)affectedTeams.push({app_team_id:teamId,team_season_id:id});
     cp={...cp,after:next.id};return response();
   }
   if(cp.phase==='roster'){
@@ -155,13 +160,18 @@ export async function buildConnectionPage(db,{connectionId,teamId,generation,che
     const year=years[cp.yearIndex];let season;
     if(root.scope_mode==='fixed_seasons')season=await db.prepare('SELECT s.* FROM team_seasons s JOIN team_connection_seasons m ON m.team_season_id=s.id WHERE m.connection_id=? AND m.active=1 AND m.excluded=0 AND s.year=?').bind(connectionId,year).first();
     else {season=await seasonPlan(db,root,year,add);if(!season)return response();}
+    const membershipOffset=statements.length;
     if(season&&await membershipPlan(db,root,season,'dated_metadata',add)){
+      const membershipChanged=statements.length>membershipOffset;
       const observed=observedDay({starts_at:player.observed_at},root.timezone),updateSnapshot=observed&&observed>=start&&observed<=end;
       // A later read of today's profile cannot rewrite an already captured
       // historical name/jersey. Metadata changes observed within the native
       // validity period can still update that period's roster snapshot.
       add(`INSERT INTO connection_roster_evidence(connection_id,team_season_id,source_player_id,basis_key,basis,source_event_id,valid_from,valid_until,certainty,name,jersey,position,observed_at,source_hash) SELECT ?,?,?,?,'dated_roster',NULL,?,?,'verified',?,?,?,?,? WHERE $FENCE ON CONFLICT(connection_id,team_season_id,source_player_id,basis_key) DO UPDATE SET certainty='verified'${updateSnapshot?',name=excluded.name,jersey=excluded.jersey,position=excluded.position,observed_at=excluded.observed_at,source_hash=excluded.source_hash':''}`,connectionId,season.id,player.id,'roster:'+root.source_team_id+':'+start+':'+end,start,end,player.name,player.jersey,detail.position||null,player.observed_at,player.content_hash);
-      dirtySeasons(add,teamId,[season.id]);affectedTeams.push({app_team_id:teamId,team_season_id:season.id});
+      const saved=await db.prepare('SELECT certainty,name,jersey,position,observed_at,source_hash FROM connection_roster_evidence WHERE connection_id=? AND team_season_id=? AND source_player_id=? AND basis_key=?').bind(connectionId,season.id,player.id,'roster:'+root.source_team_id+':'+start+':'+end).first();
+      const snapshot={name:player.name,jersey:player.jersey,position:detail.position||null,observed_at:player.observed_at,source_hash:player.content_hash};
+      const changed=membershipChanged||!saved||saved.certainty!=='verified'||updateSnapshot&&Object.entries(snapshot).some(([key,value])=>saved[key]!==value);
+      if(changed){dirtySeasons(add,teamId,[season.id]);affectedTeams.push({app_team_id:teamId,team_season_id:season.id});}
     }
     cp={...cp,yearIndex:cp.yearIndex+1};return response();
   }

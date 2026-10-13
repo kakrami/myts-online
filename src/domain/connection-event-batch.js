@@ -34,9 +34,33 @@ export async function readConnectionEventBatch(db,root,after){
   return {events,seasons:new Map(saved.map(row=>[row.year,{season:row,member:row.connection_id?{connection_id:row.connection_id,team_season_id:row.id,attachment_id:row.attachment_id,basis:row.membership_basis,active:row.membership_active,excluded:row.excluded,generation:row.membership_generation,attachment_active:row.attachment_active,attachment_generation:row.attachment_generation}:null}]))};
 }
 
-function writeBatch(root,events,memberships){
-  const statements=[],add=(sql,...params)=>statements.push({sql,params}),canonical=[],receipts=[],targets=[],revisions=[],dirty=new Set();
+// Compare only the admitted page, inside SQLite: no roster history is copied
+// through the binding and no limited/truncated set may establish equality.
+// These predicates mirror the writes below, including columns deliberately
+// preserved on conflict (in particular historical attendance names).
+export async function readConnectionEventChanges(db,root,{canonical,receipts,targets}){
+  const columns=['team_season_id','state','effective_day','starts_at','local_day','basis','evidence'];
+  const receiptColumns=['team_season_id','state','effective_day','basis','source_hash','generation'];
+  const proposed=(name,fields)=>`${name} AS(SELECT ${fields.map(field=>`json_extract(value,'$.${field}') AS ${field}`).join(',')} FROM json_each(?))`;
+  const different=(fields,old='old',next='next')=>fields.map(field=>field==='evidence'?`json(${old}.${field}) IS NOT json(${next}.${field})`:`${old}.${field} IS NOT ${next}.${field}`).join(' OR ');
+  const rows=(await db.prepare(`WITH scope AS(SELECT ? AS connection_id,? AS app_team_id,? AS source_team_id,? AS account_id),
+    ${proposed('canonical',['event_id',...columns])},
+    ${proposed('receipts',['source_event_id',...receiptColumns])},
+    ${proposed('targets',['id','season_id'])},
+    changed_canonical AS(SELECT next.event_id,next.team_season_id,old.team_season_id AS old_season_id FROM canonical next LEFT JOIN team_event_season_resolutions old ON old.app_team_id=(SELECT app_team_id FROM scope) AND old.event_id=next.event_id WHERE old.event_id IS NULL OR ${different(columns)}),
+    changed_receipts AS(SELECT next.team_season_id,old.team_season_id AS old_season_id FROM receipts next LEFT JOIN connection_event_resolutions old ON old.connection_id=(SELECT connection_id FROM scope) AND old.source_event_id=next.source_event_id WHERE old.source_event_id IS NULL OR ${different(receiptColumns)}),
+    changed_game AS(SELECT target.season_id FROM targets target JOIN source_game_members m ON m.source_event_id=target.id JOIN source_players p ON p.id=m.source_player_id JOIN source_event_teams st ON st.source_event_id=m.source_event_id AND st.source_team_id=m.source_team_id AND st.side=m.side LEFT JOIN connection_roster_evidence old ON old.connection_id=(SELECT connection_id FROM scope) AND old.team_season_id=target.season_id AND old.source_player_id=m.source_player_id AND old.basis_key='game:'||m.id WHERE target.season_id IS NOT NULL AND m.source_team_id=(SELECT source_team_id FROM scope) AND m.account_id IS (SELECT account_id FROM scope) AND m.dummy=0 AND (old.basis_key IS NULL OR old.certainty IS NOT CASE WHEN m.provenance='file_import' THEN 'preserved_uncertain' ELSE 'verified' END OR old.name IS NOT m.name OR old.jersey IS NOT m.jersey OR old.position IS NOT m.position OR old.observed_at IS NOT m.observed_at OR old.source_hash IS NOT m.content_hash)),
+    changed_attendance AS(SELECT target.season_id FROM targets target JOIN source_attendance a ON a.source_event_id=target.id JOIN source_players p ON p.id=a.source_player_id LEFT JOIN connection_roster_evidence old ON old.connection_id=(SELECT connection_id FROM scope) AND old.team_season_id=target.season_id AND old.source_player_id=a.source_player_id AND old.basis_key='attendance:'||a.id WHERE target.season_id IS NOT NULL AND a.source_team_id=(SELECT source_team_id FROM scope) AND a.account_id IS (SELECT account_id FROM scope) AND (old.basis_key IS NULL OR old.certainty IS NOT CASE WHEN a.provenance='file_import' THEN 'preserved_uncertain' ELSE 'verified' END OR old.observed_at IS NOT a.observed_at OR old.source_hash IS NOT a.content_hash)),
+    removed_roster AS(SELECT old.team_season_id FROM targets target JOIN connection_roster_evidence old ON old.source_event_id=target.id AND old.connection_id=(SELECT connection_id FROM scope) WHERE (old.basis<>'imported_snapshot' AND old.team_season_id IS NOT target.season_id) OR (old.basis='game' AND NOT EXISTS(SELECT 1 FROM source_game_members m WHERE old.basis_key='game:'||m.id AND m.source_player_id=old.source_player_id AND m.source_team_id=(SELECT source_team_id FROM scope) AND m.dummy=0)) OR (old.basis='attendance' AND NOT EXISTS(SELECT 1 FROM source_attendance a WHERE old.basis_key='attendance:'||a.id AND a.source_player_id=old.source_player_id AND a.source_team_id=(SELECT source_team_id FROM scope)))),
+    dirty(id) AS(SELECT value FROM changed_canonical c,json_each(json_array(c.team_season_id,c.old_season_id)) UNION SELECT value FROM changed_receipts r,json_each(json_array(r.team_season_id,r.old_season_id)) UNION SELECT season_id FROM changed_game UNION SELECT season_id FROM changed_attendance UNION SELECT team_season_id FROM removed_roster)
+    SELECT 'canonical' AS kind,event_id AS id FROM changed_canonical UNION ALL SELECT 'season' AS kind,id FROM dirty WHERE id IS NOT NULL`).bind(root.id,root.app_team_id,root.source_team_id,root.account_id,JSON.stringify(canonical),JSON.stringify(receipts),JSON.stringify(targets)).all()).results;
+  return {canonicalIds:new Set(rows.filter(row=>row.kind==='canonical').map(row=>row.id)),dirty:new Set(rows.filter(row=>row.kind==='season').map(row=>row.id))};
+}
+
+function writeBatch(root,events,memberships,changes){
+  const statements=[],add=(sql,...params)=>statements.push({sql,params}),canonical=[],receipts=[],targets=[],revisions=[],dirty=new Set(changes?.dirty);
   if(memberships.length){
+    for(const member of memberships)dirty.add(member.season_id);
     const data=JSON.stringify(memberships);
     add(`INSERT INTO team_source_attachments(id,app_team_id,team_season_id,source_team_id,account_id,active,generation) SELECT json_extract(value,'$.attachment_id'),?,json_extract(value,'$.season_id'),?,?,1,? FROM json_each(?) WHERE $FENCE ON CONFLICT(app_team_id,team_season_id,source_team_id) DO UPDATE SET active=1,generation=excluded.generation`,root.app_team_id,root.source_team_id,root.account_id,root.generation,data);
     add(`INSERT INTO team_connection_seasons(connection_id,team_season_id,attachment_id,basis,active,excluded,generation) SELECT ?,json_extract(value,'$.season_id'),(SELECT id FROM team_source_attachments WHERE app_team_id=? AND team_season_id=json_extract(value,'$.season_id') AND source_team_id=?),json_extract(value,'$.basis'),1,0,? FROM json_each(?) WHERE $FENCE ON CONFLICT(connection_id,team_season_id) DO UPDATE SET attachment_id=excluded.attachment_id,active=1,generation=excluded.generation`,root.id,root.app_team_id,root.source_team_id,root.generation,data);
@@ -44,10 +68,10 @@ function writeBatch(root,events,memberships){
   for(const event of events){const {id,sourceRows,previous,choice,allowed,season}=event,seasonId=allowed?season.id:null,canonicalSeason=seasonId??previous?.team_season_id??null;
     if(!previous||allowed||!previous.team_season_id){revisions.push({id,revision:previous?.revision??0});canonical.push({app_team_id:root.app_team_id,event_id:id,team_season_id:canonicalSeason,state:canonicalSeason?choice.state:'pending',effective_day:choice.day,starts_at:choice.starts_at,local_day:choice.local_day,basis:choice.basis,evidence:JSON.stringify(choice.evidence),revision:(previous?.revision??0)+1});}
     for(const source of sourceRows.filter(source=>source.own_connection)){receipts.push({connection_id:root.id,source_event_id:source.id,team_season_id:seasonId,state:allowed?choice.state:choice.year!==null?'excluded':choice.state,effective_day:choice.day,basis:choice.basis,source_hash:source.content_hash,generation:root.generation});targets.push({id:source.id,season_id:seasonId});}
-    if(previous?.team_season_id)dirty.add(previous.team_season_id);if(seasonId)dirty.add(seasonId);
+    if(!changes){if(previous?.team_season_id)dirty.add(previous.team_season_id);if(seasonId)dirty.add(seasonId);}
   }
   if(revisions.length)add(`INSERT INTO domain_team_preconditions(id,expected_input,actual_input) SELECT 1,1,CASE WHEN NOT EXISTS(SELECT 1 FROM json_each(?) expected WHERE COALESCE((SELECT revision FROM team_event_season_resolutions WHERE app_team_id=? AND event_id=json_extract(expected.value,'$.id')),0)<>json_extract(expected.value,'$.revision')) THEN 1 ELSE 0 END WHERE $FENCE ON CONFLICT(id) DO UPDATE SET expected_input=excluded.expected_input,actual_input=excluded.actual_input`,JSON.stringify(revisions),root.app_team_id);
-  jsonWrite(add,'team_event_season_resolutions',canonical,['app_team_id','event_id']);jsonWrite(add,'connection_event_resolutions',receipts,['connection_id','source_event_id']);
+  jsonWrite(add,'team_event_season_resolutions',changes?canonical.filter(row=>changes.canonicalIds.has(row.event_id)):canonical,['app_team_id','event_id']);jsonWrite(add,'connection_event_resolutions',receipts,['connection_id','source_event_id']);
   const data=JSON.stringify(targets);
   if(targets.some(target=>target.season_id)){
     add(`INSERT INTO connection_roster_evidence(connection_id,team_season_id,source_player_id,basis_key,basis,source_event_id,valid_from,valid_until,certainty,name,jersey,position,observed_at,source_hash) SELECT ?,json_extract(target.value,'$.season_id'),m.source_player_id,'game:'||m.id,'game',m.source_event_id,NULL,NULL,CASE WHEN m.provenance='file_import' THEN 'preserved_uncertain' ELSE 'verified' END,m.name,m.jersey,m.position,m.observed_at,m.content_hash FROM json_each(?) target JOIN source_game_members m ON m.source_event_id=json_extract(target.value,'$.id') JOIN source_players p ON p.id=m.source_player_id JOIN source_event_teams st ON st.source_event_id=m.source_event_id AND st.source_team_id=m.source_team_id AND st.side=m.side WHERE json_extract(target.value,'$.season_id') IS NOT NULL AND m.source_team_id=? AND m.account_id IS ? AND m.dummy=0 AND $FENCE ON CONFLICT(connection_id,team_season_id,source_player_id,basis_key) DO UPDATE SET certainty=excluded.certainty,name=excluded.name,jersey=excluded.jersey,position=excluded.position,observed_at=excluded.observed_at,source_hash=excluded.source_hash`,root.id,data,root.source_team_id,root.account_id);
@@ -56,7 +80,7 @@ function writeBatch(root,events,memberships){
   add(`DELETE FROM connection_roster_evidence WHERE connection_id=? AND basis<>'imported_snapshot' AND EXISTS(SELECT 1 FROM json_each(?) target WHERE json_extract(target.value,'$.id')=connection_roster_evidence.source_event_id AND connection_roster_evidence.team_season_id IS NOT json_extract(target.value,'$.season_id')) AND $FENCE`,root.id,data);
   add(`DELETE FROM connection_roster_evidence WHERE connection_id=? AND source_event_id IN(SELECT json_extract(value,'$.id') FROM json_each(?)) AND ((basis='game' AND NOT EXISTS(SELECT 1 FROM source_game_members m WHERE basis_key='game:'||m.id AND m.source_player_id=connection_roster_evidence.source_player_id AND m.source_team_id=? AND m.dummy=0)) OR (basis='attendance' AND NOT EXISTS(SELECT 1 FROM source_attendance a WHERE basis_key='attendance:'||a.id AND a.source_player_id=connection_roster_evidence.source_player_id AND a.source_team_id=?))) AND $FENCE`,root.id,data,root.source_team_id,root.source_team_id);
   if(dirty.size){add('UPDATE team_projection_state SET input_revision=input_revision+1,pending=1 WHERE app_team_id=? AND team_season_id IN(SELECT value FROM json_each(?)) AND $FENCE',root.app_team_id,JSON.stringify([...dirty]));add('UPDATE team_read_state SET pending=1,status_revision=status_revision+1 WHERE app_team_id=? AND $FENCE',root.app_team_id);}
-  return {statements,affectedTeams:[...dirty].map(id=>({app_team_id:root.app_team_id,team_season_id:id})),parameterBytes:statements.reduce((total,statement)=>total+size(statement.params),0)};
+  return {canonical,receipts,targets,statements,affectedTeams:[...dirty].map(id=>({app_team_id:root.app_team_id,team_season_id:id})),parameterBytes:statements.reduce((total,statement)=>total+size(statement.params),0)};
 }
 
 /** Admit only a contiguous simple prefix. Complex owner-state relocations and
@@ -75,5 +99,8 @@ export async function buildConnectionEventBatch(db,root,after){
     if(candidate.parameterBytes>limits.parameterBytes){if(!admitted.length)return {fallback:{...event,season,member}};break;}
     admitted.push({...event,season,allowed});for(const [id,value]of nextMemberships)memberships.set(id,value);plan=candidate;
   }
-  return plan?{...plan,after:admitted.at(-1).id,count:admitted.length}:{empty:true};
+  if(!plan)return {empty:true};
+  const changes=await readConnectionEventChanges(db,root,plan);
+  const {canonical,receipts,targets,...result}=writeBatch(root,admitted,[...memberships.values()],changes);
+  return {...result,after:admitted.at(-1).id,count:admitted.length};
 }

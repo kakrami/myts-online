@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DatabaseSync} from 'node:sqlite';
+import {DatabaseSync,backup} from 'node:sqlite';
+import {mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {spawnSync} from 'node:child_process';
 import {DOMAIN_SCHEMA} from '../src/domain/schema.js';
 import {ANALYSIS_SCHEMA} from '../src/analysis/schema.js';
 import {COACH_SCHEMA} from '../src/coaching/schema.js';
@@ -44,8 +48,8 @@ async function fixture({full=false,seasons=[2022,2023,2024,2025,2026],events=0,p
   return {sqlite,raw,db,insert,event,root,cp,page,commit,snapshot,reads,close:()=>sqlite.close()};
 }
 
-test('24 common events share five reads, 12 writes, all five seasons and dense attendance',async()=>{
-  const f=await fixture({events:25,players:30,evidence:JSON.stringify({text:'雪'.repeat(21000)})});try{f.reads.length=0;const before=f.root().input_revision,page=await f.page();assert.equal(page.checkpoint.after,'event-00023');assert.equal(f.reads.length,5);assert.equal(page.statements.length,12);assert.ok(f.reads.reduce((n,r)=>n+r.bytes,0)<50000,'64 KB provider evidence does not cross the binding');assert.ok(bytes(page.statements.map(s=>s.params))<1000000);await f.commit(page);assert.equal(f.sqlite.prepare('SELECT count(*) n FROM connection_event_resolutions').get().n,24);assert.equal(f.sqlite.prepare('SELECT count(*) n FROM connection_roster_evidence').get().n,720);assert.deepEqual(f.sqlite.prepare('SELECT input_revision FROM team_projection_state').all().map(r=>r.input_revision),[1,1,1,1,1]);assert.equal(f.root().input_revision,before,'batch outputs do not make the root catch itself up forever');assert.equal(page.affectedTeams.length,5);const next=await f.page(page.checkpoint);assert.equal(next.checkpoint.after,'event-00024');await f.commit(next);assert.equal(f.sqlite.prepare('SELECT count(*) n FROM connection_event_resolutions').get().n,25);}finally{f.close();}
+test('24 common events share six reads, 12 writes, all five seasons and dense attendance',async()=>{
+  const f=await fixture({events:25,players:30,evidence:JSON.stringify({text:'雪'.repeat(21000)})});try{f.reads.length=0;const before=f.root().input_revision,page=await f.page();assert.equal(page.checkpoint.after,'event-00023');assert.equal(f.reads.length,6);assert.equal(page.statements.length,12);assert.ok(f.reads.reduce((n,r)=>n+r.bytes,0)<50000,'64 KB provider evidence does not cross the binding');assert.ok(bytes(page.statements.map(s=>s.params))<1000000);await f.commit(page);assert.equal(f.sqlite.prepare('SELECT count(*) n FROM connection_event_resolutions').get().n,24);assert.equal(f.sqlite.prepare('SELECT count(*) n FROM connection_roster_evidence').get().n,720);assert.deepEqual(f.sqlite.prepare('SELECT input_revision FROM team_projection_state').all().map(r=>r.input_revision),[1,1,1,1,1]);assert.equal(f.root().input_revision,before,'batch outputs do not make the root catch itself up forever');assert.equal(page.affectedTeams.length,5);const next=await f.page(page.checkpoint);assert.equal(next.checkpoint.after,'event-00024');await f.commit(next);assert.equal(f.sqlite.prepare('SELECT count(*) n FROM connection_event_resolutions').get().n,25);}finally{f.close();}
 });
 
 test('interrupted and false-fenced batches leave all prefix writes absent; one changed accepted revision rolls back all',async()=>{
@@ -112,6 +116,7 @@ test('move, destination collision, owner-scope conflict and terminal children in
   for(const scenario of ['move','collision','owner_scope','overflow_move','overflow_collision']){const f=await fixture({full:true,events:0,players:1});try{await f.event(0,{year:scenario==='owner_scope'?2022:2023});await f.insert('team_source_attachments',{id:'attachment-old',app_team_id:'team',team_season_id:'season-2022',source_team_id:ROOT,account_id:'account'});await f.insert('team_connection_seasons',{connection_id:'root',team_season_id:'season-2022',attachment_id:'attachment-old',basis:'events'});await f.insert('team_event_season_resolutions',{app_team_id:'team',event_id:'event-00000',team_season_id:'season-2022',state:'resolved',effective_day:'2022-08-04',local_day:'2022-08-04',basis:'event',evidence:'[]',revision:7});await f.insert('analysis_lineup_headers',{app_team_id:'team',team_season_id:'season-2022',event_id:'event-00000',format:9,revision:4,updated_at:AT});await f.insert('coach_sessions',{app_team_id:'team',team_season_id:'season-2022',event_id:'event-00000',format:9,half_minutes:25,phase:'running',period:2,elapsed_ms:60000,period_start_ms:50000,running_since:AT,clock_review:0,revision:12,updated_at:AT,write_token:'saved-token'});if(scenario.includes('collision'))await f.insert('analysis_lineup_headers',{app_team_id:'team',team_season_id:'season-2023',event_id:'event-00000',format:7,revision:5,updated_at:AT});if(scenario==='owner_scope'){await f.db.prepare("UPDATE team_source_connections SET scope_mode='fixed_seasons'").run();await f.insert('domain_overrides',{app_team_id:'team',kind:'event',entity_id:'event-00000',fields:'{"local_day":"2023-08-04"}',revision:1});}
     if(scenario.startsWith('overflow_')){for(let i=0;i<9;i++)await f.event(0,{year:2023,source:'overflow-'+i,canonical:false});await f.db.prepare('UPDATE source_teams SET evidence=?').bind(JSON.stringify({season_start_date:'雪'.repeat(10000)})).run();}
     const result=await invocation(f,f.cp());assert.equal(result.page.checkpoint.after,'event-00000');assert.ok(result.used<=50);const resolution=f.sqlite.prepare('SELECT * FROM team_event_season_resolutions').get(),coach=f.sqlite.prepare('SELECT * FROM coach_sessions').get();if(scenario.endsWith('move')){assert.equal(resolution.team_season_id,'season-2023');assert.equal(coach.team_season_id,'season-2023');assert.equal(coach.revision,13);}else {assert.equal(resolution.state,'conflict');assert.equal(resolution.team_season_id,'season-2022');assert.equal(coach.team_season_id,'season-2022');assert.equal(coach.revision,12);}assert.deepEqual(f.sqlite.prepare('PRAGMA foreign_key_check').all(),[]);measured.push({scenario,statements:result.used,materializer_reads:result.readStatements});
+    const unchanged=f.snapshot();await f.commit(await f.page(f.cp()));assert.deepEqual(f.snapshot(),unchanged,'a second accepted move/conflict pass preserves its exact materialized meaning');
     // The actual terminal page, rather than ordinary event pages, sends children.
     const terminal=await invocation(f,{...f.cp(),phase:'finish'});assert.equal(terminal.page.complete,true);assert.ok(terminal.page.children.length>0);assert.ok(terminal.used<=50);measured.push({scenario:scenario+'_terminal',children:terminal.page.children.length,statements:terminal.used});
   }finally{f.close();}}
@@ -120,4 +125,110 @@ test('move, destination collision, owner-scope conflict and terminal children in
 
 test('coordinator commits the cursor only with the whole batch and safely replays an interrupted transaction',async()=>{
   const f=await fixture({full:true,events:24,players:2});try{const jobs=new JobCoordinator(f.db,{publicHistory:true}),jobId=await jobs.enqueue({provider:'domain',stage:'projection',component:'connection',scope:'team',resourceKey:'root',args:{connectionId:'root',teamId:'team',generation:1},recurring:false},[{kind:'team',key:'connection:root',teamId:'team',generation:1}]),checkpoint=f.cp();await f.db.prepare('UPDATE sync_jobs SET checkpoint=? WHERE id=?').bind(JSON.stringify(checkpoint),jobId).run();const lease=await jobs.claim(),page=await collectApplicationJob({db:f.db,env:{},lease,args:lease.args,checkpoint:lease.checkpoint});const interrupted={...page,statements:[...page.statements,{sql:'INSERT INTO domain_import_preconditions(id,expected_value,actual_value) SELECT 1,1,0 WHERE $FENCE',params:[]}]};await assert.rejects(()=>jobs.commit(lease,interrupted));const saved=f.sqlite.prepare('SELECT checkpoint,pages_saved FROM sync_jobs WHERE id=?').get(jobId);assert.deepEqual(JSON.parse(saved.checkpoint),checkpoint);assert.equal(saved.pages_saved,0);assert.equal(f.sqlite.prepare('SELECT count(*) n FROM connection_event_resolutions').get().n,0);assert.equal(f.sqlite.prepare('SELECT count(*) n FROM team_source_attachments').get().n,0);assert.equal(f.sqlite.prepare('SELECT writer_mode FROM installation_upgrade').get().writer_mode,null);assert.equal((await jobs.commit(lease,page)).committed,true);const committed=f.sqlite.prepare('SELECT checkpoint,pages_saved FROM sync_jobs WHERE id=?').get(jobId);assert.equal(JSON.parse(committed.checkpoint).after,'event-00023');assert.equal(committed.pages_saved,1);assert.equal(f.sqlite.prepare('SELECT count(*) n FROM connection_event_resolutions').get().n,24);}finally{f.close();}
+});
+
+const seasonInputs=f=>Object.fromEntries(f.sqlite.prepare('SELECT team_season_id,input_revision FROM team_projection_state ORDER BY team_season_id').all().map(row=>[row.team_season_id,row.input_revision]));
+const canonicalRevisions=f=>Object.fromEntries(f.sqlite.prepare('SELECT event_id,revision FROM team_event_season_resolutions ORDER BY event_id').all().map(row=>[row.event_id,row.revision]));
+function assertDirty(f,before,ids){const dirty=new Set(ids);for(const [id,input] of Object.entries(seasonInputs(f)))assert.equal(input-before[id],dirty.has(id)?1:0,id);}
+async function completePass(f){let checkpoint={};for(let i=0;i<300;i++){const page=await f.page(checkpoint);await f.commit(page);checkpoint=page.checkpoint;if(page.complete)return checkpoint;}assert.fail('connection pass did not finish');}
+async function coordinatedPass(f,{refresh=false}={}){
+  let at=Date.now();const jobs=new JobCoordinator(f.db,{publicHistory:true,clock:()=>at,pageDelayMs:0});
+  await f.db.prepare("UPDATE sync_jobs SET next_at=? WHERE component='projection'").bind(at+86400000).run();
+  const [jobId]=await jobs.enqueueMany([{provider:'domain',stage:'projection',component:'connection',scope:'team',resourceKey:'root',args:{connectionId:'root',teamId:'team',generation:1,inputRevision:f.root().input_revision},priority:100,recurring:false}],[{kind:'team',key:'connection:root',teamId:'team',generation:1}],{refresh});
+  for(let i=0;i<300;i++){at+=1000;const lease=await jobs.claim();assert.equal(lease?.id,jobId);const page=await collectApplicationJob({db:f.db,env:{},lease,args:lease.args,checkpoint:lease.checkpoint});assert.equal((await jobs.commit(lease,page)).committed,true);if(page.complete)return;}
+  assert.fail('coordinator pass did not finish');
+}
+
+test('complete coordinated batched and aliased passes do not dirty identical materialized state',async()=>{
+  for(const aliased of [false,true]){const f=await fixture({full:true,events:25,players:2});try{
+    if(aliased){await f.db.prepare("UPDATE source_events SET local_day='2022-08-04' WHERE id='source-00001'").run();await f.insert('event_aliases',{merged_id:'event-00000',canonical_id:'event-00001'});}
+    await coordinatedPass(f);const before=f.snapshot(),root=f.root(),sources=f.sqlite.prepare('SELECT * FROM source_attendance ORDER BY id').all();
+    await coordinatedPass(f,{refresh:true});assert.deepEqual(f.snapshot(),before);assert.equal(f.root().input_revision,root.input_revision);assert.equal(f.root().reconciled_revision,root.input_revision);assert.deepEqual(f.sqlite.prepare('SELECT * FROM source_attendance ORDER BY id').all(),sources);assert.deepEqual(f.sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
+  }finally{f.close();}}
+});
+
+test('dense single-game fallback and no-op canonical CAS keep revisions stable',async()=>{
+  const f=await fixture({events:1,players:1025});try{await completePass(f);const before=f.snapshot(),replay=await f.page();assert.deepEqual(replay.affectedTeams,[]);await f.commit(replay);assert.deepEqual(f.snapshot(),before);
+    const stale=await f.page();f.sqlite.exec('UPDATE team_event_season_resolutions SET revision=revision+1');const concurrent=f.snapshot();await assert.rejects(f.commit(stale));assert.deepEqual(f.snapshot(),concurrent);
+  }finally{f.close();}
+});
+
+test('canonical date, season and evidence changes dirty only their old and new seasons',async()=>{
+  const f=await fixture({events:2,players:1});try{await completePass(f);
+    let before=seasonInputs(f),revisions=canonicalRevisions(f);f.sqlite.exec("UPDATE source_events SET local_day='2022-09-04' WHERE id='source-00000'");let page=await f.page();await f.commit(page);assertDirty(f,before,['season-2022']);assert.deepEqual(canonicalRevisions(f),{...revisions,'event-00000':revisions['event-00000']+1});
+    before=seasonInputs(f);f.sqlite.exec("UPDATE source_events SET local_day='2024-09-04' WHERE id='source-00000'");page=await f.page();await f.commit(page);assertDirty(f,before,['season-2022','season-2024']);assert.equal(f.sqlite.prepare("SELECT team_season_id FROM connection_roster_evidence WHERE source_event_id='source-00000'").get().team_season_id,'season-2024');
+    before=seasonInputs(f);revisions=canonicalRevisions(f);await f.event(1,{source:'extra-evidence',canonical:false});page=await f.page();await f.commit(page);assertDirty(f,before,['season-2023']);assert.deepEqual(canonicalRevisions(f),{...revisions,'event-00001':revisions['event-00001']+1});
+    before=seasonInputs(f);revisions=canonicalRevisions(f);f.sqlite.exec("UPDATE source_events SET content_hash='new content, same date' WHERE id='source-00001'");await f.commit(await f.page());assertDirty(f,before,['season-2023']);assert.deepEqual(canonicalRevisions(f),revisions,'receipt hash changes do not invent a canonical calendar revision');
+    before=seasonInputs(f);f.sqlite.exec("UPDATE connection_event_resolutions SET generation=2 WHERE source_event_id='source-00001'");await f.commit(await f.page());assertDirty(f,before,['season-2023']);
+  }finally{f.close();}
+});
+
+test('game roster fields, certainty, precedence timestamps, inserts and removals are material changes',async()=>{
+  for(const aliased of [false,true]){const f=await fixture({events:2,players:1});try{
+    if(aliased){await f.insert('events',{id:'event-alias',created_at:AT});await f.insert('event_aliases',{merged_id:'event-alias',canonical_id:'event-00000'});}
+    await f.insert('source_game_members',{id:'member',account_id:'account',source_team_id:ROOT,source_event_id:'source-00000',native_key:'member',source_player_id:'player-0',side:'home',name:'First name',jersey:'8',dummy:0,position:'GK',evidence:'{}',content_hash:'member hash',observed_at:AT});await completePass(f);
+    const revisions=canonicalRevisions(f);
+    for(const mutation of ["UPDATE source_game_members SET name='New name'","UPDATE source_game_members SET jersey='12'","UPDATE source_game_members SET position='MF'","UPDATE source_game_members SET provenance='file_import'","UPDATE source_game_members SET observed_at='2026-10-13T01:00:00Z'","UPDATE source_game_members SET content_hash='new hash'","DELETE FROM source_game_members","UPDATE source_attendance SET provenance='file_import' WHERE source_event_id='source-00000'","UPDATE source_attendance SET observed_at='2026-10-13T01:00:00Z' WHERE source_event_id='source-00000'","DELETE FROM source_attendance WHERE source_event_id='source-00000'"]){const before=seasonInputs(f);f.sqlite.exec(mutation);const page=await f.page();await f.commit(page);assertDirty(f,before,['season-2022']);assert.deepEqual(canonicalRevisions(f),revisions);}
+    let before=seasonInputs(f);await f.insert('source_attendance',{id:'new attendance',account_id:'account',source_team_id:ROOT,source_event_id:'source-00000',source_player_id:'player-0',status:'yes',content_hash:'new attendance',observed_at:AT});await f.commit(await f.page());assertDirty(f,before,['season-2022']);
+    before=seasonInputs(f);f.sqlite.exec("UPDATE source_players SET name='Current profile name',jersey='99'");await f.commit(await f.page());assertDirty(f,before,[]);assert.equal(f.sqlite.prepare("SELECT name FROM connection_roster_evidence WHERE source_event_id='source-00000'").get().name,'Historical 雪 0');
+  }finally{f.close();}}
+});
+
+test('membership and attachment entitlement repairs dirty only their season',async()=>{
+  const f=await fixture({events:2});try{await completePass(f);const revisions=canonicalRevisions(f);
+    for(const mutation of ["UPDATE team_source_attachments SET active=0 WHERE team_season_id='season-2022'","UPDATE team_source_attachments SET generation=2 WHERE team_season_id='season-2022'","UPDATE team_connection_seasons SET active=0 WHERE team_season_id='season-2022'","UPDATE team_connection_seasons SET generation=2 WHERE team_season_id='season-2022'"]){const before=seasonInputs(f);f.sqlite.exec(mutation);await f.commit(await f.page());assertDirty(f,before,['season-2022']);assert.deepEqual(canonicalRevisions(f),revisions);}
+    let before=seasonInputs(f);f.sqlite.exec("UPDATE team_connection_seasons SET excluded=1 WHERE team_season_id='season-2022'");await f.commit(await f.page());assertDirty(f,before,['season-2022']);before=seasonInputs(f);await f.commit(await f.page());assertDirty(f,before,[]);
+  }finally{f.close();}
+});
+
+test('dated roster suppression is a no-op while actual snapshots, certainty and validity still dirty',async()=>{
+  const f=await fixture({players:1});try{
+    await f.insert('source_roster_memberships',{source_team_id:ROOT,source_player_id:'player-0',active:1,scan_id:'roster'});f.sqlite.prepare('UPDATE source_players SET evidence=?,observed_at=?').run(JSON.stringify({roster_start_date:'2022-06-01',roster_end_date:'2023-05-31',position:'GK'}),'2022-08-01T12:00:00Z');await completePass(f);
+    const rosterPage=()=>f.page({...f.cp(),phase:'roster',after:'',yearIndex:0});let before=seasonInputs(f),saved=f.snapshot().connection_roster_evidence;await f.commit(await rosterPage());assertDirty(f,before,[]);
+    f.sqlite.exec("UPDATE source_players SET name='Today',jersey='99',observed_at='2026-10-13T12:00:00Z',content_hash='today'");await f.commit(await rosterPage());assertDirty(f,before,[]);assert.deepEqual(f.snapshot().connection_roster_evidence,saved);
+    f.sqlite.exec("UPDATE connection_roster_evidence SET certainty='preserved_uncertain'");await f.commit(await rosterPage());assertDirty(f,before,['season-2022']);assert.equal(f.snapshot().connection_roster_evidence[0].certainty,'verified');
+    before=seasonInputs(f);f.sqlite.exec("UPDATE source_players SET name='In period',jersey='12',observed_at='2022-09-01T12:00:00Z',content_hash='in period'");await f.commit(await rosterPage());assertDirty(f,before,['season-2022']);assert.equal(f.snapshot().connection_roster_evidence[0].name,'In period');
+    before=seasonInputs(f);f.sqlite.prepare('UPDATE source_players SET evidence=?').run(JSON.stringify({roster_start_date:'2023-06-01',roster_end_date:'2024-05-31'}));await completePass(f);assertDirty(f,before,['season-2022','season-2023']);assert.equal(f.snapshot().connection_roster_evidence.find(row=>row.team_season_id==='season-2022').certainty,'preserved_uncertain');
+  }finally{f.close();}
+});
+
+test('unchanged prepared pages still reject root, account, timezone and owner races atomically',async()=>{
+  for(const aliased of [false,true])for(const mutation of ["UPDATE team_source_connections SET input_revision=input_revision+1","UPDATE team_source_connections SET generation=generation+1","UPDATE provider_accounts SET generation=generation+1","UPDATE app_teams SET timezone='UTC'","INSERT INTO domain_overrides(app_team_id,kind,entity_id,fields,revision) VALUES('team','event','event-00000','{\"local_day\":\"2023-08-04\"}',1)","UPDATE team_event_season_resolutions SET revision=revision+1 WHERE event_id='event-00000'"]){const f=await fixture({events:1,players:1});try{
+    if(aliased){await f.insert('events',{id:'event-alias',created_at:AT});await f.insert('event_aliases',{merged_id:'event-alias',canonical_id:'event-00000'});}
+    await completePass(f);const page=await f.page();assert.deepEqual(page.affectedTeams,[]);f.sqlite.exec(mutation);const before=f.snapshot();await assert.rejects(f.commit(page));assert.deepEqual(f.snapshot(),before);
+  }finally{f.close();}}
+});
+
+test('deleted source membership removes its receipt, roster and entitlement without dirtying other seasons',async()=>{
+  const f=await fixture({events:2,players:1});try{await completePass(f);f.sqlite.prepare("DELETE FROM source_event_teams WHERE source_event_id='source-00000'").run();
+    let before=seasonInputs(f),page=await f.page({...f.cp(),phase:'cleanup'});await f.commit(page);assertDirty(f,before,['season-2022']);assert.equal(f.sqlite.prepare("SELECT count(*) n FROM connection_event_resolutions WHERE source_event_id='source-00000'").get().n,0);assert.equal(f.sqlite.prepare("SELECT count(*) n FROM connection_roster_evidence WHERE source_event_id='source-00000'").get().n,0);
+    before=seasonInputs(f);page=await f.page({...f.cp(),phase:'members'});await f.commit(page);assertDirty(f,before,['season-2022']);assert.equal(f.sqlite.prepare("SELECT active FROM team_connection_seasons WHERE team_season_id='season-2022'").get().active,0);assert.equal(f.sqlite.prepare("SELECT active FROM team_source_attachments WHERE team_season_id='season-2022'").get().active,0);
+    before=seasonInputs(f);await completePass(f);assertDirty(f,before,[]);
+  }finally{f.close();}
+});
+
+test('same-day kickoff, authority basis and conflict state are included in canonical equality',async()=>{
+  const f=await fixture({events:1});try{await completePass(f);
+    for(const change of [async()=>f.sqlite.exec("UPDATE source_events SET starts_at='2022-08-04T18:00:00Z'"),async()=>f.insert('domain_overrides',{app_team_id:'team',kind:'event',entity_id:'event-00000',fields:JSON.stringify({starts_at:'2022-08-04T18:00:00Z'}),revision:1}),async()=>{f.sqlite.exec('DELETE FROM domain_overrides');await f.event(0,{year:2023,source:'contradiction',canonical:false});}]){const before=seasonInputs(f),revisions=canonicalRevisions(f);await change();await f.commit(await f.page());assertDirty(f,before,['season-2022']);assert.equal(canonicalRevisions(f)['event-00000'],revisions['event-00000']+1);const saved=f.snapshot();await f.commit(await f.page());assert.deepEqual(f.snapshot(),saved);}
+    assert.equal(f.sqlite.prepare('SELECT state FROM team_event_season_resolutions').get().state,'conflict');
+  }finally{f.close();}
+});
+
+test('captured change-detection pages compile within native D1 expression100 compound5 parameters100 SQL100k',async t=>{
+  const f=await fixture({events:24,players:2});t.after(()=>f.close());const writes=[];
+  for(const mutation of [null,null,"UPDATE source_events SET local_day='2024-08-04' WHERE id='source-00000'"]){if(mutation)f.sqlite.exec(mutation);const page=await f.page();writes.push(...page.statements.map(row=>({...row,sql:row.sql.replaceAll('$FENCE','1')})));await f.commit(page);}
+  const directory=await mkdtemp(path.join(tmpdir(),'myts-connection-sql-limits-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+  const database=path.join(directory,'fixture.db'),queries=path.join(directory,'queries.json');await backup(f.sqlite,database);await writeFile(queries,JSON.stringify([...f.reads,...writes]));
+  const proof=spawnSync('python3',['-c',`
+import json,sqlite3,sys
+c=sqlite3.connect(sys.argv[1])
+for key,value in [('SQLITE_LIMIT_EXPR_DEPTH',100),('SQLITE_LIMIT_COMPOUND_SELECT',5),('SQLITE_LIMIT_VARIABLE_NUMBER',100),('SQLITE_LIMIT_SQL_LENGTH',100000)]: c.setlimit(getattr(sqlite3,key),value)
+queries=json.load(open(sys.argv[2]));seen=set()
+for i,q in enumerate(queries):
+ if q['sql'] in seen: continue
+ seen.add(q['sql'])
+ try: c.execute('EXPLAIN '+q['sql'],q['params']).fetchall()
+ except Exception as e: raise RuntimeError('query '+str(i)+' failed: '+str(e)+'; SQL='+q['sql'][:500]) from e
+print(json.dumps({'queries':len(queries),'uniqueStatements':len(seen),'maxSqlBytes':max(len(q['sql'].encode()) for q in queries),'maxParameters':max(len(q['params']) for q in queries)}))
+`,database,queries],{encoding:'utf8',maxBuffer:1_000_000});assert.equal(proof.status,0,proof.stderr);t.diagnostic(proof.stdout.trim());
 });

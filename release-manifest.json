@@ -1,6 +1,6 @@
 {
   "service": "myTS",
-  "version": "7.2.16",
+  "version": "7.2.17",
   "review": true,
   "files": [
     {
@@ -52,6 +52,16 @@
       "path": "docs/attendance-throughput-repair.md",
       "bytes": 10899,
       "sha256": "6eba92fc61244c6d61f995a49c1ed1ff10b25674f1ee811dd59ffc895de2ba96"
+    },
+    {
+      "path": "docs/change-driven-reconciliation-native-map.json",
+      "bytes": 79887,
+      "sha256": "39e4335cd7275bdfc659619aacab4f8ccd97058c466059af5a8d2f1dee55d2ec"
+    },
+    {
+      "path": "docs/change-driven-reconciliation.md",
+      "bytes": 8349,
+      "sha256": "db42fb6bffd1929758884798ec869490a1f1222d703d2af84904cda49a8904d2"
     },
     {
       "path": "docs/coach-original-workflow-handoff.md",
@@ -381,12 +391,12 @@
     {
       "path": "package-lock.json",
       "bytes": 49487,
-      "sha256": "aa84d54678a5fa9b6b08e81255833352bdf18169592601bd0fa3d294f4eb91f4"
+      "sha256": "325b3a977445a70ce74f05844f010d46bceb525ad52dad54d990bd2e4cfad292"
     },
     {
       "path": "package.json",
       "bytes": 636,
-      "sha256": "253759ed717660cf6962b240a742e7c957fe8f1f5a5376c7f15e5098040ea5fe"
+      "sha256": "a991f8f8c6db46b43bfad68451256d18c8e70681697d2a13db0852de6f7e059d"
     },
     {
       "path": "scripts/release-check.mjs",
@@ -656,7 +666,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 31,
-      "sha256": "f17f56978dd19eca0690f2ae23e50efc67e2f8cd54bf36c666284f5c2a113e52"
+      "sha256": "0317e32480e7d91aafa7207d35085e5c995b714425663e1f6b0263295c560f26"
     },
     {
       "path": "src/coaching/routes.js",
@@ -695,8 +705,8 @@
     },
     {
       "path": "src/domain/connection-event-batch.js",
-      "bytes": 17436,
-      "sha256": "091944e205cace72d339b4780d1920fdaa9a0a2a99ff4559d739cf6618eb12b5"
+      "bytes": 22936,
+      "sha256": "f5a7a3850465f33f683a58dd130a6fbda002c0f9035fbd161a291f865f19e714"
     },
     {
       "path": "src/domain/connection-evidence.js",
@@ -705,8 +715,8 @@
     },
     {
       "path": "src/domain/connection-materializer.js",
-      "bytes": 32050,
-      "sha256": "bcd381c86dcc026f5558d3340a634d8091b48aa7bb64597be04ec93f0ef662df"
+      "bytes": 33139,
+      "sha256": "a3aa6a82b2d18ab98d5842891aad0d01991d3d2091389c5aa8f43803f5364128"
     },
     {
       "path": "src/domain/connection-periods.js",
