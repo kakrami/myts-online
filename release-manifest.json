@@ -1,12 +1,12 @@
 {
   "service": "myTS",
-  "version": "7.2.2",
+  "version": "7.2.3",
   "review": true,
   "files": [
     {
       "path": "README.md",
-      "bytes": 8364,
-      "sha256": "46eb570c2e7b730edc0ed623ae910389da8ac84fcf16600743c95a257791aa65"
+      "bytes": 8772,
+      "sha256": "db7ef5d8e996094a5fe5de53dda4a2cfafcc1ace9216940610c07561290a9b07"
     },
     {
       "path": "docs/acceptance-baseline.md",
@@ -17,6 +17,11 @@
       "path": "docs/analysis-reads-contract.md",
       "bytes": 4901,
       "sha256": "9f599ba6551c047cf1731193776a913acb650820bd0ccf97d85ad39a9d3ad09d"
+    },
+    {
+      "path": "docs/attendance-diagnostics.md",
+      "bytes": 7813,
+      "sha256": "9bb8669a11d5e1193183b0adca65e2ffd9465023f6249c754ecf08b7198e2b48"
     },
     {
       "path": "docs/coach-original-workflow-handoff.md",
@@ -40,8 +45,8 @@
     },
     {
       "path": "docs/deployment-verification.md",
-      "bytes": 35167,
-      "sha256": "1076bb247c69c2c5959e8346c83a5b87ad725db9fddc5a4395b57ef0cc189e1c"
+      "bytes": 35738,
+      "sha256": "90e74205128b11a2f8b0ba597e8ed83284d0ffca3456206373d989ba74521f34"
     },
     {
       "path": "docs/domain-contract.md",
@@ -186,12 +191,12 @@
     {
       "path": "package-lock.json",
       "bytes": 49485,
-      "sha256": "ea8bc2763833e846e9f1223b0378f1a954b4744ba86ba3707aa0e2dad962a4cf"
+      "sha256": "e24a4d14cf024261ef85356cb7770b9474f76fd8fc7f56a30b11939f81b68ee8"
     },
     {
       "path": "package.json",
       "bytes": 635,
-      "sha256": "71c4548f1a5c7051e0a22e129edc807b79f6b0a06db128d450579b5a759c8448"
+      "sha256": "62095b7b1b3c29cfd39c9b04a928e047c85eb950369d2d2bce7497c73c0dc183"
     },
     {
       "path": "scripts/release-check.mjs",
@@ -370,8 +375,8 @@
     },
     {
       "path": "src/application/routes.js",
-      "bytes": 26340,
-      "sha256": "e298452b988a50d522bdefd4eb59727abd1da49e6293896c24fcd69ae2ba3826"
+      "bytes": 27499,
+      "sha256": "db29ff9f57e502c785c51e64058e90710303a77d2647a5cc5cbdf74b757c74c5"
     },
     {
       "path": "src/application/schema-upgrade.js",
@@ -390,13 +395,13 @@
     },
     {
       "path": "src/application/sync-service.js",
-      "bytes": 39266,
-      "sha256": "c47d0f6806b1d791ed2f27f2b0243b84eaee0b4fb8792b447b03927e1115e6ad"
+      "bytes": 43175,
+      "sha256": "92d8dee2bba96484958fede76f23d22a98339460755a0d77c8a588aaf72984cb"
     },
     {
       "path": "src/application/team-catalog.js",
-      "bytes": 23762,
-      "sha256": "ae7ef70927bcd5f8e188b482587c4c569814572c6fd2c0b54a4c5de057a30ec3"
+      "bytes": 25124,
+      "sha256": "2478c3402e22db41755c44cd394faa03a61d67c7788a60685b59f7c5a243a911"
     },
     {
       "path": "src/application/team-features.js",
@@ -421,7 +426,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 30,
-      "sha256": "bf0302338a311b0909760c133b9d4ed58c1b983d619a2f1df4a284ea1f171dfa"
+      "sha256": "7c553ad01a48de1705c5d04c7b64a9931cf2b0c5216d5c6db3d341497fc0209b"
     },
     {
       "path": "src/coaching/routes.js",
@@ -749,6 +754,11 @@
       "sha256": "41ec6f186dc4b75a4d312c89afa8fef796afa0a150c960c2bff520ba595b0e41"
     },
     {
+      "path": "src/sources/teamsnap-diagnostics.js",
+      "bytes": 5010,
+      "sha256": "351562fa241431502a920b67b5fcc35244cbcf675918905dc8d69e229018f9ce"
+    },
+    {
       "path": "src/sources/teamsnap-pagination.js",
       "bytes": 7498,
       "sha256": "5c7f81fcea3445894d38c632f9e31eb22e1e81f55a39e5dea78de5758dc25c41"
@@ -760,8 +770,8 @@
     },
     {
       "path": "src/sources/teamsnap.js",
-      "bytes": 19409,
-      "sha256": "11a08375d9d867751f4a384ae0dc375ad12adfe6f48cb24a7de3cfb534304613"
+      "bytes": 19582,
+      "sha256": "54dce643730f9cf5dbbc71625e2a836e99b8b101529d88a3f2e6b470559f9e04"
     },
     {
       "path": "src/sources/trace-contracts.js",
@@ -785,13 +795,13 @@
     },
     {
       "path": "src/sync/coordinator.js",
-      "bytes": 66790,
-      "sha256": "76682865493b4d1a0f8d7b1ad2d09555c15292746618759196eb4b61d74596f4"
+      "bytes": 67695,
+      "sha256": "5a04476557c88e5165f40d6a6555665698c0b3c87d9c593c3b1a61c556cbedee"
     },
     {
       "path": "src/sync/errors.js",
-      "bytes": 2124,
-      "sha256": "85d9940f9c2096862637bc0b993a9ef79526415301031be2c550f69cba731a18"
+      "bytes": 2237,
+      "sha256": "4978bb249bd2e1827af70d916f1726614f055813b21392b8113573cf1ac498fd"
     },
     {
       "path": "src/sync/public-history-bridge.js",
@@ -875,8 +885,8 @@
     },
     {
       "path": "web/app/features.js",
-      "bytes": 49829,
-      "sha256": "ddff30cc38a8699d7c144083df5bb96207d6032ef7d3470dbd241cee7ab04857"
+      "bytes": 52723,
+      "sha256": "303cb2af126d4f84297544be412bd0977cee07db0ad15eaf96bf8fe99b1f9c7e"
     },
     {
       "path": "web/app/identity-features.js",

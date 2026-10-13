@@ -101,6 +101,19 @@ export async function applicationRoutes(request,env,{db,installation,extraRoutes
   if(path==='/api/connections'&&method==='POST')return json(await new ConnectionService(db,{features,sync,owner:principal,now:()=>security.now()}).create(await readAuthBody(request)),202);
   const connectionCatalog=path.match(/^\/api\/teams\/([^/]+)\/connections$/);
   if(connectionCatalog&&method==='GET')return json(await catalog.connections(decode(connectionCatalog[1]),{limit:integer(selection.limit,100),cursor:selection.cursor??null}));
+  const attendanceRetry=path.match(/^\/api\/connections\/([^/]+)\/attendance\/retry$/);
+  if(attendanceRetry&&method==='POST'){
+    const body=await readAuthBody(request),commands=new ConnectionService(db,{features,sync,owner:principal,now:()=>security.now()});
+    if(Object.keys(body).some(key=>!['team_id','generation'].includes(key)))throw invalid('Send only this connection\'s team and generation.','attendance_retry_invalid');
+    commands.ownerOnly();await commands.assertSession();
+    // Evaluate expiry in the committing statement too: a held request must not
+    // retain authority merely because its session was live before selection.
+    const precondition=commands.sessionCondition();
+    precondition.sql+=" AND EXISTS(SELECT 1 FROM security_sessions current_session WHERE current_session.token_hash=? AND current_session.expires_at>CAST((julianday('now')-2440587.5)*86400000 AS INTEGER))";
+    precondition.params.push(principal.session_id);
+    const result=await sync.retryFailedAttendance(decode(attendanceRetry[1]),{teamId:body.team_id,generation:body.generation,precondition});
+    return json(result,result.already_queued?200:202);
+  }
   const connectionCommand=path.match(/^\/api\/connections\/([^/]+)(?:\/(sync))?$/);
   if(connectionCommand){
     const connectionId=decode(connectionCommand[1]),commands=new ConnectionService(db,{features,sync,owner:principal,now:()=>security.now()});

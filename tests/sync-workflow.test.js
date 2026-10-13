@@ -11,6 +11,7 @@ const root = path.resolve('.');
 async function fixture(nativeAlarms = false, freshDomain = false, runtimeOptions={}) {
   const modules = {};
   for (const name of ['schema','errors','coordinator','budget','runtime','public-history','public-history-bridge']) modules[`src/sync/${name}.js`] = {type:'esm',contents:await readFile(`src/sync/${name}.js`,'utf8')};
+  modules['src/sources/teamsnap-diagnostics.js']={type:'esm',contents:await readFile('src/sources/teamsnap-diagnostics.js','utf8')};
   modules['src/application/public-history-schema.js']={type:'esm',contents:await readFile('src/application/public-history-schema.js','utf8')};
   modules['sync-test-worker.js'] = {type:'esm',contents:`
     import {JobCoordinator} from './src/sync/coordinator.js';

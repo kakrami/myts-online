@@ -1,3 +1,4 @@
+import {teamSnapDiagnosticSuffix} from '../sources/teamsnap-diagnostics.js';
 export class SyncError extends Error {
   constructor(code, message, options = {}) {
     super(message);
@@ -28,6 +29,6 @@ export function classifyFailure(error) {
     source_changing: 'This source changed during collection. Saved data is available; verification will retry shortly.',
     collector_failed: 'The source update failed. Saved data is available.',
   };
-  return { code, kind, message: messages[code] || 'The source update failed. Saved data is available.',
+  return { code, kind, message: (messages[code] || 'The source update failed. Saved data is available.') + teamSnapDiagnosticSuffix(error),
     retryAfterMs: Math.max(0, Number(error?.retryAfterMs) || 0) };
 }

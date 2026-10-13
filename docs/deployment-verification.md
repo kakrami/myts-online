@@ -1,3 +1,7 @@
+# myTS 7.2.3 attendance diagnostics
+
+See [the diagnostic scope and targeted retry](attendance-diagnostics.md). This code-only update preserves the 731-statement schema, upgrade plan, source validation, existing records, account/root identities and deployment configuration. The live attendance failure predicate is still unidentified. Deployment adds privacy-safe static failure diagnostics and a narrowly scoped owner retry in TeamSnap Manage; it does not automatically retry or reset completed event history. Earlier version sections retain their historical receipts.
+
 # myTS 7.2.2 connection throughput repair
 
 See [the bounded repair and measured acceptance](connection-throughput-repair.md). This is a code-only update of the existing 7.2.1 installation. The 731-statement schema, upgrade plan, original setup timestamps, data, credentials, root identities and deployment configuration are unchanged. Queued connection reconciliation resumes from its current canonical cursor; do not reset or restart the provider scan. Final native and artifact receipts are required before deployment. The following 7.2.1 and 7.2.0 sections preserve earlier receipts and recovery instructions; they are not new acceptance claims for 7.2.2.

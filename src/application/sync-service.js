@@ -222,6 +222,26 @@ export class ApplicationSyncService {
     if(jobIds.length!==specs.length)throw invalid('The connection authorization changed while starting import. Retry after reconnecting.','connection_unavailable',409);
     if(wake)await this.wake();return {connectionId,jobIds,queued:true,...(sourceCollectionBlocked?{source_collection_blocked:sourceCollectionBlocked}:{})};
   }
+  async retryFailedAttendance(connectionId,{teamId,generation,precondition,wake=true}={}) {
+    if(typeof connectionId!=='string'||!connectionId||connectionId.length>200||typeof teamId!=='string'||!teamId||teamId.length>200||!Number.isSafeInteger(generation)||generation<1)throw invalid('Reload this connection before retrying attendance.','attendance_retry_invalid');
+    if(!precondition||typeof precondition.sql!=='string'||!Array.isArray(precondition.params)||/;/.test(precondition.sql))throw invalid('Sign in to retry attendance.','sign_in_required',401);
+    // Resolve the one existing root job, never accept a job ID, URL, account or
+    // checkpoint from the caller. Private collection needs this exact live
+    // account-owned native source and current root demand, even when shared.
+    const authority=`FROM team_source_connections c JOIN app_teams team ON team.id=c.app_team_id JOIN source_teams t ON t.id=c.source_team_id JOIN provider_accounts a ON a.id=c.account_id AND a.id=t.account_id JOIN account_source_teams entitled ON entitled.account_id=a.id AND entitled.source_team_id=t.id JOIN sync_jobs candidate ON candidate.provider='teamsnap' AND candidate.stage='source' AND candidate.component='attendance' AND candidate.account_id=a.id AND candidate.account_scope=a.id AND candidate.authorization_generation=a.generation AND candidate.scope='teamsnap:'||t.native_id AND candidate.resource_key=candidate.scope JOIN sync_job_subscribers demand ON demand.job_id=candidate.id AND demand.kind='team' AND demand.demand_key='connection:'||c.id AND demand.app_team_id=c.app_team_id AND demand.generation=c.generation WHERE c.id=? AND c.app_team_id=? AND c.generation=? AND c.active=1 AND t.provider='teamsnap' AND t.provenance='provider' AND t.scope=a.id AND a.provider='teamsnap' AND a.active=1 AND json_extract(t.evidence,'$.account_owned')=1 AND CAST(json_extract(candidate.args,'$.team_id') AS TEXT)=t.native_id AND json_type(candidate.args,'$.url') IS NULL AND candidate.lease_token IS NULL AND candidate.lease_until<=? AND NOT EXISTS(SELECT 1 FROM team_lifecycle l WHERE l.team_id=c.app_team_id) AND (${precondition.sql})`;
+    const params=[connectionId,teamId,generation,this.jobs.clock(),...precondition.params],unavailable=()=>invalid('Attendance retry is unavailable or this connection changed. Reload its status.','attendance_retry_unavailable',409);
+    const job=await this.db.prepare(`SELECT candidate.id,candidate.state,candidate.generation,candidate.authorization_generation,candidate.scan_id,candidate.attempts,candidate.failures,c.source_team_id,c.account_id ${authority}`).bind(...params).first();
+    if(!job||!['failed','queued'].includes(job.state))throw unavailable();
+    const snapshot='candidate.id=? AND candidate.generation=? AND candidate.authorization_generation=? AND candidate.scan_id=? AND candidate.attempts=? AND candidate.failures=? AND c.source_team_id=? AND c.account_id=?',snapshotParams=[job.id,job.generation,job.authorization_generation,job.scan_id,job.attempts,job.failures,job.source_team_id,job.account_id];
+    const queued=job.state==='failed'&&await this.jobs.retry(job.id,{precondition:{sql:`EXISTS(SELECT 1 ${authority} AND ${snapshot} AND candidate.state='failed')`,params:[...params,...snapshotParams]}});
+    // A concurrent retry may already have queued this exact snapshot. A job
+    // that advanced, failed again, changed scope or lost authority cannot replay.
+    if(!queued&&!await this.db.prepare(`SELECT 1 ${authority} AND ${snapshot} AND candidate.state='queued'`).bind(...params,...snapshotParams).first())throw unavailable();
+    // Wakes already coalesce in the scheduler. Replaying repairs a lost wake
+    // after commit, while leaving job/status rows and every saved page intact.
+    if(wake)await this.wake();
+    return {connection_id:connectionId,job_id:job.id,component:'attendance',queued:true,already_queued:!queued};
+  }
   async detachConnection({teamId,connectionId,generation,precondition={sql:'1',params:[]}}) {
     const root=await this.db.prepare('SELECT * FROM team_source_connections WHERE id=? AND app_team_id=?').bind(connectionId,teamId).first();
     if(!root)throw invalid('This source connection belongs to another team.','source_scope',403);

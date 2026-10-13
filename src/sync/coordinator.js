@@ -334,12 +334,20 @@ export class JobCoordinator {
     ]);
     return { state:results.at(receiptFailure?-2:-1).meta.changes?state:'lease_lost', error:info };
   }
-  async retry(id) {
+  async retry(id,{precondition=null}={}) {
+    if(precondition&&(typeof precondition.sql!=='string'||!Array.isArray(precondition.params)||/;/.test(precondition.sql)))throw new SyncError('contract_violation','Invalid internal retry precondition.',{kind:'permanent'});
     const at = this.clock();
+    // The command's authority and failed snapshot must fence status revisions
+    // as well as the state change. D1 executes all three in one transaction.
+    // Keep the bounded command guard outside the ordinary demand expression;
+    // combining both inline exceeds native D1's expression-depth limit.
+    const command=precondition?`retry_command AS MATERIALIZED(SELECT 1 WHERE ${precondition.sql}), `:'';
+    const eligible=`SELECT j.id FROM sync_jobs j WHERE j.id=? AND j.lease_until<=? AND ${activeAccount('j')} AND ${this.demanded('j')}${precondition?' AND EXISTS(SELECT 1 FROM retry_command)':''}`;
+    const params=[...(precondition?.params||[]),id,at],prepare=sql=>this.prepare(`WITH ${command}retry_eligible AS MATERIALIZED(${eligible}) ${sql}`);
     const results = await this.db.batch([
-      this.revisions('SELECT s.app_team_id FROM sync_job_subscribers s JOIN sync_jobs j ON j.id=s.job_id WHERE j.id=? AND j.lease_until<=? AND '+activeAccount('j'),[id,at]),
-      this.accountRevisions('id=? AND lease_until<=? AND '+activeAccount('sync_jobs'),[id,at]),
-      this.prepare(`UPDATE sync_jobs SET state='queued',next_at=?,ready_since=? WHERE id=? AND lease_until<=? AND ${activeAccount('sync_jobs')} AND ${this.demanded('sync_jobs')}`).bind(at,at,id,at),
+      this.revisions('SELECT app_team_id FROM sync_job_subscribers WHERE job_id IN(SELECT id FROM retry_eligible)',params,false,prepare),
+      this.accountRevisions('id IN(SELECT id FROM retry_eligible)',params,prepare),
+      prepare("UPDATE sync_jobs SET state='queued',next_at=?,ready_since=? WHERE id IN(SELECT id FROM retry_eligible)").bind(...params,at,at),
     ]);
     return results.at(-1).meta.changes === 1;
   }

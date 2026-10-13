@@ -1,6 +1,8 @@
-# myTS 7.2.2
+# myTS 7.2.3
 
-This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.2.2**. This package is not a production deployment.
+This is the fresh architecture rebuild prepared for review. It targets the existing `myts-v7` Worker and one isolated rebuild database, preserving `myts-v7-data`. The visible version is **7.2.3**. This package is not a production deployment.
+
+The 7.2.3 attendance diagnostic update preserves collection guards and records only bounded, non-identifying failure reasons. An owner can use TeamSnap Manage → Retry attendance for the failed job without restarting completed event history. See [the diagnostic scope and recovery boundary](docs/attendance-diagnostics.md). This release does not yet claim to fix the unidentified live attendance response.
 
 The 7.2.2 connection throughput repair batches shared season reconciliation under the existing transaction limits and removes redundant recovery alarms from safe projection-only pages. See [the diagnosis and verification boundary](docs/connection-throughput-repair.md). Existing saved cursors and the deployed schema remain compatible.
 

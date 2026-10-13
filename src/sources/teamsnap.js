@@ -1,5 +1,6 @@
 import { instant, key, native, parse, requireValue, stamp, teamRecord, text, job, localDate } from "./common.js";
 import { url, unique } from "./http.js";
+import { annotateTeamSnapAttendance } from "./teamsnap-diagnostics.js";
 import { beginTeamSnapRefresh, finishTeamSnapRefresh, teamSnapRefreshCoverage } from "./teamsnap-refresh.js";
 import { teamSnapBatchLength } from "./teamsnap-batch.js";
 import { teamSnapPageRequest, teamSnapPageMetadata, restartTeamSnapPass, reduceTeamSnapPage, advanceTeamSnapPage } from "./teamsnap-pagination.js";
@@ -149,6 +150,7 @@ async function collectPagedTeamSnapRows({j,args,cursor,transport,credential,acco
     out.coverage.push({provider:"teamsnap",account_id:account.id,kind:j.kind,scope:team,complete:false,count:0,observed_at:stamp()});
     return out;
   }
+  try {
   // Missing items is accepted only with explicit scoped empty-page evidence.
   if(raw?.collection && raw.collection.items===undefined && raw.collection.page_info?.total_items===0 && !raw.collection.error) raw={...raw,collection:{...raw.collection,items:[]}};
   const all=unique(collection(raw),r=>native(r.id)), pageDigest=await signature(all), metadata=teamSnapPageMetadata(raw,state,all.length);
@@ -173,6 +175,7 @@ async function collectPagedTeamSnapRows({j,args,cursor,transport,credential,acco
   out.coverage.push({provider:"teamsnap",account_id:account.id,kind:j.kind,scope:team,complete:out.complete,
     count:out.complete?state.count+all.length:state.count+offset+consumed,observed_at:stamp()});
   return out;
+  } catch(error) { throw annotateTeamSnapAttendance(error,{kind:j.kind,raw,state,teamId}); }
 }
 
 export async function collectTeamSnap({ j, args = {}, cursor = {}, transport, credential, account }) {

@@ -23,6 +23,7 @@ test('Workerd collects the maximum bounded Trace radar and rejects frame+1',asyn
    catch(error){return Response.json({error:classifyFailure(error),calls:transport.calls});}
   }};`};
  modules['src/sync/errors.js']={type:'esm',contents:await readFile('src/sync/errors.js','utf8')};
+ modules['src/sources/teamsnap-diagnostics.js']={type:'esm',contents:await readFile('src/sources/teamsnap-diagnostics.js','utf8')};
  const mf=new Miniflare({cf:false,inspectorPort:0,telemetry:{enabled:false},logRequests:false,workers:[{config:{name:'trace-resource',compatibilityDate:'2026-09-09',manifest:{mainModule:'trace-resource-entry.js',modulesRoot:path.resolve('.'),modules},env:{},exports:{}}}]});
  let socket,heapBefore=null,heapAfter=null,heapRetained=null,profilerError=null,call,heapTimer=null,heapSampling=false;const heapSamples=[];
  try{
