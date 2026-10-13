@@ -322,5 +322,5 @@ export class ApplicationSyncService {
   }
 }
 export function createApplicationRuntime(options={}) {
-  return createSyncRuntime(context=>collectApplicationJob(context,options),{publicHistory:true,recoverConnections:({db,env})=>new ApplicationSyncService(db,env).recoverLocalDemand({wake:false}),...options.runtimeOptions});
+  return createSyncRuntime(context=>collectApplicationJob(context,options),{publicHistory:true,reportFairness:true,recoverConnections:({db,env})=>new ApplicationSyncService(db,env).recoverLocalDemand({wake:false}),...options.runtimeOptions});
 }

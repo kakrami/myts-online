@@ -24,7 +24,9 @@ async function fixture({seedAttendance=true}={}) {
  const db={prepare,async batch(statements){sqlite.exec('BEGIN');try{const result=[];for(const statement of statements)result.push(await statement.all());sqlite.exec('COMMIT');return result;}catch(error){sqlite.exec('ROLLBACK');throw error;}}};
  let now=Date.now(),providerRows=[{event_id:EVENT,member_id:PLAYER,team_id:TEAM,status_code:1}];
  const clock=()=>now,repo=new DomainRepository(db),jobs=new JobCoordinator(db,{clock}),sync=new ApplicationSyncService(db,{}, {coordinatorOptions:{clock}});
- const reports=new ReportingService(db,{coordinator:jobs,now:clock,fontLoader:()=>readFile(new URL('../web/assets/report-font.ttf',import.meta.url))});
+ // Retain pre-upgrade queued snapshot regression coverage; default atomic
+ // admission and large-report fallback are covered in reporting-service-latency.
+ const reports=new ReportingService(db,{captureAtAdmission:false,coordinator:{enqueue:(spec,subscribers)=>jobs.enqueue({...spec,priority:20},subscribers)},now:clock,fontLoader:()=>readFile(new URL('../web/assets/report-font.ttf',import.meta.url))});
  const account=await repo.registerAccount({provider:'teamsnap',nativeId:'123',name:'Report refresh account'});
  const team=await repo.createTeam({name:'Report refresh team',timezone:'UTC',seasonYear:2026}),scope={team_id:team.id,team_season_id:team.season_id};
  const sourceTeam=sourceKey('teamsnap',TEAM,account.id),sourceEvent=sourceKey('teamsnap',EVENT,account.id),observed=new Date().toISOString();

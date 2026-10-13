@@ -93,6 +93,49 @@ async function slice(rows, cursor, limit) {
   return { page, offset, complete, checkpoint: complete ? { finished: true } : { offset: offset + page.length, digest } };
 }
 
+const GAME_PROTOCOL = "trace-game-semantics-v1";
+const GAME_CHANGE_LIMIT = 3, GAME_CHANGE_DELAY_MS = 15 * 60_000;
+const semanticJSON = value => JSON.stringify(canonicalJSON(value));
+function canonicalJSON(value) {
+  if (Array.isArray(value)) return value.map(canonicalJSON);
+  return value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().filter(k=>value[k]!==undefined).map(k=>[k,canonicalJSON(value[k])])) : value;
+}
+const withoutObservation = value => { const { observed_at, ...saved } = value; return saved; };
+function memberValue(m,teamId,side) {
+  return {gid:text(m.gid,160),side:m.side||side,team_id:teamId,user_id:native(m.user_id||m.user?.user_id)||null,
+    name:display(m),jersey:text(m.jersey_number,20),position:text(m.position),dummy:m.user?.is_dummy===true,
+    default_trace_number:m.default_trace_number??null,join_time:m.join_time??null,leave_time:m.leave_time??null};
+}
+function momentValue(m,gameId) {
+  if(m.game_id!=null)requireValue(native(m.game_id)===gameId,"Trace moment belongs to another game.","contract_violation");
+  return {game_clip_id:native(m.game_clip_id)||null,team_id:native(m.team_id)||null,half:m.half??null,time:m.time??null,
+    duration:m.duration??null,start_time:m.start_time??null,type:text(m.type),title:text(m.title),keywords:m.keywords||[],
+    gids:m.gids||[],trace_numbers:m.trace_numbers||[],side:text(m.side),dynamic_jfile:text(m.dynamic_jfile,2000),dynamic_hls:text(m.dynamic_hls,2000),
+    base_path:text(m.base_path,2000),spotlights:m.spotlights||[],tags:m.tags||[],camera:m.camera||null};
+}
+function stableOrder(rows,key) {return rows.map(row=>({row,key:semanticJSON(key(row))})).sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0).map(v=>v.row);}
+/** The continuation binds what this collector persists or uses for child work,
+ * not unused GraphQL decoration. Stable ordering also protects ordinal slices
+ * when the provider returns the same collection in a different order. */
+function gamePlan(raw,teamId,side,accountId,profile) {
+  const gameId=native(raw.game_id),moments=stableOrder(raw.moments,m=>({value:momentValue(m,gameId),
+    clip_input:m.type==="FullGameVideo"?{duration:m.duration||m.dynamic_duration||null,radar_path:m.dynamic_jfile??null,radar_base:m.base_path||raw.base_path||null}:null}));
+  const game={...raw,moments},members=stableOrder(ownMembers(game,teamId,side),m=>({value:memberValue(m,teamId,side),player:player(m,accountId,teamId)&&withoutObservation(player(m,accountId,teamId))}));
+  const fixture=traceFixture(game,teamId,accountId),clips=clipsFor(game),teams=[game.home_team,game.away_team].map(r=>({...teamRecord("trace",r.team_id,r.title||r.name,{participant_observation:true,account_owned:false}),account_id:accountId}));
+  const header={game_id:gameId,full_date:text(game.full_date),own_side:side,home:game.home_team,away:game.away_team,
+    approx_half_duration:game.approx_half_duration??null,base_path:text(game.base_path,2000),num_equip:game.num_equip??null,
+    profile_hash:profile,access:game.access||null,permissions:game.permissions||null,
+    availability:game.access?.allowed===false?"restricted":moments.length?"ready":"unpublished",moment_count:moments.length};
+  const memberValues=members.map(m=>canonicalJSON(memberValue(m,teamId,side))),momentValues=moments.map(m=>canonicalJSON(momentValue(m,gameId)));
+  // These inputs exactly determine the later derived children; do not construct
+  // the potentially large child list while merely saving a header/member page.
+  const childInputs=game.access?.allowed===false?null:{role_scope:nativeRoleScope(game,accountId),clips:clips.map(({clip,source})=>({clip,radar_url:source.dynamic_jfile?assetURL(source.dynamic_jfile,source.base_path||game.base_path):null})),
+    members:members.map(m=>({gid:text(m.gid,160),player:player(m,accountId,teamId)&&withoutObservation(player(m,accountId,teamId)),jersey:text(m.jersey_number,20),name:display(m)})),reported_date:text(game.full_date),allowed:game.access?.allowed!==false};
+  return {game,members,clips,fixture,teams,header:canonicalJSON(header),memberValues,momentValues,
+    semantic:{fixture:withoutObservation(fixture),teams:teams.map(withoutObservation),header,clips:clips.map(v=>v.clip),
+      members:memberValues,players:members.map(m=>player(m,accountId,teamId)).filter(Boolean).map(withoutObservation),moments:momentValues,derived:childInputs}};
+}
+
 function ownMembers(game, teamId, side) {
   requireValue(Array.isArray(game.team_members), "Trace detailed roster is missing.", "unsupported_response");
   return game.team_members.filter((member) => {
@@ -271,6 +314,8 @@ function statHeader(stats) {
 
 export async function collectTrace({ j, args = {}, cursor = {}, transport, credential, account }) {
   requireValue(account?.provider === "trace" && account.id && native(account.native_id) && credential, "Trace is disconnected.", "authentication_required");
+  if(j.kind==='game'&&cursor.protocol===GAME_PROTOCOL&&Number.isSafeInteger(cursor.retry_at)&&cursor.retry_at>Date.now())
+    throw Object.assign(fail("Trace changed during collection.",503,"source_changing"),{retryAfterMs:cursor.retry_at-Date.now()});
   const token = await tokenFor(transport, credential, account), accountId = account.id;
   const out = { records: {}, fixtures: [], children: [], complete: true, checkpoint: { finished: true }, coverage: [], replacements: [] };
   const coverage = (kind, scope, complete, count, extra = {}) => ({ provider: "trace", account_id: accountId, kind, scope, complete, count, observed_at: stamp(), ...extra });
@@ -332,19 +377,22 @@ export async function collectTrace({ j, args = {}, cursor = {}, transport, crede
     requireValue(native(game?.game_id) === gameId && Array.isArray(game.team_members) && Array.isArray(game.moments), "Trace detailed game response is invalid.", "unsupported_response");
     const fixture = traceFixture(game, teamId, accountId), side = native(game.home_team.team_id) === teamId ? "home" : "away";
     if (!game.moments.length && !args.profile_hash && !cursor.profile_hash && Number(cursor.index || 0) + 1 < (cursor.users || []).length && game.access?.allowed !== false) return { ...out, complete: false, checkpoint: { ...cursor, index: Number(cursor.index || 0) + 1 } };
-    const digest = await signature(game), changed = cursor.digest && cursor.digest !== digest;
-    work = changed ? { stage: "header", offset: 0 } : work;
-    const stage = work.stage || "header", offset = Number(work.offset || 0), members = ownMembers(game, teamId, side), clips = clipsFor(game);
+    const plan=gamePlan(game,teamId,side,accountId,profile),digest=await signature(canonicalJSON(plan.semantic));
+    const current=cursor.protocol===GAME_PROTOCOL,changed=current&&cursor.digest&&cursor.digest!==digest;
+    const resumed=Number.isSafeInteger(cursor.retry_at)&&cursor.retry_at>0&&cursor.retry_at<=Date.now();
+    let changes=resumed?0:current&&Number.isInteger(cursor.changes)?cursor.changes:0;
+    requireValue(changes>=0&&changes<=GAME_CHANGE_LIMIT,"Invalid Trace change checkpoint.","contract_violation");
+    if(changed)changes++;
+    work=(!current||changed)?{stage:"header",offset:0}:work;
+    const continuation=(nextStage,nextOffset=0,extra={})=>({protocol:GAME_PROTOCOL,profile_hash:profile,digest,stage:nextStage,offset:nextOffset,changes,...extra});
+    if(changes>=GAME_CHANGE_LIMIT)return {...out,complete:false,checkpoint:continuation("header",0,{changes:0,retry_at:Date.now()+GAME_CHANGE_DELAY_MS})};
+    const stage = work.stage || "header", offset = Number(work.offset || 0), {members,clips}=plan;
     requireValue(Number.isSafeInteger(offset) && offset >= 0, "Invalid Trace game checkpoint.", "contract_violation");
-    const continuing = (nextStage, nextOffset = 0) => ({ ...out, complete: false, checkpoint: { profile_hash: profile, digest, stage: nextStage, offset: nextOffset } });
+    const continuing = (nextStage, nextOffset = 0) => ({ ...out, complete: false, checkpoint: continuation(nextStage,nextOffset) });
     if (stage === "header") {
-      out.fixtures = [fixture];
-      out.records.teams = [game.home_team, game.away_team].map((r) => ({ ...teamRecord("trace", r.team_id, r.title || r.name, { participant_observation: true, account_owned: false }), account_id: accountId }));
-      out.records.trace_parts = [sourcePart("header", { game_id: gameId, full_date: text(game.full_date), own_side: side,
-        home: game.home_team, away: game.away_team, approx_half_duration: game.approx_half_duration ?? null, base_path: text(game.base_path, 2000), num_equip: game.num_equip ?? null,
-        profile_hash: profile, access: game.access || null, permissions: game.permissions || null,
-        availability: game.access?.allowed === false ? "restricted" : game.moments.length ? "ready" : "unpublished", moment_count: game.moments.length }),
-        ...clips.map(({ clip }) => sourcePart("clip:" + clip.half, clip))];
+      out.fixtures = [plan.fixture];
+      out.records.teams = plan.teams;
+      out.records.trace_parts = [sourcePart("header",plan.header),...clips.map(({clip})=>sourcePart("clip:"+clip.half,clip))];
       return continuing("members");
     }
     if (stage === "members") {
@@ -352,27 +400,17 @@ export async function collectTrace({ j, args = {}, cursor = {}, transport, crede
       const page = members.slice(offset, offset + 100);
       out.records.players = [...new Map(page.map((m) => player(m, accountId, teamId)).filter(Boolean).map((p) => [p.id, p])).values()];
       // A game appearance is not a current roster scan; the separate roster job owns membership replacement.
-      out.records.trace_parts = page.map((m, i) => sourcePart("member:" + String(offset + i).padStart(5, "0"), {
-        gid: text(m.gid, 160), side: m.side || side, team_id: teamId, user_id: native(m.user_id || m.user?.user_id) || null,
-        name: display(m), jersey: text(m.jersey_number, 20), position: text(m.position), dummy: m.user?.is_dummy === true,
-        default_trace_number: m.default_trace_number ?? null, join_time: m.join_time ?? null, leave_time: m.leave_time ?? null }));
+      out.records.trace_parts = plan.memberValues.slice(offset,offset+100).map((value,i)=>sourcePart("member:"+String(offset+i).padStart(5,"0"),value));
       return offset + page.length < members.length ? continuing("members", offset + page.length) : continuing("moments");
     }
     if (stage === "moments") {
       requireValue(offset <= game.moments.length, "Trace moment checkpoint exceeds its scope.", "contract_violation");
-      const page = game.moments.slice(offset, offset + 100);
-      out.records.trace_parts = page.map((m, i) => {
-        if (m.game_id != null) requireValue(native(m.game_id) === gameId, "Trace moment belongs to another game.", "contract_violation");
-        return sourcePart("moment:" + String(offset + i).padStart(7, "0"), {
-          game_clip_id: native(m.game_clip_id) || null, team_id: native(m.team_id) || null, half: m.half ?? null, time: m.time ?? null,
-          duration: m.duration ?? null, start_time: m.start_time ?? null, type: text(m.type), title: text(m.title), keywords: m.keywords || [],
-          gids: m.gids || [], trace_numbers: m.trace_numbers || [], side: text(m.side), dynamic_jfile: text(m.dynamic_jfile, 2000), dynamic_hls: text(m.dynamic_hls, 2000),
-          base_path: text(m.base_path, 2000), spotlights: m.spotlights || [], tags: m.tags || [], camera: m.camera || null });
-      });
+      const page = plan.momentValues.slice(offset, offset + 100);
+      out.records.trace_parts = page.map((value,i)=>sourcePart("moment:"+String(offset+i).padStart(7,"0"),value));
       return offset + page.length < game.moments.length ? continuing("moments", offset + page.length) : continuing("derived");
     }
     requireValue(stage === "derived", "Trace game checkpoint has an unknown stage.", "contract_violation");
-    const children = game.access?.allowed === false ? [] : derivedChildren(game, args, members, side, accountId);
+    const children = game.access?.allowed === false ? [] : derivedChildren(plan.game, args, members, side, accountId);
     requireValue(offset <= children.length, "Trace child checkpoint exceeds its scope.", "contract_violation");
     out.children = children.slice(offset, offset + 100);
     if (offset + out.children.length < children.length) return continuing("derived", offset + out.children.length);

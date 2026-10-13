@@ -12,16 +12,19 @@ export const REPORT_COLUMNS = {
  availability:[{key:'player',label:'Player'},...['yes','no','maybe','no_response','total'].map(key=>({key,label:{no_response:'No Response'}[key]||key[0].toUpperCase()+key.slice(1),numeric:true})),{key:'yes_pct',label:'Yes %',numeric:true,digits:0,percentage:true,blankWhenNull:true}],
 };
 const CAPTURE_PAGE=100,MAX_BYTES=64*1024*1024;
+// Admission captures only a small, byte-bounded complete rowset. Larger reports
+// keep their resumable capture and strict original evidence fences.
+const ADMISSION_ROWS=250,ADMISSION_BYTES=512*1024,ROW_BYTES=16000;
 const hasAttendance=type=>['matches','players','availability'].includes(type);
 const safeId=value=>{if(typeof value!=='string'||!/^[0-9a-f-]{36}$/.test(value))throw invalid('Choose an available report.','report_invalid');return value;};
 const permanent=(code,message)=>Object.assign(invalid(message,code,409),{failureKind:'permanent'});
 const scopeNote=(type,selection={})=>(type==='matches'?'All scheduled events in this season; cancelled events remain explicit.':type==='availability'?'Past included events with attendance tracking, including practices. Yes % uses all selected tracked events; missing responses, unknown values and conflicts remain explicit. No tracked events leaves the percentage blank.':type==='players'?'Player statistics use included completed games; attendance uses all past included tracked events, including practices. Partial analysis coverage and unavailable values remain explicit.':'Included completed games; partial analysis coverage and unavailable values are explicit.')+(selection.report_sort_fallback?' Long or complex values use complete case-insensitive text ordering for this column; natural numeric ordering is unavailable.':'');
 export const reportFilename=(type,season,format)=>({season:'season_summary',matches:'schedule',players:'players',availability:'attendance'}[type]||'report')+'_'+season.replace('/','-')+'.'+format;
-const jobSpec=(snapshot,component,resourceKey,args)=>({provider:'reports',component,stage:'export',scope:snapshot.app_team_id,resourceKey,args,priority:20,recurring:false,intervalMs:86400000});
+const jobSpec=(snapshot,component,resourceKey,args)=>({provider:'reports',component,stage:'export',scope:snapshot.app_team_id,resourceKey,args,priority:100,recurring:false,intervalMs:86400000});
 
 /** A ready snapshot is an immutable full ordered rowset. No export reads live source tables. */
 export class ReportingService {
- constructor(db,{coordinator,cursor,now=Date.now,fontLoader,queryBuilders={},wake=async()=>{}}={}) {this.db=db;this.coordinator=coordinator;this.cursor=cursor;this.now=now;this.fontLoader=fontLoader;this.queryBuilders=queryBuilders;this.wake=wake;}
+ constructor(db,{coordinator,cursor,now=Date.now,fontLoader,queryBuilders={},captureAtAdmission=true,wake=async()=>{}}={}) {this.captureAtAdmission=captureAtAdmission;this.db=db;this.coordinator=coordinator;this.cursor=cursor;this.now=now;this.fontLoader=fontLoader;this.queryBuilders=queryBuilders;this.wake=wake;}
  async enqueue(snapshot,component,resourceKey,args){if(!this.coordinator)throw invalid('Background report processing is unavailable.','report_runtime_unavailable',503);const id=await this.coordinator.enqueue(jobSpec(snapshot,component,resourceKey,args),[{kind:'team',teamId:snapshot.app_team_id,key:'report/'+snapshot.id}]);await this.wake();return id;}
  async query(type,selection){const reads=new ReadRepository(this.db,{owner:true},{now:this.now,cursor:this.cursor});
    if(this.queryBuilders[type])return this.queryBuilders[type](selection,reads);
@@ -48,12 +51,28 @@ export class ReportingService {
    if(!revision||!Number.isSafeInteger(total)||total<0)throw invalid('The report scope is unavailable.','report_scope_unavailable',409);
    if(total>1048572)throw invalid('This report exceeds the Excel worksheet row capacity. Narrow its scope.','report_capacity',413);
    const projection=publication.results?.[0],initial=projection?.published_run_id===null&&projection.published_input_revision<0?{input_revision:projection.input_revision,evidence_revision:revision.attendance_source_revision}:null;
-   const attendanceRevision=hasAttendance(type)?revision.attendance_source_revision:null,admissionEvidence=attendanceRevision??initial?.evidence_revision,savedSelection={...selection,...sortFallback?{report_sort_fallback:true}:{},...attendanceRevision!==null?{attendance_evidence_revision:attendanceRevision}:{},...initial?{report_initial_publication:initial}:{}},evidenceGuard=admissionEvidence!==undefined&&admissionEvidence!==null?' AND '+ATTENDANCE_EVIDENCE_CLOCK_SQL+'=?':'';
+   const attendanceRevision=hasAttendance(type)?revision.attendance_source_revision:null,savedSelection={...selection,...sortFallback?{report_sort_fallback:true}:{},...attendanceRevision!==null?{attendance_evidence_revision:attendanceRevision}:{},...initial?{report_initial_publication:initial}:{}};
    const initialGuard=initial?' AND EXISTS(SELECT 1 FROM team_projection_state p WHERE p.app_team_id=? AND p.team_season_id=? AND p.published_run_id IS NULL AND p.published_input_revision<0 AND p.input_revision=?)':'';
    const id=crypto.randomUUID(),at=this.now(),ordered=orderedReportQuery(query,columns,{key,direction});
-   const saved=await this.db.prepare(`INSERT INTO report_snapshots(id,app_team_id,team_season_id,type,selection,columns,sort_key,sort_direction,scope_label,season_label,content_revision,query_sql,query_params,total,state,created_at,expires_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,'capturing',?,? WHERE EXISTS(SELECT 1 FROM team_read_state WHERE app_team_id=? AND content_revision=? AND NOT EXISTS(SELECT 1 FROM team_lifecycle l WHERE l.team_id=team_read_state.app_team_id))${evidenceGuard}${initialGuard}`).bind(id,team.id,season.id,type,JSON.stringify(savedSelection),JSON.stringify(columns),key||'',direction,team.name+' · '+({season:'Season summary',matches:'Schedule',players:'Players',availability:'Attendance'}[type]),season.year+'/'+String(season.year+1).slice(-2),revision.content_revision,ordered,JSON.stringify(query.params),total,at,at+86400000,team.id,revision.content_revision,...evidenceGuard?[admissionEvidence]:[],...initial?[team.id,season.id,initial.input_revision]:[]).run();
+   let admissionRows=null;
+   if(this.captureAtAdmission&&!initial&&total<=ADMISSION_ROWS){
+     const rows=(await this.db.prepare(`SELECT ordinal,row_json FROM(${ordered}) LIMIT ?`).bind(...query.params,ADMISSION_ROWS+1).all()).results;
+     if(rows.length===total&&rows.every((row,index)=>row.ordinal===index&&bytes(row.row_json).length<=ROW_BYTES)){
+       const serialized=JSON.stringify(rows);if(bytes(serialized).length<=ADMISSION_BYTES)admissionRows=serialized;
+     }
+   }
+   const admissionEvidence=attendanceRevision??initial?.evidence_revision??(admissionRows!==null?revision.attendance_source_revision:null),evidenceGuard=admissionEvidence!==undefined&&admissionEvidence!==null?' AND '+ATTENDANCE_EVIDENCE_CLOCK_SQL+'=?':'';
+   const admission=this.db.prepare(`INSERT INTO report_snapshots(id,app_team_id,team_season_id,type,selection,columns,sort_key,sort_direction,scope_label,season_label,content_revision,query_sql,query_params,total,state,created_at,expires_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,'capturing',?,? WHERE EXISTS(SELECT 1 FROM team_read_state WHERE app_team_id=? AND content_revision=? AND NOT EXISTS(SELECT 1 FROM team_lifecycle l WHERE l.team_id=team_read_state.app_team_id))${evidenceGuard}${initialGuard}`).bind(id,team.id,season.id,type,JSON.stringify(savedSelection),JSON.stringify(columns),key||'',direction,team.name+' · '+({season:'Season summary',matches:'Schedule',players:'Players',availability:'Attendance'}[type]),season.year+'/'+String(season.year+1).slice(-2),revision.content_revision,ordered,JSON.stringify(query.params),total,at,at+86400000,team.id,revision.content_revision,...evidenceGuard?[admissionEvidence]:[],...initial?[team.id,season.id,initial.input_revision]:[]);
+   // Preflight rows are never rebased. The original admission fence either
+   // admits their exact source/content revision or writes nothing. All three
+   // mutations commit together, so ready is never visible before every row.
+   const saved=admissionRows===null?await admission.run():(await this.db.batch([
+     admission,
+     this.db.prepare("INSERT INTO report_rows(snapshot_id,ordinal,row_json) SELECT ?,json_extract(value,'$.ordinal'),json_extract(value,'$.row_json') FROM json_each(?) WHERE EXISTS(SELECT 1 FROM report_snapshots WHERE id=? AND state='capturing' AND captured=0)").bind(id,admissionRows,id),
+     this.db.prepare("UPDATE report_snapshots SET captured=total,state='ready' WHERE id=? AND state='capturing' AND captured=0 AND total=(SELECT COUNT(*) FROM report_rows WHERE snapshot_id=?)").bind(id,id),
+   ]))[0];
    if(saved.meta.changes!==1)throw invalid('The team changed while preparing this report. Try again.','report_changed',409);
-   const snapshot=await this.snapshot(id);await this.enqueue(snapshot,'capture',id,{snapshot_id:id});return this.preview(id);
+   const snapshot=await this.snapshot(id);if(snapshot.state!=='ready')await this.enqueue(snapshot,'capture',id,{snapshot_id:id});return this.preview(id);
  }
  async snapshot(id){safeId(id);const row=await this.db.prepare('SELECT s.* FROM report_snapshots s WHERE s.id=? AND NOT EXISTS(SELECT 1 FROM team_lifecycle l WHERE l.team_id=s.app_team_id)').bind(id).first();if(!row||row.expires_at<=this.now())throw invalid('This report has expired. Prepare it again.','report_expired',410);return row;}
  async preview(id,{limit=50,cursor=null}={}){if(!Number.isInteger(limit)||limit<1||limit>100)throw invalid('Choose a report page size from 1 to 100.');const snapshot=await this.snapshot(id),{attendance_evidence_revision,report_initial_publication,...selection}=JSON.parse(snapshot.selection),columns=JSON.parse(snapshot.columns);let after=-1;if(cursor){const position=await this.cursor.verify(cursor,{selection:{snapshot_id:id},revision:0,scope:'report/'+snapshot.app_team_id});if(!Array.isArray(position)||!Number.isInteger(position[0])||position[0]<0)throw invalid('The report cursor is invalid.');after=position[0];}

@@ -112,6 +112,14 @@ export function createSyncRuntime(collector, options = {}) {
         // Persist recovery before external work. An interrupted invocation cannot
         // strand a running lease until somebody opens the browser.
         await this.arm(started + (options.leaseMs ?? 45000) + (options.alarmDelayMs ?? 500));
+        // Persist the next class before claiming. A restarted/failed invocation
+        // may lose one opportunity, but never loses its durable recovery alarm.
+        // No-report and one-class queues fall through in the same SQL claim.
+        if(options.reportFairness){
+          const reportTurn=(await this.ctx.storage.get('report_service_turn'))!==false;
+          await this.ctx.storage.put('report_service_turn',!reportTurn);
+          coordinator.reportTurn=reportTurn;
+        }
         let projectionRecovery = null;
         const result = await coordinator.runOne(async context=>{
           // Record the obligation before any imported source page can commit.

@@ -10,7 +10,7 @@ import {attendanceStateQuery} from '../src/read-model/attendance.js';
 import {beginTeamSnapRefresh,finishTeamSnapRefresh,teamSnapRefreshCoverage} from '../src/sources/teamsnap-refresh.js';
 const out=new URL('../tmp/report-native-parity/',import.meta.url);
 
-test('populated original Reports run sorted production queries, capture alarms and complete parsed exports in native D1',async()=>{
+test('populated original Reports run sorted production queries, bounded admission and complete parsed exports in native D1',async()=>{
  const h=await freshHarness();try{
   await h.initialize();const created=await h.request('/api/teams',{method:'POST',body:{name:'Populated report proof',timezone:'UTC',season_year:2026}});assert.equal(created.status,201,JSON.stringify(created.data));
   const team=created.data.team.id,season=created.data.season_id,scope={team_id:team,team_season_id:season},at=new Date().toISOString(),run='report-native-run';
@@ -48,7 +48,7 @@ test('populated original Reports run sorted production queries, capture alarms a
   const workbook=JSON.parse(execFileSync('python',['-c',`import json,openpyxl,sys\nw=openpyxl.load_workbook(sys.argv[1],data_only=True)\np=openpyxl.load_workbook(sys.argv[2],data_only=True)\nprint(json.dumps({'sheets':w.sheetnames,'locations':[r[4] for r in list(w['Report'].values)[1:]],'player_minutes':[r[5] for r in list(p['Report'].values)[1:]]}))`,new URL('schedule.xlsx',out).pathname,new URL('players.xlsx',out).pathname],{encoding:'utf8'}));assert.deepEqual(workbook.sheets,['Report','Notes']);assert.deepEqual(workbook.locations,expected);assert.ok(workbook.player_minutes.includes('45.3'));
   const text=execFileSync('pdftotext',['-layout',new URL('schedule.pdf',out).pathname,'-'],{encoding:'utf8'});assert.deepEqual([...text.matchAll(/Field Q\d+Z/g)].map(m=>m[0]),expected);assert.match(execFileSync('pdfinfo',[new URL('summary.pdf',out).pathname],{encoding:'utf8'}),/Page size:\s+595 x 842 pts/);
 
-  const guarded=new ReportingService(h.db,{coordinator:{enqueue:async()=> 'guard-test'},now:Date.now}),stale=await guarded.create(scope,{type:'players',sort:'player'}),staleSnapshot=await guarded.snapshot(stale.data.snapshot_id),stalePage=await guarded.capture(staleSnapshot);
+  const guarded=new ReportingService(h.db,{captureAtAdmission:false,coordinator:{enqueue:async()=> 'guard-test'},now:Date.now}),stale=await guarded.create(scope,{type:'players',sort:'player'}),staleSnapshot=await guarded.snapshot(stale.data.snapshot_id),stalePage=await guarded.capture(staleSnapshot);
   // Full production players/attendance queries also compile and capture when
   // a valid1024-character key takes the bounded whole-column fallback.
   await h.db.batch([h.db.prepare('UPDATE team_player_rows SET name=? WHERE run_id=? AND player_id=?').bind('Q1'.repeat(512),run,'report-player-0'),h.db.prepare('UPDATE team_read_state SET content_revision=content_revision+1 WHERE app_team_id=?').bind(team)]);
@@ -113,6 +113,6 @@ test('populated original Reports run sorted production queries, capture alarms a
   const rejected=await preview(changedAttendance);assert.equal(rejected.state,'failed');assert.equal(rejected.error_code,'report_changed');assert.equal(rejected.rows.items.length,0);
   assert.deepEqual((await preview(admitted)).rows,replayPreview.rows,'already captured native reports remain immutable');
   const captures=(await h.db.prepare("SELECT state,last_saved_at,last_complete_at FROM sync_jobs WHERE provider='reports' AND component='capture'").all()).results;assert.ok(captures.every(j=>j.state==='ready'&&j.last_saved_at&&j.last_complete_at));
-  console.log(JSON.stringify({native_populated_reports:'PASS',rows:137,browser_open:false,manual_runner_requests:0,capture_snapshots:10,actual_parsed_files:6,recursion_character_bound:1024,recursion_step_bound:64,complex1024_key_preserved:true,original_attendance_percentages:true,attendance_evidence_notes_captured:true,unchanged_refresh_preserves_capture:true,changed_response_fails_capture:true,stale_commit_failed_closed:true,receipts,closedAt}));
+  console.log(JSON.stringify({native_populated_reports:'PASS',rows:137,browser_open:false,manual_runner_requests:0,admitted_snapshots:10,atomic_admission:true,actual_parsed_files:6,recursion_character_bound:1024,recursion_step_bound:64,complex1024_key_preserved:true,original_attendance_percentages:true,attendance_evidence_notes_captured:true,unchanged_refresh_preserves_capture:true,changed_response_fails_capture:true,stale_commit_failed_closed:true,receipts,closedAt}));
  }finally{await h.dispose();}
 });

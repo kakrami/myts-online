@@ -23,7 +23,8 @@ test('native source collector refresh preserves admitted reports and real respon
   let now=Date.now(),status=1;const clock=()=>now,repo=new DomainRepository(db),requests=[],commits=[];
   jobs=new JobCoordinator(db,{clock});
   const sync=new ApplicationSyncService(db,{}, {coordinatorOptions:{clock},wake:async()=>{}});
-  const reports=new ReportingService(db,{coordinator:jobs,now:clock,wake:async()=>{},fontLoader:()=>readFile(new URL('../web/assets/report-font.ttf',import.meta.url))});
+  // Exercise pre-upgrade queued capture, independently of the default fast path.
+  const reports=new ReportingService(db,{captureAtAdmission:false,coordinator:{enqueue:(spec,subscribers)=>jobs.enqueue({...spec,priority:20},subscribers)},now:clock,wake:async()=>{},fontLoader:()=>readFile(new URL('../web/assets/report-font.ttf',import.meta.url))});
   const account=await repo.registerAccount({provider:'teamsnap',nativeId:'7123',name:'Native refresh account'});
   const team=await repo.createTeam({name:'Native refresh reports',timezone:'UTC',seasonYear:2026}),scope={team_id:team.id,team_season_id:team.season_id},observed=new Date().toISOString();
   await repo.ingestSourcePage({accountId:account.id,generation:account.generation,records:{

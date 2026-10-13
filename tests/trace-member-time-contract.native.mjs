@@ -93,7 +93,7 @@ test('Workerd/D1 completes the dated Trace game workflow and terminally rejects 
     assert.equal(state.members[0].join_time,Date.UTC(2025,7,1,12,0,0,123));
     assert.equal(JSON.parse(state.members[0].evidence).join_time,'2025-08-01T05:00:00.123456-07:00');
     assert.equal(state.members[1].join_time,123.5);assert.equal(JSON.parse(state.members[1].evidence).join_time,'123.5');
-    assert.deepEqual(state.moments.at(-1),{half:null,time_seconds:null,duration_seconds:null});
+    assert.deepEqual(state.moments.find(m=>m.half===null),{half:null,time_seconds:null,duration_seconds:null});
    }else{
     const failure=await request('/step');steps.push(failure);assert.equal(failure.state,'failed');assert.equal(failure.jobId,seeded.jobId);
     assert.equal(failure.error.code,'source_contract');assert.equal(failure.error.kind,'permanent');

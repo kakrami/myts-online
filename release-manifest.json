@@ -1,6 +1,6 @@
 {
   "service": "myTS",
-  "version": "7.2.7",
+  "version": "7.2.8",
   "review": true,
   "files": [
     {
@@ -129,6 +129,11 @@
       "sha256": "2f25bba7d3dd87c68a29ec52a023e01505d473f8b8882a13ad0ce1589c98b81f"
     },
     {
+      "path": "docs/report-service-latency.md",
+      "bytes": 5542,
+      "sha256": "ea0cec4f0b6672e681aa22b828bce3206465d5036f0a5090fe509c9f08510e84"
+    },
+    {
       "path": "docs/reporting-contract.md",
       "bytes": 4466,
       "sha256": "278ef22d36a881c4ba5a94414cdbcc72f37665514bc47b52023e8c4192a88029"
@@ -199,6 +204,11 @@
       "sha256": "0a4dfd37d72d3428e2e4b4a5341b315c7314027e7b6258230ba67c7f5e14fd90"
     },
     {
+      "path": "docs/trace-continuation-report-release.md",
+      "bytes": 7410,
+      "sha256": "d2e31829636d6b0802f6ad7bd7bdc4a01b40f9aff6ed930ee2afda7415159e11"
+    },
+    {
       "path": "docs/trace-member-contract-repair.md",
       "bytes": 6340,
       "sha256": "bb150981c612ac1fcd2c75d4a1d41168647b1187ec77707b773fd6606d0cada5"
@@ -216,12 +226,12 @@
     {
       "path": "package-lock.json",
       "bytes": 49485,
-      "sha256": "e0218e2e5ee69b92985f019d71d75a45a3e31ea00f83e7aeba3b138705093649"
+      "sha256": "1c08130e5b99f70893c3c3a2e4d480cf0dc7ebda4dff21523ed19f051d8b9037"
     },
     {
       "path": "package.json",
       "bytes": 635,
-      "sha256": "9eb80df054242b1efee5ca261826d4f34fbe71dc6a1fe92bb041a4ec565af273"
+      "sha256": "f0d069aaad3d9e51e8db0a607ca80edf31ac18df635fa8d4e7d1aa12d181113d"
     },
     {
       "path": "scripts/release-check.mjs",
@@ -420,8 +430,8 @@
     },
     {
       "path": "src/application/sync-service.js",
-      "bytes": 43175,
-      "sha256": "92d8dee2bba96484958fede76f23d22a98339460755a0d77c8a588aaf72984cb"
+      "bytes": 43195,
+      "sha256": "18c3c52ee569a8ef2e95b6902548ea3e214dd9e7c528f3a3dadb0b83e56d9c0a"
     },
     {
       "path": "src/application/team-catalog.js",
@@ -451,7 +461,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 30,
-      "sha256": "ff7adfb04bce8e5e63e59aad70bc787cefd349a8980c7e6e17f331979d517cab"
+      "sha256": "a3c4a56492f38be767c59944d2531618ee7cee80c0043e4ced4e7786e5a467d0"
     },
     {
       "path": "src/coaching/routes.js",
@@ -680,8 +690,8 @@
     },
     {
       "path": "src/reporting/service.js",
-      "bytes": 33557,
-      "sha256": "3b53a28d5f19b0689f682bef60833799e7301a754eb8ace69c88584b772f0c96"
+      "bytes": 35254,
+      "sha256": "d367fc17f4522f1d18250c772785902c20797cc9ecec0200696defd1457260d2"
     },
     {
       "path": "src/security/crypto.js",
@@ -805,8 +815,8 @@
     },
     {
       "path": "src/sources/trace.js",
-      "bytes": 37443,
-      "sha256": "0e0a797005019152771bf19d8c44d2306d0c7b872b016f70b8d0cd0ed2a0f961"
+      "bytes": 41025,
+      "sha256": "c5d3005bd8f0ff2fca8ffc34a9938c9d05f967e2c232efcbf6e3679e8da9f008"
     },
     {
       "path": "src/sources/tracking-capture.js",
@@ -820,8 +830,8 @@
     },
     {
       "path": "src/sync/coordinator.js",
-      "bytes": 67695,
-      "sha256": "5a04476557c88e5165f40d6a6555665698c0b3c87d9c593c3b1a61c556cbedee"
+      "bytes": 68949,
+      "sha256": "ebc8956cfbc6aefd2d8b906ef0942cb2a72af97d68b6bf163b9a9411b8f14fdc"
     },
     {
       "path": "src/sync/errors.js",
@@ -840,8 +850,8 @@
     },
     {
       "path": "src/sync/runtime.js",
-      "bytes": 10596,
-      "sha256": "239b2dd70a396f72424da04ae1b49c8dfb194253a89d010f2ddff64eeb24a9a7"
+      "bytes": 11088,
+      "sha256": "76166a59b0544c936d3acb56ed04abb32f5f628092d8f08be508b5f875ea83fe"
     },
     {
       "path": "src/sync/schema.js",
