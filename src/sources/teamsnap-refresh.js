@@ -61,7 +61,11 @@ export async function beginTeamSnapRefresh({ kind, teamId, accountId, authorizat
     integer(authorizationGeneration) && timestamp(now, now), 'Invalid TeamSnap refresh identity.');
   const source = sourceEndpoint(kind, teamId, endpoint);
   const binding = { kind, team_id: teamId, account_id: accountId, authorization_generation: authorizationGeneration,
-    args_url: typeof args.url === 'string' ? args.url : null, payload: await hash(args), source };
+    args_url: typeof args.url === 'string' ? args.url : null, payload: await hash(args), source,
+    // Legacy attendance counts used availability IDs and could exceed distinct
+    // stored pairs. Revalidate those active/completed proofs once with a full
+    // page-one scan. Event bindings and receipts remain byte-for-byte unchanged.
+    ...(kind === 'attendance' ? { identity_version: 'event-member-v1' } : {}) };
   const saved = cursor.refresh;
   const matches = saved?.protocol === TEAMSNAP_REFRESH_PROTOCOL && same(saved.binding, binding);
   let refresh = matches ? saved : { protocol: TEAMSNAP_REFRESH_PROTOCOL, binding, full: null, recent: null, active: null };

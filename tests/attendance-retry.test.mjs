@@ -191,7 +191,7 @@ test('native collector failure persists only the bounded attendance diagnostic a
   const h=await fixture();
   await db.prepare("UPDATE sync_jobs SET state='queued',checkpoint='{}',priority=100,ready_since=0,next_at=0 WHERE id=?").bind(h.attendance.id).run();
   const before=await jobs(),original=await row(h.attendance.id),rows=await savedRows(),budget=new BudgetDB(nativeDb),runtimeDb=wrapDatabase(budget),coordinator=new JobCoordinator(runtimeDb,{publicHistory:true});
-  const secret='opaque-private-availability-value',payload={collection:{items:[{data:Object.entries({id:secret,team_id:Number(h.nativeId),event_id:990001,member_id:990002,status_code:1}).map(([name,value])=>({name,value}))}],links:[]}};
+  const secret='opaque-private-availability-value',payload={collection:{items:[0,1].map(status_code=>({data:Object.entries({id:secret+'-'+status_code,team_id:Number(h.nativeId),event_id:990001,member_id:990002,status_code}).map(([name,value])=>({name,value}))})),links:[]}};
   let calls=0;
   const result=await coordinator.runOne(context=>{
     assert.equal(context.lease.id,h.attendance.id);
@@ -200,7 +200,7 @@ test('native collector failure persists only the bounded attendance diagnostic a
   assert.equal(calls,1);assert.equal(result.state,'failed');assert.equal(result.error.kind,'permanent');assert.equal(result.error.code,'contract_violation');
   const after=await row(h.attendance.id);
   assert.equal(after.state,'failed');assert.equal(after.failure_kind,'permanent');assert.equal(after.last_error_code,'contract_violation');
-  assert.equal(after.last_error_message,'The collector result did not satisfy its storage contract. Diagnostic: attendance_identity; items=1; invalid_ids=1; duplicate_ids=0; valid_pairs=1; duplicate_pairs=0.');
+  assert.equal(after.last_error_message,'The collector result did not satisfy its storage contract. Diagnostic: attendance_duplicate_pair; items=2; valid_pairs=2; duplicate_pairs=1.');
   for(const key of ['checkpoint','scan_id','generation','coverage','pages_saved','rows_saved','last_saved_at','last_complete_at'])assert.equal(after[key],original[key],key);
   assert.equal(after.attempts,original.attempts+1);assert.equal(after.failures,original.failures+1);assert.ok(after.last_retrieved_at>0);
   const audit=(await db.prepare('SELECT * FROM sync_observations WHERE job_id=?').bind(h.attendance.id).all()).results;assert.equal(audit.length,1);assert.equal(audit[0].status,200);assert.equal(audit[0].error_code,null);assert.equal(audit[0].endpoint,'https://api.teamsnap.com/v3/availabilities/search');assert.match(audit[0].content_hash,/^[a-f0-9]{64}$/);assert.equal(audit[0].scan_id,original.scan_id);assert.equal(audit[0].attempt,after.attempts);

@@ -3,6 +3,7 @@
 // a stored message, identifier or URL. This module changes no admission guard.
 const REASONS = new Map([
   ['Source contains missing or duplicate native identities.', 'attendance_identity'],
+  ['TeamSnap attendance contains duplicate event/member pairs.', 'attendance_duplicate_pair'],
   ['TeamSnap continuation changed its source scope.', 'attendance_next_scope'],
   ['TeamSnap returned a record for another team.', 'attendance_team_scope'],
   ['Unsupported TeamSnap link.', 'attendance_link_scope'],
@@ -11,6 +12,7 @@ const REASONS = new Map([
 ]);
 const COUNT_KEYS = Object.freeze({
   attendance_identity: ['items','invalid_ids','duplicate_ids','valid_pairs','duplicate_pairs'],
+  attendance_duplicate_pair: ['items','valid_pairs','duplicate_pairs'],
   attendance_next_scope: ['next_count','same_origin','same_path','same_query','next_number','unique_query','safe_url'],
   attendance_team_scope: ['items','foreign_teams'],
   attendance_link_scope: [], attendance_link_bound: [], attendance_offset: ['items'],
@@ -35,12 +37,15 @@ function annotate(error, {kind,raw,state,teamId}) {
   const items=raw?.collection?.items;
   if(Array.isArray(items)&&items.length<=500) {
     counts.items=items.length;
-    if(reason==='attendance_identity') {
-      const rows=items.map(fields),ids=rows.map(r=>native(r.id)),valid=ids.filter(Boolean);
+    if(reason==='attendance_identity'||reason==='attendance_duplicate_pair') {
+      const rows=items.map(fields);
       const pairs=rows.filter(r=>native(r.event_id)&&native(r.member_id)).map(r=>native(r.event_id)+':'+native(r.member_id));
-      counts.invalid_ids=ids.length-valid.length;counts.duplicate_ids=valid.length-new Set(valid).size;
+      if(reason==='attendance_identity') {
+        const ids=rows.map(r=>native(r.id)),valid=ids.filter(Boolean);
+        counts.invalid_ids=ids.length-valid.length;counts.duplicate_ids=valid.length-new Set(valid).size;
+      }
       counts.valid_pairs=pairs.length;counts.duplicate_pairs=pairs.length-new Set(pairs).size;
-    } else if(reason==='attendance_team_scope') counts.foreign_teams=items.map(fields).filter(r=>r.team_id!=null&&native(r.team_id)!==teamId).length;
+    } else if(reason==='attendance_team_scope') counts.foreign_teams=items.map(fields).filter(r=>r.team_id!=null&&(!['string','number'].includes(typeof r.team_id)||native(r.team_id)!==teamId)).length;
   }
   if(reason==='attendance_next_scope') {
     const links=raw?.collection?.links;

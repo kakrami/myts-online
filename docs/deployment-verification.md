@@ -1,3 +1,7 @@
+# myTS 7.2.4 TeamSnap attendance identity repair
+
+See [the evidence-directed repair and acceptance](attendance-identity-repair.md). This code-only update preserves the schema, bindings, CPU budget, credentials, connection/job identities and all saved records. Attendance changes its pagination identity to the validated event/member pair; old attendance identity checkpoints safely begin one full revalidation. Events and their retained full-history/recent receipts are unchanged. After health reports 7.2.4, use TeamSnap Manage → Retry attendance once for the failed job. Earlier sections are historical receipts.
+
 # myTS 7.2.3 attendance diagnostics
 
 See [the diagnostic scope and targeted retry](attendance-diagnostics.md). This code-only update preserves the 731-statement schema, upgrade plan, source validation, existing records, account/root identities and deployment configuration. The live attendance failure predicate is still unidentified. Deployment adds privacy-safe static failure diagnostics and a narrowly scoped owner retry in TeamSnap Manage; it does not automatically retry or reset completed event history. Earlier version sections retain their historical receipts.

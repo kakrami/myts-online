@@ -117,8 +117,15 @@ function event(row, teamId, args, accountId) {
   };
 }
 
+function attendanceIdentity(r) {
+  requireValue([r.event_id,r.member_id].every(value=>['string','number'].includes(typeof value)&&native(value)), "TeamSnap attendance identity is incomplete.", "unsupported_response");
+  // Availability IDs may be opaque (or absent). Storage identifies attendance
+  // by the numeric event/member pair within the refresh's bound account/team.
+  return native(r.event_id) + ':' + native(r.member_id);
+}
+
 function attendanceRecord(r, team, accountId) {
-  requireValue(native(r.event_id) && native(r.member_id), "TeamSnap attendance identity is incomplete.", "unsupported_response");
+  attendanceIdentity(r);
   const nativeStatus = r.status_code ?? null;
   const normalized = nativeStatus === null ? "NR" : nativeStatus === 0 || nativeStatus === "0" ? "No" : nativeStatus === 1 || nativeStatus === "1" ? "Yes" : nativeStatus === 2 || nativeStatus === "2" ? "Maybe" : "Unknown";
   return { fixture_id: key("teamsnap", r.event_id), player_id: key("teamsnap", r.member_id), team_id: team, account_id: accountId,
@@ -153,9 +160,21 @@ async function collectPagedTeamSnapRows({j,args,cursor,transport,credential,acco
   try {
   // Missing items is accepted only with explicit scoped empty-page evidence.
   if(raw?.collection && raw.collection.items===undefined && raw.collection.page_info?.total_items===0 && !raw.collection.error) raw={...raw,collection:{...raw.collection,items:[]}};
-  const all=unique(collection(raw),r=>native(r.id)), pageDigest=await signature(all), metadata=teamSnapPageMetadata(raw,state,all.length);
+  const attendance=j.kind==='attendance',all=attendance?collection(raw):unique(collection(raw),r=>native(r.id));
+  const ids=all.map(attendance?attendanceIdentity:r=>native(r.id));
+  if(attendance)requireValue(new Set(ids).size===ids.length,"TeamSnap attendance contains duplicate event/member pairs.","contract_violation");
+  // Validate the whole attendance page before a local byte slice is admitted.
+  // Hash the fields persisted by source_attendance, in provider order. Its
+  // source_status uses the normalized string status, not raw status-code types
+  // or the unused native_status/evidence DTO fields. Generated observation
+  // times and unused availability IDs/hrefs cannot invalidate convergence.
+  const normalized=attendance?all.map(r=>{
+    requireValue(r.team_id==null||['string','number'].includes(typeof r.team_id),"TeamSnap returned a record for another team.","contract_violation");
+    assertTeam(r,teamId);return attendanceRecord(r,team,account.id);
+  }):null;
+  const pageDigest=await signature(attendance?normalized.map(({fixture_id,player_id,team_id,account_id,status,normalized_status})=>({fixture_id,player_id,team_id,account_id,status,normalized_status})):all),metadata=teamSnapPageMetadata(raw,state,all.length);
   if(metadata.changed){out.complete=false;out.checkpoint=restartTeamSnapPass(state);return out;}
-  const ids=all.map(r=>native(r.id)),idDigest=await signature([...ids].sort());
+  const idDigest=await signature([...ids].sort());
   if(state.pages>0 && (ids.some(id=>(state.previous_ids||[]).includes(id)) || (ids.length&&(state.page_hashes||[]).includes(idDigest)))){
     // Offset pagination may shift while the source changes. Never count a
     // repeated/overlapping page as new data or let it certify completeness.
@@ -168,7 +187,7 @@ async function collectPagedTeamSnapRows({j,args,cursor,transport,credential,acco
   }
   const offset=changedPage?0:state.offset;
   requireValue(offset<=all.length,"Invalid TeamSnap page offset.","contract_violation");
-  const candidates=all.slice(offset).map(r=>{assertTeam(r,teamId);return j.kind==='events'?event(r,teamId,args,account.id):attendanceRecord(r,team,account.id);});
+  const candidates=attendance?normalized.slice(offset):all.slice(offset).map(r=>{assertTeam(r,teamId);return event(r,teamId,args,account.id);});
   const consumed=teamSnapBatchLength(j.kind,candidates,{accountId:account.id,scanId:j.scan_id});
   if(j.kind==='events')out.fixtures=candidates.slice(0,consumed);else out.records.attendance=candidates.slice(0,consumed);
   Object.assign(out,await advanceTeamSnapPage(state,metadata,pageDigest,all.length,offset,consumed,ids,idDigest));

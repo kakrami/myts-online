@@ -19,11 +19,16 @@ async function rejected(value,reason,counts){
  for(const [key,value]of Object.entries(counts||{}))assert.ok(failure.message.includes(key+'='+value),failure.message);
  return failure;
 }
-test('the existing invalid availability-id guard reports only counts and leaves valid event/member pairs distinct',async()=>{
- for(const id of [undefined,null,secret,'100:200','1234567890123456'])await rejected(collection([row(id,{event_id:4001})]),'attendance_identity',{items:1,invalid_ids:1,duplicate_ids:0,valid_pairs:1,duplicate_pairs:0});
+test('opaque or missing availability IDs are accepted when numeric event/member pairs are valid',async()=>{
+ for(const id of [undefined,null,secret,'100:200','1234567890123456']) {
+  const page=await collect(collection([row(id,{event_id:4001})]));
+  assert.equal(page.records.attendance[0].fixture_id,'teamsnap:4001');assert.equal(page.records.attendance[0].player_id,'teamsnap:100');
+  assert.ok(!JSON.stringify(page).includes(secret));
+ }
 });
-test('duplicate availability IDs and duplicate event/member pairs remain rejected without exposing either identity',async()=>{
- await rejected(collection([row(1),row('1')]),'attendance_identity',{items:2,invalid_ids:0,duplicate_ids:1,valid_pairs:2,duplicate_pairs:1});
+test('duplicate event/member pairs remain rejected without exposing either identity; duplicate availability IDs alone are harmless',async()=>{
+ await rejected(collection([row(1),row('1')]),'attendance_duplicate_pair',{items:2,valid_pairs:2,duplicate_pairs:1});
+ const page=await collect(collection([row(1),row('1',{event_id:4002})]));assert.equal(page.records.attendance.length,2);
 });
 test('foreign team guard remains authoritative and produces only a mismatch count',async()=>{
  await rejected(collection([row(1,{team_id:secret})]),'attendance_team_scope',{items:1,foreign_teams:1});
