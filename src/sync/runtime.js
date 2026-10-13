@@ -1,4 +1,4 @@
-import { JobCoordinator } from './coordinator.js';
+import { JobCoordinator, ORDINARY_SERVICE_CYCLE } from './coordinator.js';
 import { BudgetDB } from './budget.js';
 import { classifyFailure } from './errors.js';
 
@@ -122,11 +122,11 @@ export function createSyncRuntime(collector, options = {}) {
         }
         if(options.dependencyFairness){
           const saved=await this.ctx.storage.get('ordinary_service_turn');
-          const turn=Number.isInteger(saved)&&saved>=0&&saved<=2?saved:0;
+          const turn=Number.isInteger(saved)&&saved>=0&&saved<ORDINARY_SERVICE_CYCLE.length?saved:0;
           // Persist before claim, like the foreground report turn. A lost reply
           // can skip one preference, never strand work or clear its alarm.
-          await this.ctx.storage.put('ordinary_service_turn',(turn+1)%3);
-          coordinator.ordinaryTurn=turn;
+          await this.ctx.storage.put('ordinary_service_turn',(turn+1)%ORDINARY_SERVICE_CYCLE.length);
+          coordinator.ordinaryTurn=ORDINARY_SERVICE_CYCLE[turn];
         }
         let projectionRecovery = null;
         const result = await coordinator.runOne(async context=>{

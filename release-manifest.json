@@ -1,6 +1,6 @@
 {
   "service": "myTS",
-  "version": "7.2.12",
+  "version": "7.2.13",
   "review": true,
   "files": [
     {
@@ -22,6 +22,16 @@
       "path": "docs/analysis-reads-contract.md",
       "bytes": 4901,
       "sha256": "9f599ba6551c047cf1731193776a913acb650820bd0ccf97d85ad39a9d3ad09d"
+    },
+    {
+      "path": "docs/analysis-service-fairness-native-map.json",
+      "bytes": 22647,
+      "sha256": "71bd880020ebc70f10cc096ce5b9da7975d040b7b7f14922e783c3b17b55b22a"
+    },
+    {
+      "path": "docs/analysis-service-fairness.md",
+      "bytes": 7239,
+      "sha256": "9267ec5c279f4d137a031aab9878d329da1cede4e62baff9a9f09d5c6721d91f"
     },
     {
       "path": "docs/analyzed-status-parity.md",
@@ -341,12 +351,12 @@
     {
       "path": "package-lock.json",
       "bytes": 49487,
-      "sha256": "4d8b071e29401cf0c7deaffa4a3c7089d95e8861dc348a1d4c40e000e667ebc2"
+      "sha256": "747b033725bf69275b403e86f7649277c229c997567cd53a41bea0d502a8b54b"
     },
     {
       "path": "package.json",
       "bytes": 636,
-      "sha256": "a291358b182705bc6b5d737c64058eecc779c477a1e2ee16c923657d0d1e9deb"
+      "sha256": "0f985b1cc6f2e9592344186b4fd047b9041f989120dec8158d9a7fd8d0923436"
     },
     {
       "path": "scripts/release-check.mjs",
@@ -616,7 +626,7 @@
     {
       "path": "src/application/version.js",
       "bytes": 31,
-      "sha256": "b466887834ab90396c416fb94967a2fc782b97d6df08cfea5a6c2f572bfabc22"
+      "sha256": "3d31636fe47582d411ac9795617c34812c9b844e920ab471e787a50abecc6ba0"
     },
     {
       "path": "src/coaching/routes.js",
@@ -1020,8 +1030,8 @@
     },
     {
       "path": "src/sync/coordinator.js",
-      "bytes": 71950,
-      "sha256": "ddab7ddece538b0b2807416757ed048b831e073dce2897e2e584611ea4c94b5b"
+      "bytes": 73495,
+      "sha256": "5a6acc3279089f386d5d414feeca53a7de687b4a265bfb5be5238a4e24ef1daa"
     },
     {
       "path": "src/sync/errors.js",
@@ -1040,8 +1050,8 @@
     },
     {
       "path": "src/sync/runtime.js",
-      "bytes": 11719,
-      "sha256": "fbc0ecfe1849d02515dc09573a36e0155a299ca9a56f18791654bb70a9a9261e"
+      "bytes": 11822,
+      "sha256": "2dc02d9bc2afdc1c085a6dc3f885c2a7bf78feb1d87f53514e07b27a9342470d"
     },
     {
       "path": "src/sync/schema.js",

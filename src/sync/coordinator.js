@@ -29,6 +29,10 @@ function observationRows(lease,observations,now) {
     return {id:`${lease.id}:${lease.lease_token}:${index}`,job_id:lease.id,scan_id:lease.scan_id,attempt:lease.attempts,endpoint:endpoint.href,status:observation.status,at,retrieved_at:retrievedAt,bytes:observation.bytes,content_hash:/^[a-f0-9]{64}$/.test(observation.hash||'')?observation.hash:null,rows_count:Number.isInteger(observation.rows_count)&&observation.rows_count>=0?observation.rows_count:null,error_code:/^[a-z0-9_]{1,64}$/.test(observation.code||'')?observation.code:null};
   });
 }
+// A retained publication remains readable during its replacement, but automatic
+// analysis still requires a settled projection at commit. Defer only a valid,
+// exact saved-match demand; malformed/missing scopes keep normal failure handling.
+const analysisPublicationReady = alias => `NOT EXISTS(SELECT 1 FROM team_projection_state p WHERE ${alias}.provider='analysis' AND ${alias}.stage='analysis' AND ${alias}.component='match' AND json_type(${alias}.args,'$.teamId')='text' AND json_type(${alias}.args,'$.seasonId')='text' AND json_type(${alias}.args,'$.eventId')='text' AND length(json_extract(${alias}.args,'$.teamId'))>0 AND length(json_extract(${alias}.args,'$.seasonId'))>0 AND length(json_extract(${alias}.args,'$.eventId'))>0 AND json_extract(${alias}.args,'$.teamId')=${alias}.scope AND ${alias}.resource_key=json_extract(${alias}.args,'$.seasonId')||':'||json_extract(${alias}.args,'$.eventId') AND p.app_team_id=${alias}.scope AND p.team_season_id=json_extract(${alias}.args,'$.seasonId') AND p.pending=1)`;
 const activeAccount = alias => `(${alias}.account_id IS NULL OR EXISTS(SELECT 1 FROM provider_accounts a WHERE a.id=${alias}.account_id AND a.generation=${alias}.authorization_generation AND a.active=1 AND a.provider=${alias}.provider))`;
 const field=(row,name)=>typeof row==='string'?`${row}.${name}`:row[name];
 // Typed root demand carries continuing intent. A stale generation cannot admit,
@@ -108,6 +112,11 @@ function insertPublicJobs(guard) {
  return `INSERT INTO sync_jobs(${columns.join(',')}) SELECT ${columns.map(column=>`json_extract(v.value,'$.${column}')`).join(',')} FROM json_each(?) v WHERE ${guard} ON CONFLICT(provider,account_scope,component,scope,resource_key) DO UPDATE SET generation=sync_jobs.generation+CASE WHEN ${terminal} THEN 1 ELSE 0 END,state=CASE WHEN ${terminal} THEN 'queued' ELSE sync_jobs.state END,checkpoint=CASE WHEN ${terminal} THEN '{}' ELSE sync_jobs.checkpoint END,scan_id=CASE WHEN ${terminal} THEN excluded.scan_id ELSE sync_jobs.scan_id END,lease_token=CASE WHEN ${terminal} THEN NULL ELSE sync_jobs.lease_token END,lease_until=CASE WHEN ${terminal} THEN 0 ELSE sync_jobs.lease_until END,next_at=CASE WHEN ${terminal} THEN excluded.next_at ELSE sync_jobs.next_at END,ready_since=CASE WHEN ${terminal} THEN excluded.ready_since ELSE sync_jobs.ready_since END`;
 }
 
+// Seven durable positions keep every class reachable alongside the alternating
+// Reports preference. Bulk retains two positions; all other classes get one.
+// Keep the original root/publication/bulk class IDs for direct claim callers.
+export const ORDINARY_SERVICE_CYCLE = Object.freeze([0,1,5,3,4,2,2]);
+
 // A service preference never grants demand or changes saved priority. The
 // surrounding eligible CTE still enforces account, root, lifecycle and leases.
 // Root age is durable across its pages, so a due prerequisite retains its turn
@@ -116,14 +125,15 @@ const ordinaryServiceClass = at => `CASE
  WHEN j.provider='domain' AND j.component='connection' AND j.stage='projection' AND EXISTS(
   SELECT 1 FROM team_source_connections root WHERE root.id=j.resource_key AND root.id=json_extract(j.args,'$.connectionId') AND root.app_team_id=j.scope AND root.app_team_id=json_extract(j.args,'$.teamId') AND root.generation=json_extract(j.args,'$.generation') AND root.active=1 AND root.input_revision>root.reconciled_revision AND (julianday(COALESCE(root.last_reconciled_at,root.created_at))-2440587.5)*86400000<=${at-60_000}
  ) THEN 0
- WHEN (j.provider='domain' AND j.component='projection' AND j.stage='projection')
- OR (j.provider='analysis' AND j.stage='analysis' AND (j.component='catalog' OR j.component='match' AND j.priority>=40))
- OR (j.provider='trace' AND j.stage='analysis' AND j.component IN('analytics','tracking','radar') AND EXISTS(
+ WHEN j.provider='domain' AND j.component='projection' AND j.stage='projection' THEN 1
+ WHEN j.provider='analysis' AND j.stage='analysis' AND j.component='catalog' THEN 5
+ WHEN j.provider='analysis' AND j.stage='analysis' AND j.component='match' THEN 3
+ WHEN (j.provider='trace' AND j.stage='analysis' AND j.component IN('analytics','tracking','radar') AND EXISTS(
   SELECT 1 FROM source_events event JOIN source_event_teams member ON member.source_event_id=event.id JOIN source_teams own ON own.id=member.source_team_id
   WHERE event.provider='trace' AND event.provenance='provider' AND own.provenance='provider' AND j.resource_key=j.scope AND substr(j.scope,1,length('trace:'||event.native_id||':trace:'||own.native_id||':'))='trace:'||event.native_id||':trace:'||own.native_id||':' AND event.scope=j.account_id AND event.account_id=j.account_id AND event.native_id=CAST(json_extract(j.args,'$.game_id') AS TEXT)
   AND own.provider='trace' AND own.scope=j.account_id AND own.account_id=j.account_id AND own.native_id=CAST(json_extract(j.args,'$.team_id') AS TEXT)
   AND (julianday(COALESCE(event.starts_at,event.local_day))-2440587.5)*86400000 BETWEEN ${at-60*86400000} AND ${at+30*86400000}
- )) THEN 1 ELSE 2 END`;
+ )) THEN 4 ELSE 2 END`;
 
 export class JobCoordinator {
   constructor(db, options = {}) {
@@ -135,8 +145,9 @@ export class JobCoordinator {
     this.ageMs = options.ageMs ?? 300000;
     this.pageDelayMs = options.pageDelayMs ?? 500;
     this.publicHistory = options.publicHistory === true;
+    this.dependencyFairness = options.dependencyFairness === true;
     this.reportTurn = typeof options.reportTurn==='boolean'?options.reportTurn:null;
-    this.ordinaryTurn = Number.isInteger(options.ordinaryTurn)&&options.ordinaryTurn>=0&&options.ordinaryTurn<=2?options.ordinaryTurn:null;
+    this.ordinaryTurn = ORDINARY_SERVICE_CYCLE.includes(options.ordinaryTurn)?options.ordinaryTurn:null;
   }
   prepare(sql) { return this.db.prepare(publicHistoryQuery(sql,String(Math.trunc(this.clock())),{live:this.publicHistory})); }
   subscriberLive(job,subscription) { return this.publicHistory?`(${subscriberLive(job,subscription)} OR ${publicHistoryLive(job,subscription)})`:subscriberLive(job,subscription); }
@@ -266,7 +277,7 @@ export class JobCoordinator {
     const reportClass=this.reportTurn===null?'':`,CASE WHEN ${reportServiceJob(at)} THEN 1 ELSE 0 END AS report_service`,reportOrder=this.reportTurn===null?'':`CASE WHEN report_service=${Number(this.reportTurn)} THEN 0 ELSE 1 END,`;
     const ordinaryClass=this.ordinaryTurn===null?'':`,${ordinaryServiceClass(at)} AS ordinary_service`,ordinaryOrder=this.ordinaryTurn===null?'':`CASE WHEN ordinary_service=${this.ordinaryTurn} THEN 0 ELSE 1 END,`;
     const results=await this.db.batch([
-      this.prepare(`WITH eligible AS MATERIALIZED(SELECT j.id${reportClass}${ordinaryClass},CASE WHEN j.provider='teamsnap' AND j.stage='source' AND j.component IN('events','attendance') AND json_extract(j.checkpoint,'$.protocol')='teamsnap-pages-v1' AND json_extract(j.checkpoint,'$.refresh.protocol')='teamsnap-refresh-v1' AND json_extract(j.checkpoint,'$.refresh.active.mode')='full' AND json_extract(j.checkpoint,'$.refresh.binding.account_id')=j.account_id AND json_extract(j.checkpoint,'$.refresh.binding.authorization_generation')=j.authorization_generation AND json_extract(j.checkpoint,'$.refresh.binding.kind')=j.component AND json_extract(j.checkpoint,'$.refresh.binding.team_id')=CAST(json_extract(j.args,'$.team_id') AS TEXT) AND json_extract(j.checkpoint,'$.pass') IN(2,3) AND json_type(j.checkpoint,'$.previous')='object' AND length(json_extract(j.checkpoint,'$.previous.digest'))=64 AND json_extract(j.checkpoint,'$.previous.digest') NOT GLOB '*[^a-f0-9]*' AND json_type(j.checkpoint,'$.previous.pages')='integer' AND json_extract(j.checkpoint,'$.previous.pages')>0 AND json_type(j.checkpoint,'$.previous.count')='integer' AND json_extract(j.checkpoint,'$.previous.count')>=0 THEN MIN(j.priority,10) ELSE j.priority END AS priority,j.ready_since,j.next_at FROM sync_jobs j WHERE j.state IN ('queued','running','ready','retrying') AND NOT(j.state='ready' AND j.recurring=0) AND j.next_at<=? AND j.lease_until<=? AND ${activeAccount('j')} AND ${this.demanded('j')}) UPDATE sync_jobs SET state='running',lease_token=?,lease_until=?,attempts=attempts+1,last_attempt_at=?,checkpoint=CASE WHEN state='ready' THEN CASE WHEN ${teamSnapReadyReceipt} THEN checkpoint ELSE '{}' END ELSE checkpoint END,scan_id=CASE WHEN state='ready' THEN ? ELSE scan_id END WHERE id=(SELECT id FROM eligible ORDER BY ${reportOrder}${ordinaryOrder}(priority+CAST((?-ready_since)/? AS INTEGER)) DESC,next_at,id LIMIT 1) AND lease_until<=? RETURNING *`).bind(at,at,token,at+this.leaseMs,at,crypto.randomUUID(),at,this.ageMs,at),
+      this.prepare(`WITH eligible AS MATERIALIZED(SELECT j.id${reportClass}${ordinaryClass},CASE WHEN j.provider='teamsnap' AND j.stage='source' AND j.component IN('events','attendance') AND json_extract(j.checkpoint,'$.protocol')='teamsnap-pages-v1' AND json_extract(j.checkpoint,'$.refresh.protocol')='teamsnap-refresh-v1' AND json_extract(j.checkpoint,'$.refresh.active.mode')='full' AND json_extract(j.checkpoint,'$.refresh.binding.account_id')=j.account_id AND json_extract(j.checkpoint,'$.refresh.binding.authorization_generation')=j.authorization_generation AND json_extract(j.checkpoint,'$.refresh.binding.kind')=j.component AND json_extract(j.checkpoint,'$.refresh.binding.team_id')=CAST(json_extract(j.args,'$.team_id') AS TEXT) AND json_extract(j.checkpoint,'$.pass') IN(2,3) AND json_type(j.checkpoint,'$.previous')='object' AND length(json_extract(j.checkpoint,'$.previous.digest'))=64 AND json_extract(j.checkpoint,'$.previous.digest') NOT GLOB '*[^a-f0-9]*' AND json_type(j.checkpoint,'$.previous.pages')='integer' AND json_extract(j.checkpoint,'$.previous.pages')>0 AND json_type(j.checkpoint,'$.previous.count')='integer' AND json_extract(j.checkpoint,'$.previous.count')>=0 THEN MIN(j.priority,10) ELSE j.priority END AS priority,j.ready_since,j.next_at FROM sync_jobs j WHERE j.state IN ('queued','running','ready','retrying') AND NOT(j.state='ready' AND j.recurring=0) AND j.next_at<=? AND j.lease_until<=? AND ${activeAccount('j')} AND ${this.demanded('j')} AND ${this.dependencyFairness?analysisPublicationReady('j'):'1'}) UPDATE sync_jobs SET state='running',lease_token=?,lease_until=?,attempts=attempts+1,last_attempt_at=?,checkpoint=CASE WHEN state='ready' THEN CASE WHEN ${teamSnapReadyReceipt} THEN checkpoint ELSE '{}' END ELSE checkpoint END,scan_id=CASE WHEN state='ready' THEN ? ELSE scan_id END WHERE id=(SELECT id FROM eligible ORDER BY ${reportOrder}${ordinaryOrder}(priority+CAST((?-ready_since)/? AS INTEGER)) DESC,next_at,id LIMIT 1) AND lease_until<=? RETURNING *`).bind(at,at,token,at+this.leaseMs,at,crypto.randomUUID(),at,this.ageMs,at),
       this.revisions('SELECT s.app_team_id FROM sync_job_subscribers s JOIN sync_jobs j ON j.id=s.job_id WHERE j.lease_token=?',[token]),
       this.accountRevisions('lease_token=?',[token]),
     ]);
@@ -405,7 +416,7 @@ export class JobCoordinator {
     ]);
   }
   async nextWake() {
-    const row = await this.prepare(`SELECT MIN(CASE WHEN j.lease_until>? THEN j.lease_until ELSE j.next_at END) AS at FROM sync_jobs j WHERE j.state IN ('queued','running','ready','retrying') AND NOT(j.state='ready' AND j.recurring=0) AND ${activeAccount('j')} AND ${this.demanded('j')}`).bind(this.clock()).first();
+    const row = await this.prepare(`SELECT MIN(CASE WHEN j.lease_until>? THEN j.lease_until ELSE j.next_at END) AS at FROM sync_jobs j WHERE j.state IN ('queued','running','ready','retrying') AND NOT(j.state='ready' AND j.recurring=0) AND ${activeAccount('j')} AND ${this.demanded('j')} AND ${this.dependencyFairness?analysisPublicationReady('j'):'1'}`).bind(this.clock()).first();
     return row?.at ?? null;
   }
   async status(teamId,{includeExports=false}={}) {
