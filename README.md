@@ -1,14 +1,21 @@
-# myTS 7.5.2 — paused review candidate
+# myTS 7.5.3 — paused query-cost review candidate
 
-Nothing has been deployed. This package defaults to `MYTS_UPGRADE_MODE: maintenance`.
+Nothing has been deployed during preparation. This four-file package defaults to `MYTS_UPGRADE_MODE: maintenance`.
 
-The confirmed scheduler defect allowed an already admitted season projection to be claimed again while its source connections still had unreconciled revisions. This release applies the existing connection-readiness rule at both job claiming and wake selection. It preserves the build checkpoint, serves reconciliation first, and resumes the projection after the inputs settle. Existing failed/blocked/backoff source fallback remains available.
+Production diagnostics report 1,136 source events, 8,640 jobs, 413 retained projection runs and 90 publication rows. Of those jobs, 8,267 are Trace analytics, tracking or radar requests. Trace collects separate player, period and tracking-channel details, so this count alone does not establish duplicate work or an infinite loop. The ready analytics and tracking groups have mostly completed one saved page each. Do not delete those jobs or their data based on their count.
 
-This fixes a demonstrated repeated-work path. It does not establish that this path caused all historical D1 reads or prove production usage is acceptable. The supplied database remains `myts-v7-rebuild-data` (`60f77502-33d4-41d6-80d4-1c5577ebba76`). Preserve every existing database.
+This release corrects two demonstrated query costs in the shared scheduler:
+
+- After claiming a lease, its status updates now include the known `running` state. This lets the existing state index find the claimed job instead of scanning every retained job for its lease token. The updates remain inside the same atomic claim batch.
+- Next-alarm selection seeks the earliest authorized unleased job separately for each eligible state using the existing state/time index. A separate lease check preserves the previous lease timing rule, including unusual saved non-running rows with live leases. Authorization, subscription generations, projection-input readiness, terminal states and nonrecurring completion checks remain in force. No new tables, indexes, polling intervals or persistent cache are introduced.
+
+The 7.5.2 projection dependency correction remains: an already queued projection waits while its source connections have unreconciled input, then resumes with its checkpoint intact when the inputs settle. Existing failed/blocked/backoff source fallback remains available.
+
+These are measured improvements in reproduced paths. They do not attribute all historical production reads or establish a safe production spending rate. The Cloudflare Guard is unchanged.
 
 ## Paused behavior
 
-While `MYTS_UPGRADE_MODE` is `maintenance`, API calls return HTTP 503 with `installation_maintenance`; cron returns before touching D1; and SyncRuntime wake, status and alarm handlers clear their pending alarm and return before touching D1 or providers. Checkpoints and stored data remain intact. `/api/health` returns version `7.5.2`, `state: paused`, and `reason: maintenance`. The original interface still loads, but its database features intentionally remain paused.
+While `MYTS_UPGRADE_MODE` is `maintenance`, API calls return HTTP 503 with `installation_maintenance`; cron returns before touching D1; and SyncRuntime wake, status and alarm handlers clear their pending alarm and return before touching D1 or providers. Checkpoints and stored data remain intact. `/api/health` returns version `7.5.3`, `state: paused`, and `reason: maintenance`. The original interface still loads, but its database features intentionally remain paused.
 
 Removing the DB binding also suspends SyncRuntime before D1 access. A deployment carries its configuration, including the DB binding: preserve the supplied maintenance setting during review. A surviving alarm clears when its handler runs. This does not cancel a request that was already executing under an older deployment.
 
@@ -32,13 +39,19 @@ npm run dev
 
 Do not resume normal collection yet. First confirm production D1 read growth has stopped while the application is held. A controlled resumption needs a separate decision about the guard's already exceeded billing-cycle cutoff and a short, measured trial of one existing connection. Record read deltas, checkpoint progress and job attempts before increasing work. No such production trial has been performed.
 
-## Local verification
+## Local verification and limits
 
-Scheduler tests cover withholding an admitted projection, wake timing behind a leased connection, resumption after reconciliation, and existing terminal/backoff fallback. A native D1 regression cycles six changing roster revisions without claiming the projection; each claim-plus-wake cycle uses five statements and reads 49 rows in that small fixture. This is a regression measurement, not a production usage forecast.
+A native D1 regression with 8,640 retained jobs and one due job reduces a complete claim from 8,662 rows read to 23. An idle claim reads 16 rows. This is a scheduler microbenchmark, not a production cost forecast.
 
-Suspension tests cover wake, alarm and status with maintenance and missing DB. Native bundled-Worker checks cover API calls, cron, wake, status and a real surviving alarm with zero D1 calls, preserved checkpoints and preserved owner data. Namespace-retention checks preserve the old runtime's SQLite and key/value data. Original-interface contract and browser-closed workflow checks run separately with maintenance absent to verify the retained functional paths.
+A separate synthetic queue matches the reported 1,136 events and 8,640 jobs, including the supplied 8,267 Trace detail jobs grouped by component/state. Across all seven scheduler preferences, next-alarm selection reads 8,509–8,510 rows instead of 58,597, with exactly the same selected wake time in each comparison. This compares queue selection only; it is not a replay of production provider payloads or all 413 retained builds.
 
-Live Cloudflare costs and real-provider behavior remain unverified. Browser visual checks remain outstanding; local contract checks are not a visual-browser pass.
+Passing checks include 108 targeted scheduler/readiness/suspension checks, 30 synchronization regressions, native D1 claim/readiness tests, four native public-history authority/depth checks, and all six original-interface workflow tests. The final bundled Worker is independently exercised for original setup, browser-closed TeamSnap publication, maintenance suspension and namespace retention. Its Wrangler dry run succeeds.
+
+Two older native checks remain failing: `analysis-service-fairness.native.mjs` expects the retired installation count of 788 rather than 371, and the exact-budget case in `public-history-coordinator.native.mjs` expects a budget rejection under the earlier writer overhead. Both same failures were reproduced with only these two scheduler query changes reverted. Those checks are not reported as passing. Production schema and writer behavior were not changed to satisfy them.
+
+The pause checks verify zero D1 calls through API, cron, wake, status and a real surviving native alarm, while preserving owner data and checkpoints. The retained MyTSRuntime namespace keeps its SQLite/key/value data and clears its old alarm.
+
+Live query costs and real-provider behavior remain unverified. Browser visual checks remain outstanding. Keep maintenance enabled and the existing guard armed. Do not enable normal collection as part of reviewing this candidate. The guard still disables URLs and cron, rather than automatically applying the application's background maintenance hold.
 
 ## Embedded font license
 

@@ -11381,8 +11381,11 @@ var JobCoordinator = class {
     const ordinaryClass = this.ordinaryTurn === null ? "" : `,${ordinaryServiceClass(at)} AS ordinary_service`, ordinaryOrder = this.ordinaryTurn === null ? "" : `CASE WHEN ordinary_service=${this.ordinaryTurn} THEN 0 ELSE 1 END,`;
     const results = await this.db.batch([
       this.prepare(`WITH eligible AS MATERIALIZED(SELECT j.id${reportClass}${ordinaryClass},CASE WHEN j.provider='teamsnap' AND j.stage='source' AND j.component IN('events','attendance') AND json_extract(j.checkpoint,'$.protocol')='teamsnap-pages-v1' AND json_extract(j.checkpoint,'$.refresh.protocol')='teamsnap-refresh-v1' AND json_extract(j.checkpoint,'$.refresh.active.mode')='full' AND json_extract(j.checkpoint,'$.refresh.binding.account_id')=j.account_id AND json_extract(j.checkpoint,'$.refresh.binding.authorization_generation')=j.authorization_generation AND json_extract(j.checkpoint,'$.refresh.binding.kind')=j.component AND json_extract(j.checkpoint,'$.refresh.binding.team_id')=CAST(json_extract(j.args,'$.team_id') AS TEXT) AND json_extract(j.checkpoint,'$.pass') IN(2,3) AND json_type(j.checkpoint,'$.previous')='object' AND length(json_extract(j.checkpoint,'$.previous.digest'))=64 AND json_extract(j.checkpoint,'$.previous.digest') NOT GLOB '*[^a-f0-9]*' AND json_type(j.checkpoint,'$.previous.pages')='integer' AND json_extract(j.checkpoint,'$.previous.pages')>0 AND json_type(j.checkpoint,'$.previous.count')='integer' AND json_extract(j.checkpoint,'$.previous.count')>=0 THEN MIN(j.priority,10) ELSE j.priority END AS priority,j.ready_since,j.next_at FROM sync_jobs j WHERE j.state IN ('queued','running','ready','retrying') AND NOT(j.state='ready' AND j.recurring=0) AND j.next_at<=? AND j.lease_until<=? AND ${activeAccount("j")} AND ${this.demanded("j")} AND ${this.dependencyFairness ? executionInputsReady("j", at) : "1"}) UPDATE sync_jobs SET state='running',lease_token=?,lease_until=?,attempts=attempts+1,last_attempt_at=?,checkpoint=CASE WHEN state='ready' THEN CASE WHEN ${teamSnapReadyReceipt} THEN checkpoint ELSE '{}' END ELSE checkpoint END,scan_id=CASE WHEN state='ready' THEN ? ELSE scan_id END WHERE id=(SELECT id FROM eligible ORDER BY ${reportOrder}${ordinaryOrder}(priority+CAST((?-ready_since)/? AS INTEGER)) DESC,next_at,id LIMIT 1) AND lease_until<=? RETURNING *`).bind(at, at, token, at + this.leaseMs, at, crypto.randomUUID(), at, this.ageMs, at),
-      this.revisions("SELECT s.app_team_id FROM sync_job_subscribers s JOIN sync_jobs j ON j.id=s.job_id WHERE j.lease_token=?", [token]),
-      this.accountRevisions("lease_token=?", [token])
+      // The preceding statement has just marked this lease running. Keep that
+      // predicate so the existing due index locates the lease without scanning
+      // every retained job for each status update in this atomic claim batch.
+      this.revisions("SELECT s.app_team_id FROM sync_job_subscribers s JOIN sync_jobs j ON j.id=s.job_id WHERE j.state='running' AND j.lease_token=?", [token]),
+      this.accountRevisions("state='running' AND lease_token=?", [token])
     ]);
     const job2 = results[0].results[0];
     if (!job2) return null;
@@ -11522,7 +11525,16 @@ var JobCoordinator = class {
   }
   async nextWake() {
     const at = this.clock();
-    const row = await this.prepare(`SELECT MIN(CASE WHEN j.lease_until>? THEN j.lease_until ELSE j.next_at END) AS at FROM sync_jobs j WHERE j.state IN ('queued','running','ready','retrying') AND NOT(j.state='ready' AND j.recurring=0) AND ${activeAccount("j")} AND ${this.demanded("j")} AND ${this.dependencyFairness ? executionInputsReady("j", at) : "1"}`).bind(at).first();
+    const live2 = `${activeAccount("j")} AND ${this.demanded("j")} AND ${this.dependencyFairness ? executionInputsReady("j", at) : "1"}`;
+    const row = await this.prepare(`WITH wake_candidates AS NOT MATERIALIZED(
+      SELECT j.state,j.next_at,j.lease_until,
+        CASE WHEN j.lease_until<=? THEN (${live2}) ELSE 0 END AS unleased,
+        CASE WHEN j.lease_until>? THEN (${live2}) ELSE 0 END AS leased
+      FROM sync_jobs j WHERE j.state IN('queued','running','ready','retrying') AND NOT(j.state='ready' AND j.recurring=0)
+    ) SELECT MIN(at) AS at FROM(
+      ${["queued", "running", "ready", "retrying"].map((state) => `SELECT (SELECT next_at FROM wake_candidates WHERE state='${state}' AND unleased ORDER BY next_at LIMIT 1) AS at`).join(" UNION ALL ")}
+      UNION ALL SELECT MIN(lease_until) AS at FROM wake_candidates WHERE leased
+    )`).bind(at, at).first();
     return row?.at ?? null;
   }
   async status(teamId, { includeExports = false } = {}) {
@@ -15967,7 +15979,7 @@ async function sourceTeamRoutes(request, { db, actor: actor2, cursor, now: now2 
 }
 
 // src/application/version.js
-var VERSION2 = "7.5.2";
+var VERSION2 = "7.5.3";
 
 // src/application/bootstrap.js
 init_team_catalog();
@@ -20548,7 +20560,7 @@ SOFTWARE.
 </script>
 <script>
 (()=>{'use strict';
-const VERSION='7.5.2', THEMES=window.mytsTheme.themes, AUTH='https://auth.teamsnap.com/oauth/authorize', OAUTH_STATE='myts.oauth.v6', ADMIN_KEY='myts.admin.v6', CLIENT_KEY='myts.client.v6';
+const VERSION='7.5.3', THEMES=window.mytsTheme.themes, AUTH='https://auth.teamsnap.com/oauth/authorize', OAUTH_STATE='myts.oauth.v6', ADMIN_KEY='myts.admin.v6', CLIENT_KEY='myts.client.v6';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 function currentTheme(){return window.mytsTheme.current()}
 function syncThemeControl(){
