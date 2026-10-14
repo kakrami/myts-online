@@ -4849,6 +4849,23 @@ var init_team_game_schema_upgrade = __esm({
   }
 });
 
+// src/original/retained-runtime.js
+var MyTSRuntime = class {
+  constructor(ctx) {
+    this.ctx = ctx;
+  }
+  async alarm() {
+    await this.ctx.storage.deleteAlarm();
+  }
+  async fetch() {
+    return Response.json({
+      state: "inactive",
+      code: "runtime_replaced",
+      message: "Background processing uses SyncRuntime."
+    }, { status: 410 });
+  }
+};
+
 // src/domain/calendar.js
 function localMidnight(day3, timeZone, hour = 0) {
   if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw Object.assign(new Error("Choose a valid local calendar hour."), { code: "invalid_request", status: 400 });
@@ -15936,7 +15953,7 @@ async function sourceTeamRoutes(request, { db, actor: actor2, cursor, now: now2 
 }
 
 // src/application/version.js
-var VERSION2 = "7.5.0";
+var VERSION2 = "7.5.1";
 
 // src/application/bootstrap.js
 init_team_catalog();
@@ -20516,7 +20533,7 @@ SOFTWARE.
 </script>
 <script>
 (()=>{'use strict';
-const VERSION='7.5.0', THEMES=window.mytsTheme.themes, AUTH='https://auth.teamsnap.com/oauth/authorize', OAUTH_STATE='myts.oauth.v6', ADMIN_KEY='myts.admin.v6', CLIENT_KEY='myts.client.v6';
+const VERSION='7.5.1', THEMES=window.mytsTheme.themes, AUTH='https://auth.teamsnap.com/oauth/authorize', OAUTH_STATE='myts.oauth.v6', ADMIN_KEY='myts.admin.v6', CLIENT_KEY='myts.client.v6';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 function currentTheme(){return window.mytsTheme.current()}
 function syncThemeControl(){
@@ -23019,6 +23036,7 @@ var four_file_entry_default = { fetch(request, env, ctx) {
   return worker_default.scheduled(controller, { ...env, ASSETS: assets }, ctx);
 } };
 export {
+  MyTSRuntime,
   SyncRuntime2 as SyncRuntime,
   four_file_entry_default as default
 };

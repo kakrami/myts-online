@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "myts-v7",
+  "name": "myts-online",
   "main": "worker.js",
   "compatibility_date": "2026-09-09",
   "workers_dev": true,
@@ -23,6 +23,10 @@
     ]
   },
   "exports": {
+    "MyTSRuntime": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    },
     "SyncRuntime": {
       "type": "durable-object",
       "storage": "sqlite"

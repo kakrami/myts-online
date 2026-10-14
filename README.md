@@ -1,6 +1,10 @@
-# myTS 7.5.0 — original interface, shared backend
+# myTS 7.5.1 — original interface, shared backend
 
 Review candidate. Nothing has been deployed.
+
+This release corrects the Cloudflare Builds deployment failure from 7.5.0. It matches the connected Worker name `myts-online` and declares the existing SQLite-backed `MyTSRuntime` class alongside `SyncRuntime`. The original namespace remains registered with its stored data intact; its old alarms stop and old runtime requests return 410. The active shared backend continues to use `SYNC` / `SyncRuntime`. No namespace deletion, rename, storage conversion, or D1 binding change is included.
+
+Replace all four repository files with this ZIP and retry the same Cloudflare build. Keep the existing secrets. Official lifecycle reference: https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/
 
 The interface comes from v6.20.133, including its existing styles, views, dialogs, Coach controls and browser exports. Its API boundary reads and writes the shared v7 model. Collection, reconciliation, analysis, file recovery and server exports use Durable Object alarms and continue after the browser closes. Polling only updates what the browser displays.
 
@@ -18,7 +22,7 @@ npm run dev
 
 `build` is a Wrangler dry run. It does not deploy. `dev` starts the local Worker. Open `/admin` to initialize a fresh local installation or sign in. A new installation uses the existing TeamSnap client-ID and owner-key flow. TeamSnap OAuth and Trace email codes require the providers to accept the configured callback origin.
 
-The supplied configuration retains the v7 Worker name `myts-v7`, D1 binding `DB`, database `myts-v7-rebuild-data`, Durable Object binding `SYNC` / `SyncRuntime`, and one-minute cron. Review these values against the intended installation before any live deployment. Keep existing secrets and bindings. For a new installation, configure `ADMIN_KEY` as a Worker secret. Do not place passwords or provider tokens in these files.
+The supplied configuration retains the v7 Worker name `myts-online`, D1 binding `DB`, database `myts-v7-rebuild-data`, Durable Object binding `SYNC` / `SyncRuntime`, and one-minute cron. Review these values against the intended installation before any live deployment. Keep existing secrets and bindings. For a new installation, configure `ADMIN_KEY` as a Worker secret. Do not place passwords or provider tokens in these files.
 
 This is a v7 shared-backend package. Do not point it directly at a v6 database. No database deletion, restore, production upload or deployment was performed while preparing it. Existing v7 installation handling remains in the backend.
 
@@ -34,7 +38,7 @@ Live Cloudflare deployment, current real-provider responses and phone/browser vi
 
 The D1 usage download includes actual request measurements and the latest background invocation. The comparison button reports that historical v6 query measurements are unavailable; it does not invent an hourly comparison.
 
-Suggested live review: confirm `/api/health` says 7.5.0; compare all original views on desktop and phone; connect each provider; close the browser while collecting and reopen; test one correction, filter, Coach plan, saved game, logo, kit and viewer-link rotation; export and reimport a small dataset before using a large archive.
+Suggested live review: confirm `/api/health` says 7.5.1; compare all original views on desktop and phone; connect each provider; close the browser while collecting and reopen; test one correction, filter, Coach plan, saved game, logo, kit and viewer-link rotation; export and reimport a small dataset before using a large archive.
 
 ## Embedded font license
 
