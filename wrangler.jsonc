@@ -45,6 +45,6 @@
   },
   "preview_urls": false,
   "vars": {
-    "MYTS_UPGRADE_MODE": "maintenance"
+    "MYTS_UPGRADE_MODE": "upgrade-only"
   }
 }
