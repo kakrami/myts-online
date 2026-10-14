@@ -1,18 +1,26 @@
-# myTS 7.5.1 — original interface, shared backend
+# myTS 7.5.2 — paused review candidate
 
-Review candidate. Nothing has been deployed.
+Nothing has been deployed. This package defaults to `MYTS_UPGRADE_MODE: maintenance`.
 
-This release corrects the Cloudflare Builds deployment failure from 7.5.0. It matches the connected Worker name `myts-online` and declares the existing SQLite-backed `MyTSRuntime` class alongside `SyncRuntime`. The original namespace remains registered with its stored data intact; its old alarms stop and old runtime requests return 410. The active shared backend continues to use `SYNC` / `SyncRuntime`. No namespace deletion, rename, storage conversion, or D1 binding change is included.
+The confirmed scheduler defect allowed an already admitted season projection to be claimed again while its source connections still had unreconciled revisions. This release applies the existing connection-readiness rule at both job claiming and wake selection. It preserves the build checkpoint, serves reconciliation first, and resumes the projection after the inputs settle. Existing failed/blocked/backoff source fallback remains available.
 
-Replace all four repository files with this ZIP and retry the same Cloudflare build. Keep the existing secrets. Official lifecycle reference: https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/
+This fixes a demonstrated repeated-work path. It does not establish that this path caused all historical D1 reads or prove production usage is acceptable. The supplied database remains `myts-v7-rebuild-data` (`60f77502-33d4-41d6-80d4-1c5577ebba76`). Preserve every existing database.
 
-The interface comes from v6.20.133, including its existing styles, views, dialogs, Coach controls and browser exports. Its API boundary reads and writes the shared v7 model. Collection, reconciliation, analysis, file recovery and server exports use Durable Object alarms and continue after the browser closes. Polling only updates what the browser displays.
+## Paused behavior
 
-The ZIP contains exactly four files: `worker.js`, `wrangler.jsonc`, `package.json`, and this README. The original HTML, the ZIP reader and the server PDF font are embedded in `worker.js`; no asset directory, source tree, build script or other local file is required.
+While `MYTS_UPGRADE_MODE` is `maintenance`, API calls return HTTP 503 with `installation_maintenance`; cron returns before touching D1; and SyncRuntime wake, status and alarm handlers clear their pending alarm and return before touching D1 or providers. Checkpoints and stored data remain intact. `/api/health` returns version `7.5.2`, `state: paused`, and `reason: maintenance`. The original interface still loads, but its database features intentionally remain paused.
 
-## Review and run
+Removing the DB binding also suspends SyncRuntime before D1 access. A deployment carries its configuration, including the DB binding: preserve the supplied maintenance setting during review. A surviving alarm clears when its handler runs. This does not cancel a request that was already executing under an older deployment.
 
-Use Node.js 22 or newer. Extract all four files into one directory, then run:
+Keep Cloudflare Guard armed. Its existing billing-cycle cutoff has already been exceeded, so fixing application code does not reset its accumulated usage. The guard may continue disabling the public URL. This release does not change the guard or override its limit. The guard itself still does not cancel Durable Object alarms; the application maintenance setting is a separate hold.
+
+## Package and configuration
+
+The ZIP contains exactly four files: `worker.js`, `wrangler.jsonc`, `package.json`, and this README. The v6.20.133 interface, ZIP reader and PDF font are embedded in the Worker. The shared v7 backend and existing workflow implementation are retained.
+
+The configuration uses Worker `myts-online`, the existing D1 `DB` binding, `SYNC` / `SyncRuntime`, and one-minute cron. Both `MyTSRuntime` and `SyncRuntime` remain exported with SQLite storage. The retained MyTSRuntime keeps its namespace data and clears old alarms. There is no database deletion, namespace deletion, storage conversion or provider credential change. Keep existing secrets.
+
+Extract all four files together. With Node.js 22 or newer:
 
 ```sh
 npm install
@@ -20,25 +28,17 @@ npm run build
 npm run dev
 ```
 
-`build` is a Wrangler dry run. It does not deploy. `dev` starts the local Worker. Open `/admin` to initialize a fresh local installation or sign in. A new installation uses the existing TeamSnap client-ID and owner-key flow. TeamSnap OAuth and Trace email codes require the providers to accept the configured callback origin.
+`build` is a Wrangler dry run. `dev` uses the supplied paused configuration. `/api/health` is available without D1 access. No database initialization is necessary for paused review. The deployment command is `npm run deploy`; it is not run during preparation.
 
-The supplied configuration retains the v7 Worker name `myts-online`, D1 binding `DB`, database `myts-v7-rebuild-data`, Durable Object binding `SYNC` / `SyncRuntime`, and one-minute cron. Review these values against the intended installation before any live deployment. Keep existing secrets and bindings. For a new installation, configure `ADMIN_KEY` as a Worker secret. Do not place passwords or provider tokens in these files.
+Do not resume normal collection yet. First confirm production D1 read growth has stopped while the application is held. A controlled resumption needs a separate decision about the guard's already exceeded billing-cycle cutoff and a short, measured trial of one existing connection. Record read deltas, checkpoint progress and job attempts before increasing work. No such production trial has been performed.
 
-This is a v7 shared-backend package. Do not point it directly at a v6 database. No database deletion, restore, production upload or deployment was performed while preparing it. Existing v7 installation handling remains in the backend.
+## Local verification
 
-After you approve the candidate, `npm run deploy` is the explicit deployment command.
+Scheduler tests cover withholding an admitted projection, wake timing behind a leased connection, resumption after reconciliation, and existing terminal/backoff fallback. A native D1 regression cycles six changing roster revisions without claiming the projection; each claim-plus-wake cycle uses five statements and reads 49 rows in that small fixture. This is a regression measurement, not a production usage forecast.
 
-## Behavior and verification
+Suspension tests cover wake, alarm and status with maintenance and missing DB. Native bundled-Worker checks cover API calls, cron, wake, status and a real surviving alarm with zero D1 calls, preserved checkpoints and preserved owner data. Namespace-retention checks preserve the old runtime's SQLite and key/value data. Original-interface contract and browser-closed workflow checks run separately with maintenance absent to verify the retained functional paths.
 
-The original browser contract now covers setup, team/season selection, calendar and attendance, Trace statistics and detailed maps, GotSport competition fixtures and standings, followed teams, saved games, shared inclusion filters, corrections, branding, viewer links, Coach plans, diagnostics, and JSON/ZIP data recovery. Server commands retain the existing authorization, source scope and stale-write checks. Imported observations remain marked as file evidence. Separately edited roster identities are preserved when automatic name correspondence is considered.
-
-Local checks exercise the original DOM and unchanged styles, native Worker/D1/alarms, browser-closed TeamSnap publication and JSON/ZIP recovery, populated Coach actions, conflicting edits, shared filters, viewer-link rotation, public whole-division fixtures and standings, saved games, branding, detailed-stat transport, and report files. The final bundled Worker is also checked independently of the development source tree.
-
-Live Cloudflare deployment, current real-provider responses and phone/browser visual behavior still require your checks. Chromium could not be installed in this environment; the DOM checks are not a visual-browser pass.
-
-The D1 usage download includes actual request measurements and the latest background invocation. The comparison button reports that historical v6 query measurements are unavailable; it does not invent an hourly comparison.
-
-Suggested live review: confirm `/api/health` says 7.5.1; compare all original views on desktop and phone; connect each provider; close the browser while collecting and reopen; test one correction, filter, Coach plan, saved game, logo, kit and viewer-link rotation; export and reimport a small dataset before using a large archive.
+Live Cloudflare costs and real-provider behavior remain unverified. Browser visual checks remain outstanding; local contract checks are not a visual-browser pass.
 
 ## Embedded font license
 

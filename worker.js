@@ -11147,6 +11147,7 @@ var jsonRow = (alias) => Object.fromEntries(["kind", "app_team_id", "demand_key"
 var jsonAdmission = (job2, subscription) => admission(jsonRow(job2), jsonRow(subscription));
 var jsonAccount = (alias) => `(json_extract(${alias},'$.account_id') IS NULL OR EXISTS(SELECT 1 FROM provider_accounts a WHERE a.id=json_extract(${alias},'$.account_id') AND a.generation=json_extract(${alias},'$.authorization_generation') AND a.active=1 AND a.provider=json_extract(${alias},'$.provider')))`;
 var connectionEvidenceReady = (team2, now2 = Date.now()) => `NOT EXISTS(SELECT 1 FROM team_source_connections c LEFT JOIN sync_jobs root_job ON root_job.provider='domain' AND root_job.component='connection' AND root_job.account_scope='public' AND root_job.scope=c.app_team_id AND root_job.resource_key=c.id WHERE c.app_team_id=${team2} AND c.active=1 AND c.input_revision>c.reconciled_revision AND NOT COALESCE(json_extract(root_job.args,'$.generation')=c.generation AND json_extract(root_job.args,'$.inputRevision')=c.input_revision AND (root_job.state IN('failed','blocked') OR (root_job.state='retrying' AND root_job.next_at>${Math.max(0, Math.trunc(now2))})),0))`;
+var executionInputsReady = (alias, at) => `(${analysisPublicationReady(alias)}) AND (${alias}.provider<>'domain' OR ${alias}.stage<>'projection' OR ${alias}.component<>'projection' OR ${connectionEvidenceReady(alias + ".scope", at)})`;
 var unavailableDemand = () => Object.assign(new SyncError("demand_unavailable", "This work no longer has an available team or account.", { kind: "permanent" }), { status: 404 });
 var bounded4 = (value, name, max = 512) => {
   if (typeof value !== "string" || !value || value.length > max) throw new SyncError("invalid_job", `Invalid ${name}.`, { kind: "permanent" });
@@ -11379,7 +11380,7 @@ var JobCoordinator = class {
     const reportClass = this.reportTurn === null ? "" : `,CASE WHEN ${reportServiceJob(at)} THEN 1 ELSE 0 END AS report_service`, reportOrder = this.reportTurn === null ? "" : `CASE WHEN report_service=${Number(this.reportTurn)} THEN 0 ELSE 1 END,`;
     const ordinaryClass = this.ordinaryTurn === null ? "" : `,${ordinaryServiceClass(at)} AS ordinary_service`, ordinaryOrder = this.ordinaryTurn === null ? "" : `CASE WHEN ordinary_service=${this.ordinaryTurn} THEN 0 ELSE 1 END,`;
     const results = await this.db.batch([
-      this.prepare(`WITH eligible AS MATERIALIZED(SELECT j.id${reportClass}${ordinaryClass},CASE WHEN j.provider='teamsnap' AND j.stage='source' AND j.component IN('events','attendance') AND json_extract(j.checkpoint,'$.protocol')='teamsnap-pages-v1' AND json_extract(j.checkpoint,'$.refresh.protocol')='teamsnap-refresh-v1' AND json_extract(j.checkpoint,'$.refresh.active.mode')='full' AND json_extract(j.checkpoint,'$.refresh.binding.account_id')=j.account_id AND json_extract(j.checkpoint,'$.refresh.binding.authorization_generation')=j.authorization_generation AND json_extract(j.checkpoint,'$.refresh.binding.kind')=j.component AND json_extract(j.checkpoint,'$.refresh.binding.team_id')=CAST(json_extract(j.args,'$.team_id') AS TEXT) AND json_extract(j.checkpoint,'$.pass') IN(2,3) AND json_type(j.checkpoint,'$.previous')='object' AND length(json_extract(j.checkpoint,'$.previous.digest'))=64 AND json_extract(j.checkpoint,'$.previous.digest') NOT GLOB '*[^a-f0-9]*' AND json_type(j.checkpoint,'$.previous.pages')='integer' AND json_extract(j.checkpoint,'$.previous.pages')>0 AND json_type(j.checkpoint,'$.previous.count')='integer' AND json_extract(j.checkpoint,'$.previous.count')>=0 THEN MIN(j.priority,10) ELSE j.priority END AS priority,j.ready_since,j.next_at FROM sync_jobs j WHERE j.state IN ('queued','running','ready','retrying') AND NOT(j.state='ready' AND j.recurring=0) AND j.next_at<=? AND j.lease_until<=? AND ${activeAccount("j")} AND ${this.demanded("j")} AND ${this.dependencyFairness ? analysisPublicationReady("j") : "1"}) UPDATE sync_jobs SET state='running',lease_token=?,lease_until=?,attempts=attempts+1,last_attempt_at=?,checkpoint=CASE WHEN state='ready' THEN CASE WHEN ${teamSnapReadyReceipt} THEN checkpoint ELSE '{}' END ELSE checkpoint END,scan_id=CASE WHEN state='ready' THEN ? ELSE scan_id END WHERE id=(SELECT id FROM eligible ORDER BY ${reportOrder}${ordinaryOrder}(priority+CAST((?-ready_since)/? AS INTEGER)) DESC,next_at,id LIMIT 1) AND lease_until<=? RETURNING *`).bind(at, at, token, at + this.leaseMs, at, crypto.randomUUID(), at, this.ageMs, at),
+      this.prepare(`WITH eligible AS MATERIALIZED(SELECT j.id${reportClass}${ordinaryClass},CASE WHEN j.provider='teamsnap' AND j.stage='source' AND j.component IN('events','attendance') AND json_extract(j.checkpoint,'$.protocol')='teamsnap-pages-v1' AND json_extract(j.checkpoint,'$.refresh.protocol')='teamsnap-refresh-v1' AND json_extract(j.checkpoint,'$.refresh.active.mode')='full' AND json_extract(j.checkpoint,'$.refresh.binding.account_id')=j.account_id AND json_extract(j.checkpoint,'$.refresh.binding.authorization_generation')=j.authorization_generation AND json_extract(j.checkpoint,'$.refresh.binding.kind')=j.component AND json_extract(j.checkpoint,'$.refresh.binding.team_id')=CAST(json_extract(j.args,'$.team_id') AS TEXT) AND json_extract(j.checkpoint,'$.pass') IN(2,3) AND json_type(j.checkpoint,'$.previous')='object' AND length(json_extract(j.checkpoint,'$.previous.digest'))=64 AND json_extract(j.checkpoint,'$.previous.digest') NOT GLOB '*[^a-f0-9]*' AND json_type(j.checkpoint,'$.previous.pages')='integer' AND json_extract(j.checkpoint,'$.previous.pages')>0 AND json_type(j.checkpoint,'$.previous.count')='integer' AND json_extract(j.checkpoint,'$.previous.count')>=0 THEN MIN(j.priority,10) ELSE j.priority END AS priority,j.ready_since,j.next_at FROM sync_jobs j WHERE j.state IN ('queued','running','ready','retrying') AND NOT(j.state='ready' AND j.recurring=0) AND j.next_at<=? AND j.lease_until<=? AND ${activeAccount("j")} AND ${this.demanded("j")} AND ${this.dependencyFairness ? executionInputsReady("j", at) : "1"}) UPDATE sync_jobs SET state='running',lease_token=?,lease_until=?,attempts=attempts+1,last_attempt_at=?,checkpoint=CASE WHEN state='ready' THEN CASE WHEN ${teamSnapReadyReceipt} THEN checkpoint ELSE '{}' END ELSE checkpoint END,scan_id=CASE WHEN state='ready' THEN ? ELSE scan_id END WHERE id=(SELECT id FROM eligible ORDER BY ${reportOrder}${ordinaryOrder}(priority+CAST((?-ready_since)/? AS INTEGER)) DESC,next_at,id LIMIT 1) AND lease_until<=? RETURNING *`).bind(at, at, token, at + this.leaseMs, at, crypto.randomUUID(), at, this.ageMs, at),
       this.revisions("SELECT s.app_team_id FROM sync_job_subscribers s JOIN sync_jobs j ON j.id=s.job_id WHERE j.lease_token=?", [token]),
       this.accountRevisions("lease_token=?", [token])
     ]);
@@ -11520,7 +11521,8 @@ var JobCoordinator = class {
     ]);
   }
   async nextWake() {
-    const row = await this.prepare(`SELECT MIN(CASE WHEN j.lease_until>? THEN j.lease_until ELSE j.next_at END) AS at FROM sync_jobs j WHERE j.state IN ('queued','running','ready','retrying') AND NOT(j.state='ready' AND j.recurring=0) AND ${activeAccount("j")} AND ${this.demanded("j")} AND ${this.dependencyFairness ? analysisPublicationReady("j") : "1"}`).bind(this.clock()).first();
+    const at = this.clock();
+    const row = await this.prepare(`SELECT MIN(CASE WHEN j.lease_until>? THEN j.lease_until ELSE j.next_at END) AS at FROM sync_jobs j WHERE j.state IN ('queued','running','ready','retrying') AND NOT(j.state='ready' AND j.recurring=0) AND ${activeAccount("j")} AND ${this.demanded("j")} AND ${this.dependencyFairness ? executionInputsReady("j", at) : "1"}`).bind(at).first();
     return row?.at ?? null;
   }
   async status(teamId, { includeExports = false } = {}) {
@@ -11620,6 +11622,12 @@ function createSyncRuntime(collector, options = {}) {
       this.running = null;
       this.arming = Promise.resolve();
     }
+    async suspended() {
+      const reason = this.env.MYTS_UPGRADE_MODE === "maintenance" ? "maintenance" : !this.env.DB ? "database_unconfigured" : null;
+      if (!reason) return null;
+      await this.ctx.storage.deleteAlarm();
+      return { state: "paused", reason };
+    }
     async installation(db = new BudgetDB(this.env.DB, options.statementLimit ?? 48)) {
       if (!options.inspectInstallation) return { state: "ready", identity: null };
       try {
@@ -11645,6 +11653,8 @@ function createSyncRuntime(collector, options = {}) {
     }
     async wake() {
       const task = async () => {
+        const suspended = await this.suspended();
+        if (suspended) return { queued: false, ...suspended };
         const installation = await this.installation();
         if (installation.state !== "ready") {
           if (["upgrade_required", "upgrading"].includes(installation.state) && options.advanceInstallation) {
@@ -11687,6 +11697,8 @@ function createSyncRuntime(collector, options = {}) {
       }
       if (path === "/status" && request.method === "GET") {
         try {
+          const suspended = await this.suspended();
+          if (suspended) return Response.json(suspended);
           const installation = await this.installation();
           if (installation.state !== "ready") return Response.json(this.installationStatus(installation));
           const last = await this.ctx.storage.get("last_run");
@@ -11705,6 +11717,8 @@ function createSyncRuntime(collector, options = {}) {
       return this.running;
     }
     async run() {
+      const suspended = await this.suspended();
+      if (suspended) return suspended;
       const started = Date.now(), rawDb = new BudgetDB(this.env.DB, options.statementLimit ?? 48);
       let db = rawDb;
       let installation, diagnosticLease, diagnosticPhase = "runtime_setup";
@@ -15953,7 +15967,7 @@ async function sourceTeamRoutes(request, { db, actor: actor2, cursor, now: now2 
 }
 
 // src/application/version.js
-var VERSION2 = "7.5.1";
+var VERSION2 = "7.5.2";
 
 // src/application/bootstrap.js
 init_team_catalog();
@@ -20017,8 +20031,9 @@ var worker_default = {
     const url3 = new URL(request.url);
     try {
       if (url3.pathname === "/club-logo") return await serveClubLogo(request, ctx);
-      if (url3.pathname === "/api/health" && request.method === "GET") return json2({ service: "myTS", version: VERSION2 });
+      if (url3.pathname === "/api/health" && request.method === "GET") return json2({ service: "myTS", version: VERSION2, ...env.MYTS_UPGRADE_MODE === "maintenance" ? { state: "paused", reason: "maintenance" } : {} });
       if (url3.pathname.startsWith("/api/")) {
+        if (env.MYTS_UPGRADE_MODE === "maintenance") return json2({ error: { code: "installation_maintenance", message: "Database work is paused for usage review." } }, 503);
         if (!env.DB) return json2({ error: { code: "database_unconfigured", message: "The existing database binding is unavailable. Preserve the installation and review its configuration." } }, 503);
         const budget = new BudgetDB(env.DB), installation = installationFor(budget, env), db = wrapDatabase(budget);
         const original = await originalRoutes(request, env, { db, installation });
@@ -20039,7 +20054,7 @@ var worker_default = {
   },
   async scheduled(controller, env, ctx) {
     ctx.waitUntil((async () => {
-      if (!env.DB) return;
+      if (env.MYTS_UPGRADE_MODE === "maintenance" || !env.DB) return;
       const budget = new BudgetDB(env.DB), installation = installationFor(budget, env), state = await installation.inspect();
       if (["upgrade_required", "upgrading"].includes(state.state)) {
         await wakeSync(env);
@@ -20533,7 +20548,7 @@ SOFTWARE.
 </script>
 <script>
 (()=>{'use strict';
-const VERSION='7.5.1', THEMES=window.mytsTheme.themes, AUTH='https://auth.teamsnap.com/oauth/authorize', OAUTH_STATE='myts.oauth.v6', ADMIN_KEY='myts.admin.v6', CLIENT_KEY='myts.client.v6';
+const VERSION='7.5.2', THEMES=window.mytsTheme.themes, AUTH='https://auth.teamsnap.com/oauth/authorize', OAUTH_STATE='myts.oauth.v6', ADMIN_KEY='myts.admin.v6', CLIENT_KEY='myts.client.v6';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 function currentTheme(){return window.mytsTheme.current()}
 function syncThemeControl(){
