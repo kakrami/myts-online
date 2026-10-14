@@ -1,25 +1,60 @@
-# myTS 7.5.3 — paused query-cost review candidate
+# myTS 7.5.4 — schema upgrade with collection held
 
-Nothing has been deployed during preparation. This four-file package defaults to `MYTS_UPGRADE_MODE: maintenance`.
+Review candidate. Nothing has been deployed during preparation. The package still defaults to `MYTS_UPGRADE_MODE: maintenance`, which performs zero D1 work through ordinary API, cron and scheduler entry points.
 
-Production diagnostics report 1,136 source events, 8,640 jobs, 413 retained projection runs and 90 publication rows. Of those jobs, 8,267 are Trace analytics, tracking or radar requests. Trace collects separate player, period and tracking-channel details, so this count alone does not establish duplicate work or an infinite loop. The ready analytics and tracking groups have mostly completed one saved page each. Do not delete those jobs or their data based on their count.
+Production reports `ready`, cursor 731, a non-current fingerprint and 416 old write guards. `ready` describes that older installation; it does not mean the current application schema is installed. Maintenance correctly prevented the deployment from advancing that schema. The guard count alone does not establish the cause of the historical read bill.
 
-This release corrects two demonstrated query costs in the shared scheduler:
+This release adds an explicit `upgrade-only` mode for updating the recognized existing database separately from restarting collection. It reuses the existing validated upgrade plan. It does not change the schema target, job data, database binding or namespace identities from 7.5.3. The original interface remains unchanged during normal operation.
 
-- After claiming a lease, its status updates now include the known `running` state. This lets the existing state index find the claimed job instead of scanning every retained job for its lease token. The updates remain inside the same atomic claim batch.
-- Next-alarm selection seeks the earliest authorized unleased job separately for each eligible state using the existing state/time index. A separate lease check preserves the previous lease timing rule, including unusual saved non-running rows with live leases. Authorization, subscription generations, projection-input readiness, terminal states and nonrecurring completion checks remain in force. No new tables, indexes, polling intervals or persistent cache are introduced.
+## Upgrade-only behavior
 
-The 7.5.2 projection dependency correction remains: an already queued projection waits while its source connections have unreconciled input, then resumes with its checkpoint intact when the inputs settle. Existing failed/blocked/backoff source fallback remains available.
+With `MYTS_UPGRADE_MODE` set to `upgrade-only`:
 
-These are measured improvements in reproduced paths. They do not attribute all historical production reads or establish a safe production spending rate. The Cloudflare Guard is unchanged.
+- `/admin` displays a small database-maintenance form. Enter the installation key configured as this Worker's existing `ADMIN_KEY` secret. The key stays out of local storage and is cleared from the input immediately. Do not send it in chat.
+- Each form request authenticates before inspection and advances one bounded schema page through `/api/owner/initialize`. This special handler never initializes an owner, changes the owner's password or creates a session. An empty or partially initialized database is refused.
+- Requests must be same-origin. All ordinary application APIs remain blocked. `/api/health` is read-only and reports version 7.5.4 with `state: paused` and `reason: upgrade_only`.
+- Cron and every SyncRuntime wake/status/alarm entry remain held before D1 access. A surviving alarm clears. No source fetch, collection, reconciliation, match analysis or publication job runs.
+- The browser submits pages until the schema is current, then displays “Database updated. Collection remains paused.” Closing the browser interrupts the sequence; reopening and submitting the key resumes the committed cursor. There is no automatic switch to normal mode.
 
-## Paused behavior
+Only the authenticated upgrade operation performs database work. Every request has the existing 50-statement ceiling. This is a statement bound, not a hard billing cap; live upgrade read counts have not been measured.
 
-While `MYTS_UPGRADE_MODE` is `maintenance`, API calls return HTTP 503 with `installation_maintenance`; cron returns before touching D1; and SyncRuntime wake, status and alarm handlers clear their pending alarm and return before touching D1 or providers. Checkpoints and stored data remain intact. `/api/health` returns version `7.5.3`, `state: paused`, and `reason: maintenance`. The original interface still loads, but its database features intentionally remain paused.
+## Proposed live procedure — requires approval before the guard exception
 
-Removing the DB binding also suspends SyncRuntime before D1 access. A deployment carries its configuration, including the DB binding: preserve the supplied maintenance setting during review. A surviving alarm clears when its handler runs. This does not cancel a request that was already executing under an older deployment.
+The current billing-cycle threshold is already exceeded, so Cloudflare Guard will keep disabling the public URL. A narrowly scoped temporary exception is necessary to use the maintenance form. The guard code and its threshold remain unchanged; other protected Workers remain protected.
 
-Keep Cloudflare Guard armed. Its existing billing-cycle cutoff has already been exceeded, so fixing application code does not reset its accumulated usage. The guard may continue disabling the public URL. This release does not change the guard or override its limit. The guard itself still does not cancel Durable Object alarms; the application maintenance setting is a separate hold.
+After explicit approval for the upgrade-only window:
+
+1. Deploy all four files with the supplied `maintenance` setting first. Preserve existing secrets and the D1 binding to `myts-v7-rebuild-data`.
+2. Set myts-online's `MYTS_UPGRADE_MODE` variable to `upgrade-only` in Cloudflare. Do not use `normal` or remove the hold.
+3. Append `myts-online` to Cloudflare Guard's existing comma-separated `EXCLUDE_WORKERS` variable, preserving all existing entries. Keep `ARMED` enabled. This is the temporary exception requiring approval.
+4. Enable the production URL for `myts-online`, open `/admin`, enter the installation key and select Update database. Keep the page open until it reports completion.
+5. In the D1 Console, run the read-only verification below. Expected: `ready`, `next_index=371`, `current_schema=1`, `old_write_guards=0`.
+6. Set myts-online back to `MYTS_UPGRADE_MODE=maintenance`, then remove only the temporary `myts-online` exclusion from the guard. Preserve every other guard entry. Collection must remain paused for the separate cost review.
+
+```sql
+SELECT state, next_index,
+  schema_fingerprint = '30116ace469e6b0b5146b62a7af632c2da63dad341b8d9d0044c1eb675af57c4' AS current_schema,
+  (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND
+    (name GLOB 'installation_epoch_*' OR name GLOB 'installation_upgrade_*'
+     OR name GLOB 'team_games_journal_*'
+     OR name IN('team_games_legacy_bridge','team_games_open_legacy','team_games_close_legacy'))
+  ) AS old_write_guards
+FROM setup_state WHERE id=1;
+```
+
+If any page fails, keep the hold enabled. Do not drop guards, alter setup records manually, delete databases or switch on normal collection. The fixed upgrade plan validates the recognized schema and can resume its own committed cursor.
+
+## Verification
+
+A native preserved-731 fixture with the existing extension complete matches the reported cursor and 416 old guards. Through the actual bundled Worker HTTP handler, 19 authenticated page requests reach the current 371-statement installation and zero old guards. Saved application rows compare exactly before and after, including owner/vault/credentials/sessions, source observations, jobs/leases/checkpoints, bookmarks and Coach records. Repeating the operation does not create a session or change those rows. Wrong-key and cross-origin requests are rejected; empty databases remain empty.
+
+A separate native transition test also starts from the earlier 731 base without the extension, completes the existing path in 24 bounded steps, preserves application rows and rejects a stale writer after retirement. These are synthetic native D1 tests, not a copy of the production database.
+
+The maintenance form is exercised in a DOM test, including repeated page submission, progress/completion, immediate clearing of the key input and absence of local-storage persistence. Native bundled checks verify zero D1 calls through ordinary API, cron and scheduler entry points in both maintenance and upgrade-only modes. The packaged Worker also passes normal original-interface setup and retained-namespace checks, along with 33 targeted readiness/suspension/bootstrap checks and a Wrangler dry run.
+
+The inherited 7.5.3 scheduler optimizations remain unchanged: the single-due-job claim benchmark falls from 8,662 rows to 23, and next-alarm selection in a synthetic 1,136-event/8,640-job queue falls from 58,597 to about 8,510 while preserving selected wake times. Production usage after normal resumption remains unverified; the historical bill has not been fully attributed.
+
+Two older native schema-count/budget tests documented in 7.5.3 remain known failures with the scheduler edits reverted as well. They are not represented as passing. Visual-browser and real-provider acceptance remain outstanding.
 
 ## Package and configuration
 
@@ -36,22 +71,6 @@ npm run dev
 ```
 
 `build` is a Wrangler dry run. `dev` uses the supplied paused configuration. `/api/health` is available without D1 access. No database initialization is necessary for paused review. The deployment command is `npm run deploy`; it is not run during preparation.
-
-Do not resume normal collection yet. First confirm production D1 read growth has stopped while the application is held. A controlled resumption needs a separate decision about the guard's already exceeded billing-cycle cutoff and a short, measured trial of one existing connection. Record read deltas, checkpoint progress and job attempts before increasing work. No such production trial has been performed.
-
-## Local verification and limits
-
-A native D1 regression with 8,640 retained jobs and one due job reduces a complete claim from 8,662 rows read to 23. An idle claim reads 16 rows. This is a scheduler microbenchmark, not a production cost forecast.
-
-A separate synthetic queue matches the reported 1,136 events and 8,640 jobs, including the supplied 8,267 Trace detail jobs grouped by component/state. Across all seven scheduler preferences, next-alarm selection reads 8,509–8,510 rows instead of 58,597, with exactly the same selected wake time in each comparison. This compares queue selection only; it is not a replay of production provider payloads or all 413 retained builds.
-
-Passing checks include 108 targeted scheduler/readiness/suspension checks, 30 synchronization regressions, native D1 claim/readiness tests, four native public-history authority/depth checks, and all six original-interface workflow tests. The final bundled Worker is independently exercised for original setup, browser-closed TeamSnap publication, maintenance suspension and namespace retention. Its Wrangler dry run succeeds.
-
-Two older native checks remain failing: `analysis-service-fairness.native.mjs` expects the retired installation count of 788 rather than 371, and the exact-budget case in `public-history-coordinator.native.mjs` expects a budget rejection under the earlier writer overhead. Both same failures were reproduced with only these two scheduler query changes reverted. Those checks are not reported as passing. Production schema and writer behavior were not changed to satisfy them.
-
-The pause checks verify zero D1 calls through API, cron, wake, status and a real surviving native alarm, while preserving owner data and checkpoints. The retained MyTSRuntime namespace keeps its SQLite/key/value data and clears its old alarm.
-
-Live query costs and real-provider behavior remain unverified. Browser visual checks remain outstanding. Keep maintenance enabled and the existing guard armed. Do not enable normal collection as part of reviewing this candidate. The guard still disables URLs and cron, rather than automatically applying the application's background maintenance hold.
 
 ## Embedded font license
 

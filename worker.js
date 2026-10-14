@@ -1720,12 +1720,12 @@ var init_repository = __esm({
           this.db.prepare(`${filter.cte ? `WITH ${filter.cte} ` : ""}SELECT COUNT(*) AS total FROM team_events e WHERE ${filter.where}`).bind(...filter.cteParams, ...filter.params),
           pageQuery([])
         ]);
-        let page2 = queries[1];
-        const timed = page2.results.filter((row) => row.starts_at), repairs = timezone2.repairs([timed[0]?.starts_at, timed.at(-1)?.starts_at, position?.[2]]);
-        if (repairs.length) page2 = await pageQuery(repairs).all();
+        let page3 = queries[1];
+        const timed = page3.results.filter((row) => row.starts_at), repairs = timezone2.repairs([timed[0]?.starts_at, timed.at(-1)?.starts_at, position?.[2]]);
+        if (repairs.length) page3 = await pageQuery(repairs).all();
         const state = await this.stateQuery(selection2).first();
         if (state.content_revision !== before.content_revision) throw invalid2("The list changed. Reload this selection.", "cursor_restart", 409);
-        const sign = direction === "DESC" ? -1 : 1, rows = page2.results.map((row) => ({ row, day: row.starts_at ? localDay2(row.starts_at, selection2.timezone) : row.local_day }));
+        const sign = direction === "DESC" ? -1 : 1, rows = page3.results.map((row) => ({ row, day: row.starts_at ? localDay2(row.starts_at, selection2.timezone) : row.local_day }));
         rows.sort((a, b) => !a.day || !b.day ? a.day ? -1 : b.day ? 1 : (a.row.id < b.row.id ? -1 : a.row.id > b.row.id ? 1 : 0) * sign : a.day !== b.day ? (a.day < b.day ? -1 : 1) * sign : !!a.row.starts_at !== !!b.row.starts_at ? a.row.starts_at ? -1 : 1 : a.row.starts_at !== b.row.starts_at ? (a.row.starts_at < b.row.starts_at ? -1 : 1) * sign : (a.row.id < b.row.id ? -1 : a.row.id > b.row.id ? 1 : 0) * sign);
         const items = rows.slice(0, limit), last = items.at(-1);
         return this.envelope(selection2, state, { items: await Promise.all(items.map(({ row }) => this.event(row))), total: queries[0].results[0].total, next_cursor: rows.length > limit ? await this.cursor.issue({ selection: cursorSelection, revision: state.content_revision, scope: scope3, position: [last.day ?? "", last.row.starts_at ? "0" : last.day ? "1" : "2", last.row.starts_at ?? "", last.row.id, asOf] }) : null });
@@ -2185,23 +2185,23 @@ var init_reads = __esm({
           q = { sql: `SELECT * FROM(${q.sql}) WHERE player LIKE ? ESCAPE '\\' OR jersey LIKE ? ESCAPE '\\' OR position LIKE ? ESCAPE '\\'`, params: [...q.params, value2, value2, value2] };
         }
         const desc = direction === "desc", sign = desc ? "<" : ">", dir = desc ? "DESC" : "ASC";
-        const value = sort === "player" ? "COALESCE(player,'') COLLATE NOCASE" : `COALESCE(${sort},${["jersey"].includes(sort) ? "''" : "-1"})`, page2 = position ? `WHERE ${value}${sign}? OR (${value}=? AND id${sign}?)` : "";
-        const result = await this.db.batch([attendanceStateQuery(this.db, selection2), this.db.prepare(`SELECT COUNT(*) AS total FROM(${q.sql})`).bind(...q.params), this.db.prepare(`SELECT *,${value} AS order_value FROM(${q.sql}) ${page2} ORDER BY ${value} ${dir},id ${dir} LIMIT ?`).bind(...q.params, ...position ? [position[0], position[0], position[1]] : [], limit + 1)]);
+        const value = sort === "player" ? "COALESCE(player,'') COLLATE NOCASE" : `COALESCE(${sort},${["jersey"].includes(sort) ? "''" : "-1"})`, page3 = position ? `WHERE ${value}${sign}? OR (${value}=? AND id${sign}?)` : "";
+        const result = await this.db.batch([attendanceStateQuery(this.db, selection2), this.db.prepare(`SELECT COUNT(*) AS total FROM(${q.sql})`).bind(...q.params), this.db.prepare(`SELECT *,${value} AS order_value FROM(${q.sql}) ${page3} ORDER BY ${value} ${dir},id ${dir} LIMIT ?`).bind(...q.params, ...position ? [position[0], position[0], position[1]] : [], limit + 1)]);
         if (await attendanceVersion(await attendanceStateQuery(this.db, selection2).first()) !== revision3 || await attendanceVersion(result[0].results[0]) !== revision3) throw invalid2("The player list changed. Reload.", "cursor_restart", 409);
         const rows = result[2].results, items = rows.slice(0, limit), last = items.at(-1), more = rows.length > limit;
         const envelope = this.base.envelope(selection2, result[0].results[0], { as_of: asOf, items: items.map(({ order_value, ...row }) => ({ ...row, ga: row.g_plus_a, ga_per_60: row.g_plus_a_per_60 })), total: result[1].results[0].total, next_cursor: more ? await this.cursor.issue({ selection: listSelection, revision: revision3, scope: scope3, position: [last.order_value, last.id, asOf] }) : null });
         return { ...envelope, revision: { ...envelope.revision, attendance: revision3 } };
       }
       async team(input2, options = {}) {
-        const query2 = options.query ?? input2.query ?? input2.q ?? "", sort = options.sort ?? input2.player_sort ?? (input2.sort === "date" ? null : input2.sort) ?? "player", direction = options.direction ?? input2.direction ?? "asc", page2 = await this.players(input2, { ...options, query: query2, sort, direction });
-        let q = playerSeasonQuery({ ...page2.selection, search: "" }, { now: Date.parse(page2.data.as_of) });
+        const query2 = options.query ?? input2.query ?? input2.q ?? "", sort = options.sort ?? input2.player_sort ?? (input2.sort === "date" ? null : input2.sort) ?? "player", direction = options.direction ?? input2.direction ?? "asc", page3 = await this.players(input2, { ...options, query: query2, sort, direction });
+        let q = playerSeasonQuery({ ...page3.selection, search: "" }, { now: Date.parse(page3.data.as_of) });
         if (query2) {
           const value = "%" + String(query2).trim().slice(0, 100).replace(/[\\%_]/g, (v) => "\\" + v) + "%";
           q = { sql: `SELECT * FROM(${q.sql}) WHERE player LIKE ? ESCAPE '\\' OR jersey LIKE ? ESCAPE '\\' OR position LIKE ? ESCAPE '\\'`, params: [...q.params, value, value, value] };
         }
-        const results = await this.db.batch([attendanceStateQuery(this.db, page2.selection), this.db.prepare(`SELECT SUM(apps) AS apps,SUM(starts) AS starts,SUM(minutes) AS minutes,SUM(field_minutes) AS field_minutes,SUM(gk_minutes) AS gk_minutes,SUM(goals) AS goals,SUM(assists) AS assists,SUM(g_plus_a) AS ga,CASE WHEN SUM(minutes)>0 AND SUM(goals) IS NOT NULL AND SUM(assists) IS NOT NULL THEN ROUND((SUM(goals)+SUM(assists))*60.0/SUM(minutes),3) END AS ga_per_60,SUM(native_matches) AS native_matches,SUM(incomplete_matches) AS incomplete_matches,SUM(estimated_matches) AS estimated_matches FROM(${q.sql})`).bind(...q.params), this.db.prepare("SELECT kind FROM team_profiles WHERE app_team_id=?").bind(page2.selection.team_id)]);
-        if (await attendanceVersion(results[0].results[0]) !== page2.revision.attendance || await attendanceVersion(await attendanceStateQuery(this.db, page2.selection).first()) !== page2.revision.attendance) throw invalid2("The roster changed. Reload.", "cursor_restart", 409);
-        return { ...page2, data: { players: page2.data, totals: results[1].results[0], query: query2, sort: { key: { player: "name", g_plus_a: "ga", g_plus_a_per_60: "ga_per_60", attendance_pct: "attendance" }[sort] || sort, direction }, followed: results[2].results[0]?.kind === "followed" } };
+        const results = await this.db.batch([attendanceStateQuery(this.db, page3.selection), this.db.prepare(`SELECT SUM(apps) AS apps,SUM(starts) AS starts,SUM(minutes) AS minutes,SUM(field_minutes) AS field_minutes,SUM(gk_minutes) AS gk_minutes,SUM(goals) AS goals,SUM(assists) AS assists,SUM(g_plus_a) AS ga,CASE WHEN SUM(minutes)>0 AND SUM(goals) IS NOT NULL AND SUM(assists) IS NOT NULL THEN ROUND((SUM(goals)+SUM(assists))*60.0/SUM(minutes),3) END AS ga_per_60,SUM(native_matches) AS native_matches,SUM(incomplete_matches) AS incomplete_matches,SUM(estimated_matches) AS estimated_matches FROM(${q.sql})`).bind(...q.params), this.db.prepare("SELECT kind FROM team_profiles WHERE app_team_id=?").bind(page3.selection.team_id)]);
+        if (await attendanceVersion(results[0].results[0]) !== page3.revision.attendance || await attendanceVersion(await attendanceStateQuery(this.db, page3.selection).first()) !== page3.revision.attendance) throw invalid2("The roster changed. Reload.", "cursor_restart", 409);
+        return { ...page3, data: { players: page3.data, totals: results[1].results[0], query: query2, sort: { key: { player: "name", g_plus_a: "ga", g_plus_a_per_60: "ga_per_60", attendance_pct: "attendance" }[sort] || sort, direction }, followed: results[2].results[0]?.kind === "followed" } };
       }
       async summary(input2, playerId, { now: now2 = this.base.now() } = {}) {
         const { selection: selection2 } = await this.base.context(input2), q = playerSeasonQuery(selection2, { now: now2 }), rows = await this.db.batch([attendanceStateQuery(this.db, selection2), this.db.prepare(`SELECT * FROM(${q.sql}) WHERE id=?`).bind(...q.params, playerId)]);
@@ -2688,8 +2688,8 @@ var init_feature_reads = __esm({
           where = filtered.where;
           whereParams = filtered.params;
         }
-        const desc = selection2.direction === "desc", sign = desc ? "<" : ">", dir = desc ? "DESC" : "ASC", page2 = position ? ` AND (${order2}${sign}? OR(${order2}=? AND e.id${sign}?))` : "";
-        const results = await this.db.batch([this.stateQuery(context2.selection), ...this.versionQueries(context2, versionOptions), this.db.prepare(cte + ` SELECT ${totalColumns} FROM e WHERE ${where}`).bind(...params, ...whereParams), this.db.prepare(cte + ` SELECT ${columns3},${order2} AS order_value FROM e WHERE ${where}${page2} ORDER BY ${order2} ${dir},e.id ${dir} LIMIT ?`).bind(...params, ...whereParams, ...position ? [position[0], position[0], position[1]] : [], limit + 1)]);
+        const desc = selection2.direction === "desc", sign = desc ? "<" : ">", dir = desc ? "DESC" : "ASC", page3 = position ? ` AND (${order2}${sign}? OR(${order2}=? AND e.id${sign}?))` : "";
+        const results = await this.db.batch([this.stateQuery(context2.selection), ...this.versionQueries(context2, versionOptions), this.db.prepare(cte + ` SELECT ${totalColumns} FROM e WHERE ${where}`).bind(...params, ...whereParams), this.db.prepare(cte + ` SELECT ${columns3},${order2} AS order_value FROM e WHERE ${where}${page3} ORDER BY ${order2} ${dir},e.id ${dir} LIMIT ?`).bind(...params, ...whereParams, ...position ? [position[0], position[0], position[1]] : [], limit + 1)]);
         const state = results[0].results[0], versionCount = this.versionQueries(context2, versionOptions).length, revision3 = await hash4([state.content_revision, ...results.slice(1, versionCount + 1).map((r) => r.results)]);
         if (revision3 !== before.revision || (await this.snapshot(context2, versionOptions)).revision !== before.revision) throw invalid2("This selection changed. Reload it.", "cursor_restart", 409);
         const rows = results[versionCount + 2].results, items = rows.slice(0, limit), last = items.at(-1), next_cursor = rows.length > limit ? await this.cursor.issue({ selection: selection2, revision: revision3, scope: scope3, position: [last.order_value, last.id, cutoff] }) : null;
@@ -3448,8 +3448,8 @@ var init_team_catalog = __esm({
         const selection2 = { catalog: "teams", team_id: this.actor.owner ? null : this.actor.teamId }, scope3 = this.scope("teams"), filter = this.actor.owner ? "1" : "t.id=?", params = this.actor.owner ? [] : [this.actor.teamId];
         const revision3 = (await this.db.prepare("SELECT teams_revision AS revision FROM catalog_state WHERE id=1").first())?.revision ?? 0;
         const position = cursor ? continuation(await this.cursor.verify(cursor, { selection: selection2, revision: revision3, scope: scope3 }), 3) : null;
-        const page2 = position ? ` AND (COALESCE(p.kind,'own')>? OR(COALESCE(p.kind,'own')=? AND(t.name COLLATE NOCASE>? OR(t.name COLLATE NOCASE=? AND t.id>?))))` : "";
-        const columns3 = this.brandingColumns(), requests = [this.db.prepare("SELECT teams_revision AS revision,branding_revision FROM catalog_state WHERE id=1"), this.db.prepare(`SELECT COUNT(*) total ${teamsFrom} WHERE ${visible} AND ${filter}`).bind(...params), this.db.prepare(`SELECT ${columns3} ${teamsFrom} WHERE ${visible} AND ${filter}${page2} ORDER BY COALESCE(p.kind,'own'),t.name COLLATE NOCASE,t.id LIMIT ?`).bind(...params, ...position ? [position[0], position[0], position[1], position[1], position[2]] : [], limit + 1)];
+        const page3 = position ? ` AND (COALESCE(p.kind,'own')>? OR(COALESCE(p.kind,'own')=? AND(t.name COLLATE NOCASE>? OR(t.name COLLATE NOCASE=? AND t.id>?))))` : "";
+        const columns3 = this.brandingColumns(), requests = [this.db.prepare("SELECT teams_revision AS revision,branding_revision FROM catalog_state WHERE id=1"), this.db.prepare(`SELECT COUNT(*) total ${teamsFrom} WHERE ${visible} AND ${filter}`).bind(...params), this.db.prepare(`SELECT ${columns3} ${teamsFrom} WHERE ${visible} AND ${filter}${page3} ORDER BY COALESCE(p.kind,'own'),t.name COLLATE NOCASE,t.id LIMIT ?`).bind(...params, ...position ? [position[0], position[0], position[1], position[1], position[2]] : [], limit + 1)];
         if (preferred_team_id) requests.push(this.db.prepare(`SELECT ${columns3} ${teamsFrom} WHERE ${visible} AND ${filter} AND t.id=?`).bind(...params, preferred_team_id));
         const results = await this.db.batch(requests);
         if ((results[0].results[0]?.revision ?? 0) !== revision3) throw invalid2("The team catalog changed. Reload it.", "cursor_restart", 409);
@@ -3473,7 +3473,7 @@ var init_team_catalog = __esm({
         const selection2 = { catalog: "seasons", team_id: teamId }, scope3 = this.scope("seasons", teamId), revision3 = (await this.db.prepare("SELECT seasons_revision AS revision FROM team_catalog_state WHERE app_team_id=?").bind(teamId).first())?.revision ?? 0;
         const position = cursor ? continuation(await this.cursor.verify(cursor, { selection: selection2, revision: revision3, scope: scope3 }), 2) : null;
         if (position && !/^\d{4}$/.test(position[0])) throw invalid2("Invalid season continuation.", "cursor_invalid");
-        const page2 = position ? " AND (year<? OR(year=? AND id>?))" : "", requests = [this.db.prepare(`SELECT COALESCE(c.seasons_revision,0) AS revision ${teamsFrom} LEFT JOIN team_catalog_state c ON c.app_team_id=t.id WHERE t.id=? AND ${visible}`).bind(teamId), this.db.prepare("SELECT COUNT(*) total FROM team_seasons WHERE app_team_id=?").bind(teamId), this.db.prepare(`SELECT id,year,start_day,end_day,include_june FROM team_seasons WHERE app_team_id=?${page2} ORDER BY year DESC,id LIMIT ?`).bind(teamId, ...position ? [Number(position[0]), Number(position[0]), position[1]] : [], limit + 1)];
+        const page3 = position ? " AND (year<? OR(year=? AND id>?))" : "", requests = [this.db.prepare(`SELECT COALESCE(c.seasons_revision,0) AS revision ${teamsFrom} LEFT JOIN team_catalog_state c ON c.app_team_id=t.id WHERE t.id=? AND ${visible}`).bind(teamId), this.db.prepare("SELECT COUNT(*) total FROM team_seasons WHERE app_team_id=?").bind(teamId), this.db.prepare(`SELECT id,year,start_day,end_day,include_june FROM team_seasons WHERE app_team_id=?${page3} ORDER BY year DESC,id LIMIT ?`).bind(teamId, ...position ? [Number(position[0]), Number(position[0]), position[1]] : [], limit + 1)];
         if (preferred_season_id) requests.push(this.db.prepare("SELECT id,year,start_day,end_day,include_june FROM team_seasons WHERE app_team_id=? AND id=?").bind(teamId, preferred_season_id));
         const results = await this.db.batch(requests);
         if (!results[0].results[0]) throw invalid2("This team is unavailable.", "not_found", 404);
@@ -5000,10 +5000,10 @@ function officialURL(value) {
     return null;
   }
 }
-function teamSnapRefreshCoverage(page2, coverage, accountId) {
-  const checkpoint = page2.checkpoint, refresh = checkpoint?.refresh, binding = refresh?.binding;
+function teamSnapRefreshCoverage(page3, coverage, accountId) {
+  const checkpoint = page3.checkpoint, refresh = checkpoint?.refresh, binding = refresh?.binding;
   const kind = coverage.kind.replace(/_recent$/, "");
-  if ((page2.provenance ?? "provider") !== "provider" || page2.provider !== "teamsnap" || page2.component !== kind || !["events", "attendance"].includes(kind) || coverage.provider !== "teamsnap" || refresh?.protocol !== "teamsnap-refresh-v1" || !["teamsnap-pages-v1", "teamsnap-refresh-v1"].includes(checkpoint.protocol) || binding?.kind !== kind || binding.account_id !== accountId || binding.authorization_generation !== page2.generation || coverage.scope !== `teamsnap:${binding.team_id}` || page2.resourceKey !== coverage.scope || !Number.isSafeInteger(page2.generation) || page2.generation < 1 || coverage.availability !== null || coverage.heatmap_availability !== null || !/^[A-Za-z0-9._-]{1,160}$/.test(binding.team_id) || !/^[a-f0-9]{64}$/.test(binding.payload || "") || kind === "attendance" && binding.identity_version !== "event-member-v1") return null;
+  if ((page3.provenance ?? "provider") !== "provider" || page3.provider !== "teamsnap" || page3.component !== kind || !["events", "attendance"].includes(kind) || coverage.provider !== "teamsnap" || refresh?.protocol !== "teamsnap-refresh-v1" || !["teamsnap-pages-v1", "teamsnap-refresh-v1"].includes(checkpoint.protocol) || binding?.kind !== kind || binding.account_id !== accountId || binding.authorization_generation !== page3.generation || coverage.scope !== `teamsnap:${binding.team_id}` || page3.resourceKey !== coverage.scope || !Number.isSafeInteger(page3.generation) || page3.generation < 1 || coverage.availability !== null || coverage.heatmap_availability !== null || !/^[A-Za-z0-9._-]{1,160}$/.test(binding.team_id) || !/^[a-f0-9]{64}$/.test(binding.payload || "") || kind === "attendance" && binding.identity_version !== "event-member-v1") return null;
   try {
     const source = new URL(binding.source), rel = kind === "events" ? "events" : "availabilities";
     if (source.origin !== "https://api.teamsnap.com" || source.username || source.password || source.hash || ![`/v3/${rel}`, `/v3/${rel}/search`].includes(source.pathname) || source.searchParams.get("team_id") !== binding.team_id || [...source.searchParams.keys()].some((key2) => key2 !== "team_id") || source.searchParams.size !== 1) return null;
@@ -5022,11 +5022,11 @@ function teamSnapRefreshCoverage(page2, coverage, accountId) {
   if (!active && !terminal) return null;
   return { recent, terminal, full: refresh.full };
 }
-function retainedPublicCoverage(page2, coverage) {
-  return (page2.provenance ?? "provider") === "provider" && page2.accountId == null && coverage.account_id == null && page2.provider === "gotsport" && coverage.provider === "gotsport" && ["division", "standings"].includes(page2.component) && coverage.kind === (page2.component === "division" ? "division_schedule" : "standings") && coverage.scope === page2.resourceKey && coverage.division_id === coverage.scope && /^gotsport:[A-Za-z0-9._-]+$/.test(coverage.scope) && coverage.complete === false && page2.complete === false && page2.checkpoint?.finished !== true;
+function retainedPublicCoverage(page3, coverage) {
+  return (page3.provenance ?? "provider") === "provider" && page3.accountId == null && coverage.account_id == null && page3.provider === "gotsport" && coverage.provider === "gotsport" && ["division", "standings"].includes(page3.component) && coverage.kind === (page3.component === "division" ? "division_schedule" : "standings") && coverage.scope === page3.resourceKey && coverage.division_id === coverage.scope && /^gotsport:[A-Za-z0-9._-]+$/.test(coverage.scope) && coverage.complete === false && page3.complete === false && page3.checkpoint?.finished !== true;
 }
-async function buildAuxiliaryPage(repo, page2) {
-  const { records = {}, accountId = null, accountProvider = null, replacements = [], sourceCoverage = [], scanId = "" } = page2;
+async function buildAuxiliaryPage(repo, page3) {
+  const { records = {}, accountId = null, accountProvider = null, replacements = [], sourceCoverage = [], scanId = "" } = page3;
   const rows = {}, scope3 = { account_id: accountId }, teamIds = /* @__PURE__ */ new Set(), divisionIds = /* @__PURE__ */ new Set(), eventIds = /* @__PURE__ */ new Set(), analysisEventIds = /* @__PURE__ */ new Set(), competitionIds = /* @__PURE__ */ new Set(), genericTeamIds = /* @__PURE__ */ new Set();
   const push = (table, row) => {
     (rows[table] ||= []).push(row);
@@ -5073,7 +5073,7 @@ async function buildAuxiliaryPage(repo, page2) {
     const nativeStatus = r.status_code ?? r.status ?? null, normalized2 = r.normalized_status || ({ 0: "No", 1: "Yes", 2: "Maybe" }[String(nativeStatus)] || (nativeStatus == null || nativeStatus === "" ? "NR" : "Unknown"));
     push("source_attendance", { id: `${source_team_id}|${source_event_id}|${source_player_id}`, account_id: accountId, source_team_id, source_event_id, source_player_id, status: normalized2, source_status: nativeStatus == null ? null : String(nativeStatus), observed_at: r.observed_at || instant() });
   }
-  for (const r of page2.fixtures || []) if (r.provider === "teamsnap") {
+  for (const r of page3.fixtures || []) if (r.provider === "teamsnap") {
     const d = parse(r.payload), source_event_id = ref(r.id || `teamsnap:${r.native_id}`), source_team_id = ref(r.home_id || r.away_id);
     push("source_event_logistics", { id: source_event_id, source_event_id, account_id: accountId, source_team_id, arrival_at: d.arrival_at || null, arrival_minutes: number(d.arrival_minutes), uniform: d.uniform || null, notes: d.notes || null, location_id: d.location_id || null, opponent_id: d.opponent_id || null, address: d.address || null, availability_enabled: d.availability_enabled == null ? null : +!!d.availability_enabled, source_url: d.source_url || null, observed_at: r.observed_at || instant() });
   }
@@ -5117,7 +5117,7 @@ async function buildAuxiliaryPage(repo, page2) {
     const byId = new Map(previous.filter((r) => r.source_table === table).map((r) => [r.id, r]));
     for (const row of list2) {
       const prior = byId.get(row.id);
-      row.provenance = page2.provenance || "provider";
+      row.provenance = page3.provenance || "provider";
       if (prior && table === "source_competitions") {
         for (const field4 of ["starts_on", "ends_on", "season_year", "season_name", "website_domain", "official_url", "official_status", "completion_verified_at"]) row[field4] ??= prior[field4];
         if (row.kind === "unknown") row.kind = prior.kind;
@@ -5210,7 +5210,7 @@ async function buildAuxiliaryPage(repo, page2) {
   for (const c of sourceCoverage) if (c.kind === "division_schedule") {
     const source_division_id = ref(c.division_id || c.scope), id4 = `${c.provider}|${source_division_id}`;
     const prior = await repo.db.prepare("SELECT complete,record_count FROM source_division_coverage WHERE id=?").bind(id4).first();
-    if (prior?.complete === 1 && retainedPublicCoverage(page2, c) || prior && prior.complete === +c.complete && prior.record_count === Number(c.count || 0)) continue;
+    if (prior?.complete === 1 && retainedPublicCoverage(page3, c) || prior && prior.complete === +c.complete && prior.record_count === Number(c.count || 0)) continue;
     changed2 = true;
     divisionIds.add(source_division_id);
     add("INSERT INTO source_division_coverage(id,provider,source_division_id,complete,record_count,scan_id,observed_at) SELECT ?,?,?,?,?,?,? WHERE $FENCE ON CONFLICT(id) DO UPDATE SET complete=excluded.complete,record_count=excluded.record_count,scan_id=excluded.scan_id,observed_at=excluded.observed_at", id4, c.provider, source_division_id, +c.complete, Number(c.count || 0), String(scanId), c.observed_at || instant());
@@ -5218,7 +5218,7 @@ async function buildAuxiliaryPage(repo, page2) {
   for (const c of sourceCoverage) if (c.kind === "standings") {
     const division = ref(c.division_id || c.scope);
     requireValue(["pending", "published", "unpublished"].includes(c.availability), "Standings publication state is missing.");
-    add(`INSERT INTO source_standings_coverage SELECT ?,?,?,?,?,? WHERE $FENCE ON CONFLICT(source_division_id) DO UPDATE SET complete=excluded.complete,record_count=excluded.record_count,availability=excluded.availability,observed_at=excluded.observed_at WHERE (source_standings_coverage.complete IS NOT excluded.complete OR source_standings_coverage.record_count IS NOT excluded.record_count OR source_standings_coverage.availability IS NOT excluded.availability) AND NOT(source_standings_coverage.complete=1 AND ${+retainedPublicCoverage(page2, c)})`, division, c.provider, +c.complete, Number(c.count || 0), c.availability, c.observed_at || instant());
+    add(`INSERT INTO source_standings_coverage SELECT ?,?,?,?,?,? WHERE $FENCE ON CONFLICT(source_division_id) DO UPDATE SET complete=excluded.complete,record_count=excluded.record_count,availability=excluded.availability,observed_at=excluded.observed_at WHERE (source_standings_coverage.complete IS NOT excluded.complete OR source_standings_coverage.record_count IS NOT excluded.record_count OR source_standings_coverage.availability IS NOT excluded.availability) AND NOT(source_standings_coverage.complete=1 AND ${+retainedPublicCoverage(page3, c)})`, division, c.provider, +c.complete, Number(c.count || 0), c.availability, c.observed_at || instant());
   }
   const componentCoverage = sourceCoverage.filter((c) => c.kind !== "division_schedule").map((c) => {
     requireValue(c.provider && c.kind && c.scope && typeof c.complete === "boolean" && (!c.account_id || c.account_id === accountId), "Component coverage scope is invalid.");
@@ -5229,8 +5229,8 @@ async function buildAuxiliaryPage(repo, page2) {
     const prior = (await repo.db.prepare("SELECT id,complete,record_count,availability,heatmap_availability FROM source_component_coverage WHERE id IN(SELECT value FROM json_each(?))").bind(JSON.stringify(componentCoverage.map((c) => c.id))).all()).results;
     const updates = [];
     for (const c of componentCoverage) {
-      const saved = prior.find((p) => p.id === c.id), refresh = teamSnapRefreshCoverage(page2, c, accountId);
-      if (saved?.complete === 1 && sourceCoverage.some((raw) => raw.kind === c.kind && raw.scope === c.scope && retainedPublicCoverage(page2, raw))) continue;
+      const saved = prior.find((p) => p.id === c.id), refresh = teamSnapRefreshCoverage(page3, c, accountId);
+      if (saved?.complete === 1 && sourceCoverage.some((raw) => raw.kind === c.kind && raw.scope === c.scope && retainedPublicCoverage(page3, raw))) continue;
       if (refresh?.recent) continue;
       if (refresh && !refresh.terminal) {
         if (saved && saved.availability === c.availability && saved.heatmap_availability === c.heatmap_availability && (saved.complete === 0 || refresh.full && saved.complete === 1 && saved.record_count === refresh.full.count)) continue;
@@ -6717,15 +6717,15 @@ async function prepareTeamGameProjection(db, { team: team2, season, runId, ids, 
   if (acceptedProof) output.controlProofAssertion = await controlAcquisitionAssertion({ jobs: candidate.fence.jobs, coverage: candidate.fence.coverage, subscribers: candidate.fence.subscribers }, team2.id, runId, currentReceipt);
   return output;
 }
-function stageTeamGameProjection(add, page2, teamId, runId, batch = null) {
-  insert(add, "team_game_associations", page2.associations);
-  if (page2.headUpdates.length) teamGameAssert(add, `NOT EXISTS(SELECT 1 FROM json_each(?) h WHERE NOT EXISTS(SELECT 1 FROM team_game_associations a WHERE a.app_team_id=? AND a.association_id=json_extract(h.value,'$.association_id') AND a.head_revision=json_extract(h.value,'$.before') AND a.owner_revision IS json_extract(h.value,'$.owner_revision') AND a.accepted_revision IS json_extract(h.value,'$.accepted_revision')))`, JSON.stringify(page2.headUpdates), teamId);
-  insert(add, "team_game_decision_revisions", page2.revisions);
-  if (page2.headUpdates.length) add(`UPDATE team_game_associations SET head_revision=(SELECT json_extract(value,'$.after') FROM json_each(?) WHERE json_extract(value,'$.association_id')=association_id),target_event_id=COALESCE(target_event_id,(SELECT json_extract(value,'$.target_event_id') FROM json_each(?) WHERE json_extract(value,'$.association_id')=association_id)) WHERE app_team_id=? AND association_id IN(SELECT json_extract(value,'$.association_id') FROM json_each(?)) AND $FENCE`, JSON.stringify(page2.headUpdates), JSON.stringify(page2.headUpdates), teamId, JSON.stringify(page2.headUpdates));
-  insert(add, "team_event_rows", page2.rows);
-  insert(add, "team_game_publications", page2.publications);
-  insert(add, "team_game_source_rows", page2.members);
-  addTeamGamePublicationAssertions(add, teamId, runId, batch, page2.controlSnapshot, page2.controlProofAssertion);
+function stageTeamGameProjection(add, page3, teamId, runId, batch = null) {
+  insert(add, "team_game_associations", page3.associations);
+  if (page3.headUpdates.length) teamGameAssert(add, `NOT EXISTS(SELECT 1 FROM json_each(?) h WHERE NOT EXISTS(SELECT 1 FROM team_game_associations a WHERE a.app_team_id=? AND a.association_id=json_extract(h.value,'$.association_id') AND a.head_revision=json_extract(h.value,'$.before') AND a.owner_revision IS json_extract(h.value,'$.owner_revision') AND a.accepted_revision IS json_extract(h.value,'$.accepted_revision')))`, JSON.stringify(page3.headUpdates), teamId);
+  insert(add, "team_game_decision_revisions", page3.revisions);
+  if (page3.headUpdates.length) add(`UPDATE team_game_associations SET head_revision=(SELECT json_extract(value,'$.after') FROM json_each(?) WHERE json_extract(value,'$.association_id')=association_id),target_event_id=COALESCE(target_event_id,(SELECT json_extract(value,'$.target_event_id') FROM json_each(?) WHERE json_extract(value,'$.association_id')=association_id)) WHERE app_team_id=? AND association_id IN(SELECT json_extract(value,'$.association_id') FROM json_each(?)) AND $FENCE`, JSON.stringify(page3.headUpdates), JSON.stringify(page3.headUpdates), teamId, JSON.stringify(page3.headUpdates));
+  insert(add, "team_event_rows", page3.rows);
+  insert(add, "team_game_publications", page3.publications);
+  insert(add, "team_game_source_rows", page3.members);
+  addTeamGamePublicationAssertions(add, teamId, runId, batch, page3.controlSnapshot, page3.controlProofAssertion);
 }
 function publicationChecks(teamId, runId, batch = null, snapshot2 = null, acquire = false, proofAssertion = null) {
   const checks3 = [], assert = (ignored, sql, ...params) => checks3.push({ sql, params });
@@ -6818,24 +6818,24 @@ async function buildTeamGameBatchPage(repo, teamId, seasonId, checkpoint, batchJ
   if (batch.state === "ready" || cp.side === "commit") return publish(repo, batch, cp);
   const side2 = cp.side === "to" ? "to" : "from", inner = cp[side2];
   if (!inner || inner.runId !== batch[side2 + "_build_run_id"]) return obsolete(batch, "participant_checkpoint_missing");
-  let page2;
+  let page3;
   try {
-    page2 = await buildSingle(repo, teamId, batch[side2 + "_team_season_id"], inner, { batch });
+    page3 = await buildSingle(repo, teamId, batch[side2 + "_team_season_id"], inner, { batch });
   } catch (error4) {
     if (["team_game_batch_changed", "team_game_projection_changed"].includes(error4.code)) return obsolete(batch, error4.code);
     throw error4;
   }
-  if (!page2.checkpoint.runId || page2.checkpoint.runId !== inner.runId) return obsolete(batch, "participant_obsolete");
-  const next = { ...cp, [side2]: page2.checkpoint, deferredMoves: cp.deferredMoves || page2.deferredMoves };
+  if (!page3.checkpoint.runId || page3.checkpoint.runId !== inner.runId) return obsolete(batch, "participant_obsolete");
+  const next = { ...cp, [side2]: page3.checkpoint, deferredMoves: cp.deferredMoves || page3.deferredMoves };
   if (bytes5(next) > TEAM_GAME_BATCH_CHECKPOINT_BYTES) return obsolete(batch, "batch_checkpoint_bound");
-  if (page2.batchReady) {
+  if (page3.batchReady) {
     if (side2 === "from") next.side = "to";
     else return ready(repo, batch, { ...next, side: "commit" });
   }
-  const statements = [...page2.statements], fence = teamGameBatchFence(batch);
+  const statements = [...page3.statements], fence = teamGameBatchFence(batch);
   statements.push({ sql: `UPDATE team_game_publish_batches SET generation=generation+1 WHERE batch_id=? AND generation=? AND ${fence.sql} AND $FENCE`, params: [batch.batch_id, batch.generation, ...fence.params] });
   assertControlTransactionBounds(statements, next);
-  return { ...page2, statements, checkpoint: next, complete: false, published: false };
+  return { ...page3, statements, checkpoint: next, complete: false, published: false };
 }
 async function ready(repo, batch, cp) {
   const publication = await repo.db.prepare(`SELECT p.decision_revision,p.semantic_hash,d.owner_state_hash FROM team_game_publications p JOIN team_game_decision_revisions d ON d.app_team_id=p.app_team_id AND d.association_id=p.association_id AND d.revision=p.decision_revision JOIN team_game_associations a ON a.app_team_id=p.app_team_id AND a.association_id=p.association_id JOIN team_game_decision_revisions old ON old.app_team_id=a.app_team_id AND old.association_id=a.association_id AND old.revision=a.accepted_revision WHERE p.run_id=? AND p.association_id=? AND p.publish_batch_id=? AND p.disposition='accepted' AND p.state_refs_complete=1 AND NOT EXISTS(SELECT 1 FROM json_each(p.state_refs) ref WHERE json_extract(ref.value,'$.seasonId') IS NOT NULL) AND json_extract(d.proof,'$.source_ids')=json_extract(old.proof,'$.source_ids') AND NOT EXISTS(SELECT 1 FROM team_game_source_rows WHERE run_id=? AND association_id=p.association_id)`).bind(batch.to_build_run_id, batch.association_id, batch.batch_id, batch.from_build_run_id).first();
@@ -6870,10 +6870,10 @@ async function publish(repo, batch, cp) {
 async function cleanupPublished(repo, batch, cp, buildSingle) {
   const published = batch.state === "published" && batch.from_current_run === batch.from_build_run_id && batch.to_current_run === batch.to_build_run_id;
   if (!cp.batchCleanup) return response([], { batchId: batch.batch_id, batchCleanup: "from" }, { published, publishedSeasons: published ? [batch.from_team_season_id, batch.to_team_season_id] : [], recoveryRequired: true });
-  const side2 = cp.batchCleanup === "to" ? "to" : "from", page2 = await buildSingle(repo, batch.app_team_id, batch[side2 + "_team_season_id"], cp.cleanup ?? { phase: "cleanup" }, { batch });
-  if (!page2.complete) return { ...page2, checkpoint: { batchId: batch.batch_id, batchCleanup: side2, cleanup: page2.checkpoint }, published: false };
-  if (side2 === "from") return { ...page2, checkpoint: { batchId: batch.batch_id, batchCleanup: "to" }, complete: false, published: false, recoveryRequired: false };
-  return { ...page2, checkpoint: { finished: true }, complete: true, published: false, recoveryRequired: true };
+  const side2 = cp.batchCleanup === "to" ? "to" : "from", page3 = await buildSingle(repo, batch.app_team_id, batch[side2 + "_team_season_id"], cp.cleanup ?? { phase: "cleanup" }, { batch });
+  if (!page3.complete) return { ...page3, checkpoint: { batchId: batch.batch_id, batchCleanup: side2, cleanup: page3.checkpoint }, published: false };
+  if (side2 === "from") return { ...page3, checkpoint: { batchId: batch.batch_id, batchCleanup: "to" }, complete: false, published: false, recoveryRequired: false };
+  return { ...page3, checkpoint: { finished: true }, complete: true, published: false, recoveryRequired: true };
 }
 
 // src/domain/team-game-projection-semantic.js
@@ -6979,17 +6979,17 @@ async function buildProjectionPage(repo, teamId, seasonId, checkpoint = {}, opti
   if (cp.phase === "move_prepare") return startTeamGameBatch(repo, team2, season, state, cp, statements);
   if (cp.phase === "identity") {
     const selected = `${roots2},divisions AS(SELECT DISTINCT e.division_key AS id FROM source_events e WHERE ${SELECTED} AND ${nativeWindow} AND e.division_key IS NOT NULL),page AS(SELECT e.*,l.event_id AS canonical_id FROM source_events e LEFT JOIN event_source_links l ON l.source_event_id=e.id WHERE e.id>? AND (${SELECTED} OR e.provider IN('gotsport','live') AND e.division_key IN(SELECT id FROM divisions)) AND ${nativeWindow} ORDER BY e.id LIMIT ${pageSize}),bounded AS(SELECT *,SUM(length(CAST(evidence AS BLOB))) OVER(ORDER BY id) AS byte_count FROM page) SELECT * FROM bounded WHERE byte_count<=1000000`;
-    const page2 = (await repo.db.prepare(selected).bind(teamId, seasonId, ...seasonWindow(season), cp.cursor || "", ...seasonWindow(season)).all()).results;
-    if (!page2.length) {
+    const page3 = (await repo.db.prepare(selected).bind(teamId, seasonId, ...seasonWindow(season), cp.cursor || "", ...seasonWindow(season)).all()).results;
+    if (!page3.length) {
       cp = { ...cp, phase: "events", cursor: "" };
       return response2();
     }
-    const numbers = [...new Set(page2.filter((e) => e.provider === "gotsport" || e.provider === "live").map((e) => e.match_number).filter(Boolean))];
-    let combined = page2;
+    const numbers = [...new Set(page3.filter((e) => e.provider === "gotsport" || e.provider === "live").map((e) => e.match_number).filter(Boolean))];
+    let combined = page3;
     if (numbers.length) {
-      const compIds = [...new Set(page2.filter((e) => e.competition_key).map((e) => e.competition_key))];
+      const compIds = [...new Set(page3.filter((e) => e.competition_key).map((e) => e.competition_key))];
       const counterparts = (await repo.db.prepare(`SELECT e.*,l.event_id AS canonical_id FROM source_events e JOIN source_competitions c ON e.competition_key=c.id LEFT JOIN event_source_links l ON l.source_event_id=e.id WHERE e.provider IN('gotsport','live') AND e.match_number IN(SELECT value FROM json_each(?)) AND EXISTS(SELECT 1 FROM source_competitions p WHERE p.id IN(SELECT value FROM json_each(?)) AND p.name=c.name AND p.starts_on=c.starts_on AND p.ends_on=c.ends_on AND p.website_domain=c.website_domain AND p.season_year=c.season_year) ORDER BY e.id LIMIT 97`).bind(JSON.stringify(numbers), JSON.stringify(compIds)).all()).results;
-      if (counterparts.length < 97) combined = [...new Map([...page2, ...counterparts].map((e) => [e.id, e])).values()];
+      if (counterparts.length < 97) combined = [...new Map([...page3, ...counterparts].map((e) => [e.id, e])).values()];
     }
     const proof = await buildPublicCorrespondences(repo, combined), assigned2 = new Map(combined.map((e) => [e.id, e.canonical_id])), aliases = [], pairs = [];
     const otherIds = [...new Set(proof.matches.flatMap((p) => [assigned2.get(p.a), assigned2.get(p.b)]).filter(Boolean))];
@@ -7044,7 +7044,7 @@ async function buildProjectionPage(repo, teamId, seasonId, checkpoint = {}, opti
       const divisions = [...new Set(combined.filter((e) => ids.includes(e.id) && e.division_key).map((e) => e.division_key))];
       if (divisions.length) add("UPDATE source_division_coverage SET content_revision=content_revision+1 WHERE source_division_id IN(SELECT value FROM json_each(?)) AND $FENCE", JSON.stringify(divisions));
     }
-    cp = { ...cp, inputRevision: revision3, cursor: page2.at(-1).id };
+    cp = { ...cp, inputRevision: revision3, cursor: page3.at(-1).id };
     return response2();
   }
   if (cp.phase === "players") {
@@ -7052,31 +7052,31 @@ async function buildProjectionPage(repo, teamId, seasonId, checkpoint = {}, opti
     const evidenceColumn = (column) => `(SELECT ${column === "authority" ? "CASE WHEN evidence.certainty='verified' THEN 0 WHEN evidence.basis='accepted_projection' THEN 1 WHEN evidence.basis='imported_snapshot' THEN 2 ELSE 3 END" : "evidence." + column} FROM connection_roster_evidence evidence JOIN team_source_connections cr ON cr.id=evidence.connection_id JOIN team_connection_seasons cm ON cm.connection_id=cr.id AND cm.team_season_id=evidence.team_season_id WHERE evidence.source_player_id=p.id AND evidence.team_season_id=? AND cr.app_team_id=? AND cr.active=1 AND cm.active=1 AND cm.excluded=0 AND (evidence.basis<>'dated_roster' OR evidence.certainty='verified') ORDER BY CASE WHEN evidence.certainty='verified' THEN CASE evidence.basis WHEN 'game' THEN 0 WHEN 'dated_roster' THEN 1 ELSE 2 END WHEN evidence.basis='accepted_projection' THEN 3 WHEN evidence.basis='imported_snapshot' THEN 4 ELSE 5 END,evidence.observed_at DESC,evidence.basis_key LIMIT 1)`;
     const playerColumns = connectionManaged ? `p.id,p.provider,p.scope,${evidenceColumn("authority")} AS roster_authority,${evidenceColumn("name")} AS name,${evidenceColumn("jersey")} AS jersey,l.player_id AS canonical_id` : "p.id,p.provider,p.scope,p.name,p.jersey,l.player_id AS canonical_id";
     const columnParams = connectionManaged ? [seasonId, teamId, seasonId, teamId, seasonId, teamId] : [], relationParams = connectionManaged ? [teamId, seasonId] : [cp.runId];
-    const page2 = (await repo.db.prepare(`${roots2} SELECT ${playerColumns} FROM source_players p LEFT JOIN player_source_links l ON l.source_player_id=p.id WHERE p.id>? AND (${relation}) ORDER BY p.id LIMIT ${pageSize}`).bind(teamId, seasonId, ...columnParams, cp.cursor || "", ...relationParams).all()).results;
-    if (!page2.length) {
+    const page3 = (await repo.db.prepare(`${roots2} SELECT ${playerColumns} FROM source_players p LEFT JOIN player_source_links l ON l.source_player_id=p.id WHERE p.id>? AND (${relation}) ORDER BY p.id LIMIT ${pageSize}`).bind(teamId, seasonId, ...columnParams, cp.cursor || "", ...relationParams).all()).results;
+    if (!page3.length) {
       cp = { ...cp, phase: "publish", cursor: "" };
       return response2(false, { recoveryRequired: false });
     }
-    const missing = await Promise.all(page2.filter((p) => !p.canonical_id).map(async (p) => ({ source_id: p.id, id: await nativeCanonicalId("player", p.id) })));
+    const missing = await Promise.all(page3.filter((p) => !p.canonical_id).map(async (p) => ({ source_id: p.id, id: await nativeCanonicalId("player", p.id) })));
     if (missing.length) {
       add("INSERT OR IGNORE INTO players SELECT json_extract(value,'$.id'),? FROM json_each(?) WHERE $FENCE", stamp3(), JSON.stringify(missing));
       add("INSERT OR IGNORE INTO player_source_links(source_player_id,player_id,reason,evidence) SELECT json_extract(value,'$.source_id'),json_extract(value,'$.id'),'source_identity','{}' FROM json_each(?) WHERE $FENCE", JSON.stringify(missing));
-      for (const p of page2) if (!p.canonical_id) p.canonical_id = missing.find((m) => m.source_id === p.id).id;
+      for (const p of page3) if (!p.canonical_id) p.canonical_id = missing.find((m) => m.source_id === p.id).id;
     }
-    const existingIds = page2.filter((p) => !missing.some((m) => m.source_id === p.id)).map((p) => p.canonical_id);
+    const existingIds = page3.filter((p) => !missing.some((m) => m.source_id === p.id)).map((p) => p.canonical_id);
     const peers = existingIds.length ? (await repo.db.prepare(`${roots2} SELECT ${playerColumns} FROM source_players p JOIN player_source_links l ON l.source_player_id=p.id WHERE l.player_id IN(SELECT value FROM json_each(?)) AND (${relation}) ORDER BY p.id`).bind(teamId, seasonId, ...columnParams, JSON.stringify(existingIds), ...relationParams).all()).results : [];
-    const combined = [...new Map([...page2, ...peers].map((p) => [p.id, p])).values()], canonical5 = [...new Set(combined.map((p) => p.canonical_id))];
+    const combined = [...new Map([...page3, ...peers].map((p) => [p.id, p])).values()], canonical5 = [...new Set(combined.map((p) => p.canonical_id))];
     const corrections = (await repo.db.prepare("SELECT entity_id,fields FROM domain_overrides WHERE app_team_id=? AND kind='player' AND entity_id IN(SELECT value FROM json_each(?))").bind(teamId, JSON.stringify(canonical5)).all()).results, overrides = new Map(corrections.map((r) => [r.entity_id, parse8(r.fields)]));
     const rows = [...groups(combined)].map(([playerId, sources2]) => ({ run_id: cp.runId, ...playerPresentation(teamId, seasonId, playerId, sources2, overrides.get(playerId) || {}) }));
     jsonInsert(add, "team_player_rows", rows, { conflict: "run_id,app_team_id,team_season_id,player_id" });
-    cp = { ...cp, cursor: page2.at(-1).id };
+    cp = { ...cp, cursor: page3.at(-1).id };
     return response2(false, { recoveryRequired: missing.length !== 0 });
   }
   if (cp.phase === "events") {
     if (cp.gamePagePolicy !== 2) cp = { ...cp, gamePagePolicy: 2, gamePageSize: pageSize };
     const retained = `SELECT a.target_event_id AS id FROM team_game_associations a JOIN team_game_decision_revisions d ON d.app_team_id=a.app_team_id AND d.association_id=a.association_id AND d.revision=a.accepted_revision WHERE a.app_team_id=? AND d.team_season_id=? AND a.target_event_id>?`;
-    const page2 = connectionManaged ? (await repo.db.prepare(`${roots2} SELECT DISTINCT c.canonical_id AS id FROM source_events e JOIN event_source_links l ON l.source_event_id=e.id JOIN canonical_event_ids c ON c.input_id=l.event_id JOIN team_event_season_resolutions resolution ON resolution.event_id=c.canonical_id AND resolution.app_team_id=? AND resolution.team_season_id=? WHERE ${SELECTED} AND c.canonical_id>? UNION ${retained} ORDER BY id LIMIT ${cp.gamePageSize ?? pageSize}`).bind(teamId, seasonId, teamId, seasonId, cp.cursor || "", teamId, seasonId, cp.cursor || "").all()).results : (await repo.db.prepare(`${roots2} SELECT DISTINCT l.event_id AS id FROM source_events e JOIN event_source_links l ON l.source_event_id=e.id WHERE ${SELECTED} AND (${nativeWindow} OR EXISTS(SELECT 1 FROM domain_overrides o WHERE o.app_team_id=? AND o.kind='event' AND o.entity_id=l.event_id)) AND l.event_id>? UNION ${retained} ORDER BY id LIMIT ${cp.gamePageSize ?? pageSize}`).bind(teamId, seasonId, ...seasonWindow(season), teamId, cp.cursor || "", teamId, seasonId, cp.cursor || "").all()).results;
-    if (!page2.length) {
+    const page3 = connectionManaged ? (await repo.db.prepare(`${roots2} SELECT DISTINCT c.canonical_id AS id FROM source_events e JOIN event_source_links l ON l.source_event_id=e.id JOIN canonical_event_ids c ON c.input_id=l.event_id JOIN team_event_season_resolutions resolution ON resolution.event_id=c.canonical_id AND resolution.app_team_id=? AND resolution.team_season_id=? WHERE ${SELECTED} AND c.canonical_id>? UNION ${retained} ORDER BY id LIMIT ${cp.gamePageSize ?? pageSize}`).bind(teamId, seasonId, teamId, seasonId, cp.cursor || "", teamId, seasonId, cp.cursor || "").all()).results : (await repo.db.prepare(`${roots2} SELECT DISTINCT l.event_id AS id FROM source_events e JOIN event_source_links l ON l.source_event_id=e.id WHERE ${SELECTED} AND (${nativeWindow} OR EXISTS(SELECT 1 FROM domain_overrides o WHERE o.app_team_id=? AND o.kind='event' AND o.entity_id=l.event_id)) AND l.event_id>? UNION ${retained} ORDER BY id LIMIT ${cp.gamePageSize ?? pageSize}`).bind(teamId, seasonId, ...seasonWindow(season), teamId, cp.cursor || "", teamId, seasonId, cp.cursor || "").all()).results;
+    if (!page3.length) {
       cp = { ...cp, phase: "players", cursor: "" };
       return response2(false, { recoveryRequired: false });
     }
@@ -7088,7 +7088,7 @@ async function buildProjectionPage(repo, teamId, seasonId, checkpoint = {}, opti
       return response2(false, { recoveryRequired: false });
     }
     cp = { ...cp, gameFrame: frameIdentity };
-    let selected = page2, prepared2;
+    let selected = page3, prepared2;
     try {
       prepared2 = await prepareTeamGameProjection(repo.db, { team: team2, season, runId: cp.runId, ids: selected.map((e) => e.id), batch, holdMoves: cp.holdMoves, frame, acceptedControls: cp.acceptedControls });
     } catch (error4) {
@@ -7322,10 +7322,10 @@ var DomainRepository = class {
     ], { sql: "EXISTS(SELECT 1 FROM app_teams WHERE id=?) AND NOT EXISTS(SELECT 1 FROM team_lifecycle WHERE team_id=?)", params: [teamId, teamId] });
     return this.db.prepare("SELECT * FROM team_seasons WHERE id=?").bind(seasonId).first();
   }
-  async buildSourcePage(page2) {
-    const { accountId = null, generation: generation3 = null, records = {}, fixtures = [], provenance = "provider" } = page2;
+  async buildSourcePage(page3) {
+    const { accountId = null, generation: generation3 = null, records = {}, fixtures = [], provenance = "provider" } = page3;
     requireValue3(["provider", "file_import"].includes(provenance), "Invalid observation provenance.");
-    if (provenance === "file_import") requireValue3(!(records.identity_links || []).length && !(page2.sourceCoverage || []).length && !(page2.replacements || []).length, "File observations cannot assert provider verification or terminal scope.", "import_authority", 403);
+    if (provenance === "file_import") requireValue3(!(records.identity_links || []).length && !(page3.sourceCoverage || []).length && !(page3.replacements || []).length, "File observations cannot assert provider verification or terminal scope.", "import_authority", 403);
     const before = await this.state();
     const account = accountId ? await this.db.prepare("SELECT * FROM provider_accounts WHERE id=?").bind(accountId).first() : null;
     if (accountId) requireValue3(account && (provenance === "file_import" || account.active === 1) && account.generation === generation3, "Authorization changed before source save.", "stale_generation", 409);
@@ -7382,7 +7382,7 @@ var DomainRepository = class {
           row.club_key = row.club_key || previous.club_key;
           row.season_label = row.season_label || previous.season_label;
         }
-        if (table === "source_events" && previous && provenance === "provider" && previous.provenance === "provider" && page2.provider === "gotsport" && page2.component === "history" && row.provider === "gotsport") {
+        if (table === "source_events" && previous && provenance === "provider" && previous.provenance === "provider" && page3.provider === "gotsport" && page3.component === "history" && row.provider === "gotsport") {
           const incoming = parse9(row.evidence), saved = parse9(previous.evidence);
           if (row.division_key === null && previous.division_key && row.competition_key === previous.competition_key && ["event_id", "bracket_id", "schedule_id"].every((key2) => incoming[key2] != null && incoming[key2] === saved[key2]) && incoming.division_id === null && incoming.group_id === null && incoming.context === null && saved.division_id && saved.group_id && previous.division_key === auxiliaryKey(saved.division_id) && saved.division_id === `gotsport:${saved.group_id}`) {
             row.division_key = previous.division_key;
@@ -7395,7 +7395,7 @@ var DomainRepository = class {
             });
           }
         }
-        if (table === "source_events" && previous && provenance === "provider" && previous.provenance === "provider" && page2.provider === "trace" && page2.component === "game" && row.provider === "trace" && previous.provider === "trace" && row.account_id === previous.account_id && row.native_id === previous.native_id && page2.checkpoint?.protocol === "trace-game-semantics-v1" && page2.checkpoint.stage === "members" && page2.checkpoint.offset === 0) {
+        if (table === "source_events" && previous && provenance === "provider" && previous.provenance === "provider" && page3.provider === "trace" && page3.component === "game" && row.provider === "trace" && previous.provider === "trace" && row.account_id === previous.account_id && row.native_id === previous.native_id && page3.checkpoint?.protocol === "trace-game-semantics-v1" && page3.checkpoint.stage === "members" && page3.checkpoint.offset === 0) {
           const incoming = parse9(row.evidence), saved = parse9(previous.evidence);
           if (incoming.provider_status === "" && typeof saved.provider_status === "string") {
             row.evidence = bounded3({ ...incoming, provider_status: saved.provider_status });
@@ -7431,7 +7431,7 @@ var DomainRepository = class {
     const ownedKeys = account && provenance === "provider" ? (records.teams || []).filter((r) => parse9(r.details).account_owned === true).map((r) => sourceKey(r.provider, r.native_id, accountId)) : [];
     const knownOwned = ownedKeys.length ? (await this.db.prepare("SELECT source_team_id FROM account_source_teams WHERE account_id=? AND source_team_id IN(SELECT value FROM json_each(?))").bind(accountId, JSON.stringify(ownedKeys)).all()).results.map((r) => r.source_team_id) : [];
     const entitlementAdds = ownedKeys.filter((key2) => !knownOwned.includes(key2));
-    const auxiliary = await buildAuxiliaryPage(this, { ...page2, accountProvider: account?.provider || null });
+    const auxiliary = await buildAuxiliaryPage(this, { ...page3, accountProvider: account?.provider || null });
     const changed2 = Object.values(rows).some((list2) => list2.length) || roster.length > 0 || links.length > 0 || entitlementAdds.length > 0 || auxiliary.changed;
     const genericIds = [.../* @__PURE__ */ new Set([...rows.source_teams.map((r) => r.id), ...roster.map((r) => r.source_team_id), ...links.flatMap((r) => [r.a, r.b]), ...auxiliary.affectedGenericSourceTeamIds])];
     const consumerQuery = sourceConsumerQuery({ genericIds, playerIds: rows.source_players.map((r) => r.id), eventFacts: [...rows.source_events, ...previousEvents], eventIds: auxiliary.affectedEventIds, divisionIds: auxiliary.affectedDivisionIds, competitionIds: auxiliary.affectedCompetitionIds, links: allLinks });
@@ -7483,8 +7483,8 @@ var DomainRepository = class {
     add("UPDATE domain_installation SET source_revision=source_revision+?,public_revision=public_revision+? WHERE id=1 AND $FENCE", changed2 ? 1 : 0, publicChanged ? 1 : 0);
     return { changed: changed2, statements, affectedTeams: changed2 ? affected : [], ignored_app_records: ["spaces", "space_teams"].filter((key2) => records[key2]?.length) };
   }
-  async ingestSourcePage(page2) {
-    const built = await this.buildSourcePage(page2);
+  async ingestSourcePage(page3) {
+    const built = await this.buildSourcePage(page3);
     if (!built.statements.length) return built;
     const token = id2(), guard = "EXISTS(SELECT 1 FROM domain_fences WHERE id='source' AND token=?)";
     const result = await this.db.batch([
@@ -8656,8 +8656,8 @@ async function sourceSlice(rows, cursor, limit) {
   const fingerprint = await hash(rows.map((r) => String(r.GameID ?? r.LeagueTeamID ?? r.LeagueID ?? r.id ?? r.pool_id + "|" + r.team_id))), offset = cursor.slice_offset || 0;
   requireValue2(!cursor.fingerprint || cursor.fingerprint === fingerprint, "Provider page identity changed during collection.", "scan_changed");
   requireValue2(Number.isSafeInteger(offset) && offset >= 0 && offset <= rows.length, "Invalid source slice checkpoint.");
-  const page2 = rows.slice(offset, offset + limit), done = offset + page2.length >= rows.length;
-  return { rows: page2, offset, done, next: done ? {} : { slice_offset: offset + page2.length, fingerprint } };
+  const page3 = rows.slice(offset, offset + limit), done = offset + page3.length >= rows.length;
+  return { rows: page3, offset, done, next: done ? {} : { slice_offset: offset + page3.length, fingerprint } };
 }
 async function collectGotSport({ j, args = {}, cursor = {}, transport: t }) {
   const records = {}, children2 = [], out = { records, children: children2, fixtures: [], complete: true, checkpoint: { finished: true } }, id4 = args.team_id || j.scope, timezone2 = args.timezone || "America/Los_Angeles";
@@ -8752,13 +8752,13 @@ async function collectGotSport({ j, args = {}, cursor = {}, transport: t }) {
     return out;
   }
   if (j.provider === "gotsport" && j.kind === "history") {
-    const page2 = cursor.page || 1, r = await ranking(t, `/teams/${id4}/matches`, {
+    const page3 = cursor.page || 1, r = await ranking(t, `/teams/${id4}/matches`, {
       past: true,
-      page: page2,
+      page: page3,
       per_page: 50
     }), p = r?.pagination;
     requireValue2(
-      Array.isArray(r.matches) && p?.current_page === page2 && Number.isInteger(p.total_pages) && p.total_pages >= 0 && Number.isInteger(p.total_entries) && p.total_entries >= 0,
+      Array.isArray(r.matches) && p?.current_page === page3 && Number.isInteger(p.total_pages) && p.total_pages >= 0 && Number.isInteger(p.total_entries) && p.total_entries >= 0,
       "History pagination is invalid."
     );
     if (cursor.total != null)
@@ -8775,7 +8775,7 @@ async function collectGotSport({ j, args = {}, cursor = {}, transport: t }) {
       );
       return f;
     });
-    const count = (cursor.count || 0) + rows.length, done = page2 >= Math.max(1, p.total_pages);
+    const count = (cursor.count || 0) + rows.length, done = page3 >= Math.max(1, p.total_pages);
     if (done)
       requireValue2(
         count === p.total_entries,
@@ -8826,7 +8826,7 @@ async function collectGotSport({ j, args = {}, cursor = {}, transport: t }) {
     }
     out.complete = done;
     out.checkpoint = done ? { finished: true } : {
-      page: page2 + 1,
+      page: page3 + 1,
       count,
       total: p.total_entries,
       total_pages: p.total_pages
@@ -9803,9 +9803,9 @@ var identity2 = (value) => {
   u.searchParams.delete("page_number");
   return canonical3(u);
 };
-var atPage = (base, page2) => {
+var atPage = (base, page3) => {
   const u = new URL(base);
-  u.searchParams.set("page_number", String(page2));
+  u.searchParams.set("page_number", String(page3));
   return canonical3(u);
 };
 var digest7 = async (value) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)))), (n) => n.toString(16).padStart(2, "0")).join("");
@@ -10393,8 +10393,8 @@ async function signature2(value) {
 async function slice(rows, cursor, limit) {
   const digest10 = await signature2(rows), offset = cursor.digest && cursor.digest !== digest10 ? 0 : Number(cursor.offset || 0);
   requireValue2(Number.isSafeInteger(offset) && offset >= 0 && offset <= rows.length, "Invalid Trace checkpoint.", "contract_violation");
-  const page2 = rows.slice(offset, offset + limit), complete = offset + page2.length >= rows.length;
-  return { page: page2, offset, complete, checkpoint: complete ? { finished: true } : { offset: offset + page2.length, digest: digest10 } };
+  const page3 = rows.slice(offset, offset + limit), complete = offset + page3.length >= rows.length;
+  return { page: page3, offset, complete, checkpoint: complete ? { finished: true } : { offset: offset + page3.length, digest: digest10 } };
 }
 var GAME_PROTOCOL = "trace-game-semantics-v1";
 var GAME_CHANGE_LIMIT = 3;
@@ -10694,13 +10694,13 @@ async function collectTrace({ j, args = {}, cursor = {}, transport, credential, 
   const out = { records: {}, fixtures: [], children: [], complete: true, checkpoint: { finished: true }, coverage: [], replacements: [] };
   const coverage = (kind, scope3, complete, count, extra = {}) => ({ provider: "trace", account_id: accountId, kind, scope: scope3, complete, count, observed_at: stamp(), ...extra });
   if (j.kind === "catalog") {
-    const rows = await traceTeams(transport, credential), page2 = await slice(rows, cursor, 50);
-    out.records.teams = page2.page.map((r) => ({ ...teamRecord("trace", r.team_id, r.title || r.name, { slug: text(r.name), catalog_scan_id: j.scan_id, account_owned: true }, { season: text(r.season_name || r.season), archived: +(r.is_archived === true) }), account_id: accountId }));
-    for (const r of page2.page) for (const kind of ["games", "roster"]) out.children.push(job("trace", kind, key("trace", r.team_id), { team_id: native(r.team_id), slug: text(r.name), team_name: text(r.title || r.name), profile_hash: text(args.profile_hash), roster_ids: args.roster_ids || [] }));
-    out.complete = page2.complete;
-    out.checkpoint = page2.checkpoint;
-    out.coverage.push(coverage("catalog", accountId, page2.complete, page2.page.length));
-    if (page2.complete) out.replacements.push({ kind: "catalog", account_id: accountId, scan_id: j.scan_id });
+    const rows = await traceTeams(transport, credential), page3 = await slice(rows, cursor, 50);
+    out.records.teams = page3.page.map((r) => ({ ...teamRecord("trace", r.team_id, r.title || r.name, { slug: text(r.name), catalog_scan_id: j.scan_id, account_owned: true }, { season: text(r.season_name || r.season), archived: +(r.is_archived === true) }), account_id: accountId }));
+    for (const r of page3.page) for (const kind of ["games", "roster"]) out.children.push(job("trace", kind, key("trace", r.team_id), { team_id: native(r.team_id), slug: text(r.name), team_name: text(r.title || r.name), profile_hash: text(args.profile_hash), roster_ids: args.roster_ids || [] }));
+    out.complete = page3.complete;
+    out.checkpoint = page3.checkpoint;
+    out.coverage.push(coverage("catalog", accountId, page3.complete, page3.page.length));
+    if (page3.complete) out.replacements.push({ kind: "catalog", account_id: accountId, scan_id: j.scan_id });
     return out;
   }
   const teamId = native(args.team_id);
@@ -10711,13 +10711,13 @@ async function collectTrace({ j, args = {}, cursor = {}, transport, credential, 
     const d = await graphql(transport, credential, TEAM_GAMES_QUERY, { team_id: Number(teamId), token }, "teamGames");
     const games = unique4(d.teamGames, (g) => native(g.game_id)).sort((a, b) => datePriority(b.full_date) - datePriority(a.full_date) || (Date.parse(b.full_date) || 0) - (Date.parse(a.full_date) || 0) || Number(a.game_id) - Number(b.game_id));
     games.forEach((g) => traceFixture(g, teamId, accountId));
-    const page2 = await slice(games, cursor, 100);
-    out.fixtures = page2.page.map((g) => traceFixture(g, teamId, accountId));
-    out.records.teams = [...new Map(page2.page.flatMap((g) => [g.home_team, g.away_team]).map((r) => [native(r.team_id), { ...teamRecord("trace", r.team_id, r.title || r.name, { participant_observation: true, account_owned: false }), account_id: accountId }])).values()];
-    out.children = page2.page.map((g) => ({ ...job("trace", "game", key("trace", g.game_id) + ":" + teamKey, { ...args, team_id: teamId, game_id: native(g.game_id), reported_date: text(g.full_date) }), priority: datePriority(g.full_date) }));
-    out.complete = page2.complete;
-    out.checkpoint = page2.checkpoint;
-    out.coverage.push(coverage("games", teamKey, page2.complete, page2.page.length));
+    const page3 = await slice(games, cursor, 100);
+    out.fixtures = page3.page.map((g) => traceFixture(g, teamId, accountId));
+    out.records.teams = [...new Map(page3.page.flatMap((g) => [g.home_team, g.away_team]).map((r) => [native(r.team_id), { ...teamRecord("trace", r.team_id, r.title || r.name, { participant_observation: true, account_owned: false }), account_id: accountId }])).values()];
+    out.children = page3.page.map((g) => ({ ...job("trace", "game", key("trace", g.game_id) + ":" + teamKey, { ...args, team_id: teamId, game_id: native(g.game_id), reported_date: text(g.full_date) }), priority: datePriority(g.full_date) }));
+    out.complete = page3.complete;
+    out.checkpoint = page3.checkpoint;
+    out.coverage.push(coverage("games", teamKey, page3.complete, page3.page.length));
     return out;
   }
   if (j.kind === "roster") {
@@ -10728,13 +10728,13 @@ async function collectTrace({ j, args = {}, cursor = {}, transport, credential, 
       requireValue2(native(m.team_id), "Trace roster member has no team identity.", "contract_violation");
       assertMemberTeam(m, teamId);
     });
-    const page2 = await slice(d.teamMembers, cursor, 150);
-    out.records.players = [...new Map(page2.page.map((m) => player(m, accountId, teamId)).filter(Boolean).map((p) => [p.id, p])).values()];
+    const page3 = await slice(d.teamMembers, cursor, 150);
+    out.records.players = [...new Map(page3.page.map((m) => player(m, accountId, teamId)).filter(Boolean).map((p) => [p.id, p])).values()];
     out.records.team_players = out.records.players.map((p) => ({ team_id: teamKey, player_id: p.id, account_id: accountId, active: +(JSON.parse(p.details).active !== false), scan_id: j.scan_id }));
-    out.complete = page2.complete;
-    out.checkpoint = page2.checkpoint;
-    out.coverage.push(coverage("roster", teamKey, page2.complete, page2.page.length));
-    if (page2.complete) out.replacements.push({ kind: "roster", team_id: teamKey, account_id: accountId, scan_id: j.scan_id });
+    out.complete = page3.complete;
+    out.checkpoint = page3.checkpoint;
+    out.coverage.push(coverage("roster", teamKey, page3.complete, page3.page.length));
+    if (page3.complete) out.replacements.push({ kind: "roster", team_id: teamKey, account_id: accountId, scan_id: j.scan_id });
     return out;
   }
   requireValue2(gameId, "Trace game identity is missing.", "contract_violation");
@@ -10779,16 +10779,16 @@ async function collectTrace({ j, args = {}, cursor = {}, transport, credential, 
     }
     if (stage === "members") {
       requireValue2(offset <= members.length, "Trace roster checkpoint exceeds its scope.", "contract_violation");
-      const page2 = members.slice(offset, offset + 100);
-      out.records.players = [...new Map(page2.map((m) => player(m, accountId, teamId)).filter(Boolean).map((p) => [p.id, p])).values()];
+      const page3 = members.slice(offset, offset + 100);
+      out.records.players = [...new Map(page3.map((m) => player(m, accountId, teamId)).filter(Boolean).map((p) => [p.id, p])).values()];
       out.records.trace_parts = plan3.memberValues.slice(offset, offset + 100).map((value, i) => sourcePart("member:" + String(offset + i).padStart(5, "0"), value));
-      return offset + page2.length < members.length ? continuing("members", offset + page2.length) : continuing("moments");
+      return offset + page3.length < members.length ? continuing("members", offset + page3.length) : continuing("moments");
     }
     if (stage === "moments") {
       requireValue2(offset <= game.moments.length, "Trace moment checkpoint exceeds its scope.", "contract_violation");
-      const page2 = plan3.momentValues.slice(offset, offset + 100);
-      out.records.trace_parts = page2.map((value, i) => sourcePart("moment:" + String(offset + i).padStart(7, "0"), value));
-      return offset + page2.length < game.moments.length ? continuing("moments", offset + page2.length) : continuing("derived");
+      const page3 = plan3.momentValues.slice(offset, offset + 100);
+      out.records.trace_parts = page3.map((value, i) => sourcePart("moment:" + String(offset + i).padStart(7, "0"), value));
+      return offset + page3.length < game.moments.length ? continuing("moments", offset + page3.length) : continuing("derived");
     }
     requireValue2(stage === "derived", "Trace game checkpoint has an unknown stage.", "contract_violation");
     const children2 = game.access?.allowed === false ? [] : derivedChildren(plan3.game, args, members, side2, accountId);
@@ -10826,12 +10826,12 @@ async function collectTrace({ j, args = {}, cursor = {}, transport, credential, 
     requireValue2(bytes(header) <= RECORD_LIMIT, "Trace analytics summary exceeds its record bound.", "record_too_large");
     out.records.trace_stats = [{ fixture_id: fixtureId, team_id: teamKey, account_id: accountId, player_id: args.player_id, track_gid: args.track_gid || null, side: args.side, period: args.period.id, value: JSON.stringify(header), state, observed_at: stamp() }];
     const events = state === "ready" ? Object.entries(stats).flatMap(([kind, value]) => (Array.isArray(value?.items) ? value.items : []).map((item, index) => ({ kind, index, item }))) : [];
-    const page2 = await slice(events, cursor, 100);
-    out.records.trace_parts = page2.page.map(({ kind, index, item }) => sourcePart(`stats:${args.player_id}:${args.side}:${args.period.id}:${kind}:${String(index).padStart(7, "0")}`, { ...item, scope_side: args.side, ...args.track_gid ? { scope_gid: args.track_gid } : {} }));
-    out.complete = page2.complete;
-    out.checkpoint = page2.checkpoint;
-    out.coverage.push(coverage("analytics", fixtureId + ":" + teamKey + ":" + args.player_id + ":" + args.side + ":" + args.period.id, page2.complete, page2.page.length, { availability: state, heatmap_availability: heatState }));
-    if (page2.complete) out.replacements.push({
+    const page3 = await slice(events, cursor, 100);
+    out.records.trace_parts = page3.page.map(({ kind, index, item }) => sourcePart(`stats:${args.player_id}:${args.side}:${args.period.id}:${kind}:${String(index).padStart(7, "0")}`, { ...item, scope_side: args.side, ...args.track_gid ? { scope_gid: args.track_gid } : {} }));
+    out.complete = page3.complete;
+    out.checkpoint = page3.checkpoint;
+    out.coverage.push(coverage("analytics", fixtureId + ":" + teamKey + ":" + args.player_id + ":" + args.side + ":" + args.period.id, page3.complete, page3.page.length, { availability: state, heatmap_availability: heatState }));
+    if (page3.complete) out.replacements.push({
       kind: "trace_stat_parts",
       fixture_id: fixtureId,
       team_id: teamKey,
@@ -10868,14 +10868,14 @@ async function collectTrace({ j, args = {}, cursor = {}, transport, credential, 
       out.coverage.push(coverage("tracking", fixtureId + ":" + teamKey + ":" + args.gid + ":" + args.half, false, 0));
       return out;
     }
-    const page2 = await slice(ranges, cursor, full ? 4e3 : 1e3);
+    const page3 = await slice(ranges, cursor, full ? 4e3 : 1e3);
     out.records.trace_parts = [];
-    for (let offset = 0; offset < Math.max(1, page2.page.length); offset += 1e3)
-      out.records.trace_parts.push(sourcePart(`tracking:${args.half}:${args.gid}:${chunk}:${page2.offset + offset}`, { player_id: args.player_id, gid: args.gid, half: args.half, chunk, segments: page2.page.slice(offset, offset + 1e3) }));
-    const chunkPages = { ...full ? {} : cursor.chunk_pages || {}, ...page2.complete ? { [chunk]: Math.max(1, Math.ceil((page2.offset + page2.page.length) / 1e3)) } : {} };
-    out.complete = page2.complete && (full || chunk === count - 1);
-    out.checkpoint = !page2.complete ? { ...page2.checkpoint, ...full ? { protocol: "trace-tracking-full-v1" } : { chunk, chunk_pages: chunkPages } } : out.complete ? { finished: true } : { chunk: chunk + 1, chunk_pages: chunkPages };
-    out.coverage.push(coverage("tracking", fixtureId + ":" + teamKey + ":" + args.gid + ":" + args.half, out.complete, page2.page.length));
+    for (let offset = 0; offset < Math.max(1, page3.page.length); offset += 1e3)
+      out.records.trace_parts.push(sourcePart(`tracking:${args.half}:${args.gid}:${chunk}:${page3.offset + offset}`, { player_id: args.player_id, gid: args.gid, half: args.half, chunk, segments: page3.page.slice(offset, offset + 1e3) }));
+    const chunkPages = { ...full ? {} : cursor.chunk_pages || {}, ...page3.complete ? { [chunk]: Math.max(1, Math.ceil((page3.offset + page3.page.length) / 1e3)) } : {} };
+    out.complete = page3.complete && (full || chunk === count - 1);
+    out.checkpoint = !page3.complete ? { ...page3.checkpoint, ...full ? { protocol: "trace-tracking-full-v1" } : { chunk, chunk_pages: chunkPages } } : out.complete ? { finished: true } : { chunk: chunk + 1, chunk_pages: chunkPages };
+    out.coverage.push(coverage("tracking", fixtureId + ":" + teamKey + ":" + args.gid + ":" + args.half, out.complete, page3.page.length));
     if (out.complete) out.replacements.push({ kind: "trace_tracking_parts", fixture_id: fixtureId, team_id: teamKey, account_id: accountId, half: args.half, gid: args.gid, chunk_pages: chunkPages, segment_page_size: 1e3 });
     return out;
   }
@@ -10904,12 +10904,12 @@ async function collectSource({ provider, kind, scope: scope3, args = {}, cursor 
   if (PRIVATE2.has(provider)) requireValue2(account?.id && account.provider === provider && account.native_id && credential, "Private source authorization is required.", "authentication_required");
   else requireValue2(!account, "Public source cannot use private account scope.", "contract_violation");
   const collect = provider === "teamsnap" ? collectTeamSnap : provider === "trace" ? collectTrace : collectGotSport;
-  const page2 = await collect({ j: { provider, kind, scope: scope3, scan_id: scanId }, args, cursor, transport, credential, account });
-  requireValue2(page2 && typeof page2.complete === "boolean" && page2.checkpoint && page2.records, "Collector returned an invalid source page.");
-  page2.fixtures ||= [];
-  page2.children ||= [];
-  page2.replacements ||= [];
-  for (const [type, rows] of Object.entries(page2.records)) {
+  const page3 = await collect({ j: { provider, kind, scope: scope3, scan_id: scanId }, args, cursor, transport, credential, account });
+  requireValue2(page3 && typeof page3.complete === "boolean" && page3.checkpoint && page3.records, "Collector returned an invalid source page.");
+  page3.fixtures ||= [];
+  page3.children ||= [];
+  page3.replacements ||= [];
+  for (const [type, rows] of Object.entries(page3.records)) {
     requireValue2(KINDS.has(type) && Array.isArray(rows), "Collector emitted an unsupported source kind.");
     for (const row of rows) {
       requireValue2(row && typeof row === "object" && bytes(row) <= 64e3, "Source record exceeded its bound.", "record_too_large");
@@ -10919,17 +10919,17 @@ async function collectSource({ provider, kind, scope: scope3, args = {}, cursor 
       }
     }
   }
-  for (const row of page2.fixtures) {
+  for (const row of page3.fixtures) {
     requireValue2(row.provider === provider && bytes(row) <= 64e3, "Invalid source fixture contract.");
     if (PRIVATE2.has(provider)) {
       requireValue2(!row.account_id || row.account_id === account.id, "Fixture crossed private account scopes.");
       row.account_id = account.id;
     }
   }
-  const rowCount = Object.values(page2.records).reduce((n, rows) => n + rows.length, 0) + page2.fixtures.length;
-  requireValue2(rowCount <= 500 && bytes(page2.records) + bytes(page2.fixtures) <= 175e4, "Source page requires a smaller slice.", "record_too_large");
-  requireValue2(page2.children.length <= 128 && bytes(page2.checkpoint) <= 8192, "Collector continuation exceeded its bound.");
-  page2.children = page2.children.map((child) => {
+  const rowCount = Object.values(page3.records).reduce((n, rows) => n + rows.length, 0) + page3.fixtures.length;
+  requireValue2(rowCount <= 500 && bytes(page3.records) + bytes(page3.fixtures) <= 175e4, "Source page requires a smaller slice.", "record_too_large");
+  requireValue2(page3.children.length <= 128 && bytes(page3.checkpoint) <= 8192, "Collector continuation exceeded its bound.");
+  page3.children = page3.children.map((child) => {
     requireValue2(PROVIDERS.has(child.provider) && child.kind && child.scope && bytes(child.args || {}) <= 8192, "Invalid source child spec.");
     requireValue2(!PRIVATE2.has(child.provider) || child.provider === provider, "Source child cannot grant another private provider access.");
     const recent = ["roster", "events", "upcoming", "division", "game"].includes(child.kind);
@@ -10937,17 +10937,17 @@ async function collectSource({ provider, kind, scope: scope3, args = {}, cursor 
     const priority2 = Number.isFinite(child.priority) ? child.priority : dated !== null ? dated : recent ? 80 : ["analytics", "tracking", "radar"].includes(child.kind) ? 20 : 60;
     return { provider: child.provider, component: child.kind, scope: child.scope, resourceKey: child.scope, args: child.args || {}, stage: "source", priority: priority2, subscriberMode: "inherit", ...PRIVATE2.has(child.provider) ? { accountId: account.id, accountGeneration: account.generation } : {} };
   });
-  page2.observations = (transport.observations || []).map((o) => ({ endpoint: o.endpoint, params: o.params, status: o.status, at: o.at, retrieved_at: o.retrieved_at || null, hash: o.hash, bytes: o.bytes, rows_count: o.rows_count, code: o.code || null }));
-  const successful = page2.observations.filter((o) => o.status >= 200 && o.status < 300 && !o.code && Number.isFinite(Date.parse(o.at)));
-  page2.retrievedAt = successful.length ? successful.map((o) => o.retrieved_at || o.at).sort().at(-1) : null;
-  const rawCoverage = page2.coverage;
-  page2.sourceCoverage = Array.isArray(rawCoverage) ? rawCoverage : rawCoverage && typeof rawCoverage === "object" ? [{ provider, scope: scope3, ...rawCoverage, observed_at: page2.retrievedAt || stamp() }] : [{ provider, scope: scope3, kind, complete: page2.complete, summary: typeof rawCoverage === "string" ? rawCoverage : page2.complete ? "complete" : "partial", observed_at: page2.retrievedAt || stamp() }];
-  page2.coverage = typeof rawCoverage === "string" ? rawCoverage : page2.sourceCoverage.some((v) => v.availability === "restricted") ? "restricted" : page2.sourceCoverage.some((v) => v.availability === "unpublished") ? "unpublished" : page2.complete ? "complete" : "partial";
-  if (provider === "teamsnap" && ["events", "attendance"].includes(kind) && page2.checkpoint?.refresh?.protocol === "teamsnap-refresh-v1") {
-    requireValue2(["complete", "partial"].includes(page2.coverageState), "Invalid TeamSnap collection coverage.");
-    page2.coverage = page2.coverageState;
+  page3.observations = (transport.observations || []).map((o) => ({ endpoint: o.endpoint, params: o.params, status: o.status, at: o.at, retrieved_at: o.retrieved_at || null, hash: o.hash, bytes: o.bytes, rows_count: o.rows_count, code: o.code || null }));
+  const successful = page3.observations.filter((o) => o.status >= 200 && o.status < 300 && !o.code && Number.isFinite(Date.parse(o.at)));
+  page3.retrievedAt = successful.length ? successful.map((o) => o.retrieved_at || o.at).sort().at(-1) : null;
+  const rawCoverage = page3.coverage;
+  page3.sourceCoverage = Array.isArray(rawCoverage) ? rawCoverage : rawCoverage && typeof rawCoverage === "object" ? [{ provider, scope: scope3, ...rawCoverage, observed_at: page3.retrievedAt || stamp() }] : [{ provider, scope: scope3, kind, complete: page3.complete, summary: typeof rawCoverage === "string" ? rawCoverage : page3.complete ? "complete" : "partial", observed_at: page3.retrievedAt || stamp() }];
+  page3.coverage = typeof rawCoverage === "string" ? rawCoverage : page3.sourceCoverage.some((v) => v.availability === "restricted") ? "restricted" : page3.sourceCoverage.some((v) => v.availability === "unpublished") ? "unpublished" : page3.complete ? "complete" : "partial";
+  if (provider === "teamsnap" && ["events", "attendance"].includes(kind) && page3.checkpoint?.refresh?.protocol === "teamsnap-refresh-v1") {
+    requireValue2(["complete", "partial"].includes(page3.coverageState), "Invalid TeamSnap collection coverage.");
+    page3.coverage = page3.coverageState;
   }
-  return page2;
+  return page3;
 }
 
 // src/sync/errors.js
@@ -11635,7 +11635,7 @@ function createSyncRuntime(collector, options = {}) {
       this.arming = Promise.resolve();
     }
     async suspended() {
-      const reason = this.env.MYTS_UPGRADE_MODE === "maintenance" ? "maintenance" : !this.env.DB ? "database_unconfigured" : null;
+      const reason = this.env.MYTS_UPGRADE_MODE === "maintenance" ? "maintenance" : this.env.MYTS_UPGRADE_MODE === "upgrade-only" ? "upgrade_only" : !this.env.DB ? "database_unconfigured" : null;
       if (!reason) return null;
       await this.ctx.storage.deleteAlarm();
       return { state: "paused", reason };
@@ -11775,9 +11775,9 @@ function createSyncRuntime(collector, options = {}) {
           diagnosticLease = context2.lease;
           if (options.recoverConnections && context2.lease.provider === "reports" && context2.lease.component === "data-import") await this.ctx.storage.put("data_import_recovery_pending", true);
           const { id: id4, provider, component, stage } = context2.lease;
-          const page2 = await collector(context2);
-          if (provider === "domain" && component === "projection" && stage === "projection") projectionRecovery = { jobId: id4, required: page2?.recoveryRequired };
-          return page2;
+          const page3 = await collector(context2);
+          if (provider === "domain" && component === "projection" && stage === "projection") projectionRecovery = { jobId: id4, required: page3?.recoveryRequired };
+          return page3;
         }, { env: this.env });
         diagnosticPhase = "runtime_after_job";
         const importTerminal = result.provider === "reports" && result.component === "data-import" && ["ready", "failed", "blocked", "retrying"].includes(result.state);
@@ -13986,13 +13986,13 @@ async function collectAnalysisCatalog(db, lease, args, checkpoint) {
   const selected = rows.slice(0, 32), last = selected.at(-1);
   return { statements: [], children: selected.map((event2) => ({ provider: "analysis", component: "match", stage: "analysis", scope: args.teamId, resourceKey: `${args.seasonId}:${event2.event_id}`, args: { teamId: args.teamId, seasonId: args.seasonId, eventId: event2.event_id, requestId: args.requestId, automatic: true }, priority: event2.priority, recurring: false, subscriberMode: "inherit" })), checkpoint: { projectionHash: state.projection_hash, now: now2, after: last ? { priority: last.priority, startsAt: last.starts_at, eventId: last.event_id } : after }, complete: rows.length <= 32, coverage: rows.length <= 32 ? "complete" : "partial", publishContent: false };
 }
-function childPriority(child, page2, now2) {
+function childPriority(child, page3, now2) {
   if (ANALYSIS.has(child.component)) return 20;
   if (child.component === "history") return 30;
   if (Number.isInteger(child.priority)) return child.priority;
   if (child.component === "game" || child.component === "fixture") {
     const native4 = String(child.args?.game_id || child.args?.fixture_id || "");
-    const fixture = (page2.fixtures || []).find((row) => String(row.native_id) === native4);
+    const fixture = (page3.fixtures || []).find((row) => String(row.native_id) === native4);
     const at = Date.parse(fixture?.starts_at || fixture?.local_day || "");
     if (Number.isFinite(at)) return at < now2 - 60 * 864e5 ? 20 : at > now2 + 30 * 864e5 ? 40 : 80;
   }
@@ -14015,14 +14015,14 @@ async function collectApplicationJob({ db, env, lease, args, checkpoint }, optio
       return collectAnalysisCatalog(db, lease, args, checkpoint);
     }
     requireValue4(lease.stage === "analysis" && lease.component === "match" && args.teamId === lease.scope && lease.resource_key === `${args.seasonId}:${args.eventId}`, "Invalid match analysis demand.");
-    const page2 = await buildMatchAnalysisPage(db, { teamId: args.teamId, seasonId: args.seasonId, eventId: args.eventId, cursor: checkpoint });
-    return { ...page2, coverage: ["ready", "estimated"].includes(page2.coverage) ? "complete" : ["pending", "incomplete", "human_review"].includes(page2.coverage) ? "partial" : page2.coverage, publishContent: false };
+    const page3 = await buildMatchAnalysisPage(db, { teamId: args.teamId, seasonId: args.seasonId, eventId: args.eventId, cursor: checkpoint });
+    return { ...page3, coverage: ["ready", "estimated"].includes(page3.coverage) ? "complete" : ["pending", "incomplete", "human_review"].includes(page3.coverage) ? "partial" : page3.coverage, publishContent: false };
   }
   if (lease.provider === "domain") {
     if (lease.component === "connection") {
       requireValue4(lease.stage === "projection" && args.teamId === lease.scope && args.connectionId === lease.resource_key && Number.isSafeInteger(args.generation), "Invalid connection reconciliation demand.");
-      const page2 = await buildConnectionPage(db, { connectionId: args.connectionId, teamId: args.teamId, generation: args.generation, checkpoint });
-      return { ...page2, children: (page2.complete ? page2.affectedTeams || [] : []).slice(0, 128).map((affected) => projectionSpec(affected.app_team_id, affected.team_season_id)), coverage: page2.complete ? "complete" : "partial", publishContent: false };
+      const page3 = await buildConnectionPage(db, { connectionId: args.connectionId, teamId: args.teamId, generation: args.generation, checkpoint });
+      return { ...page3, children: (page3.complete ? page3.affectedTeams || [] : []).slice(0, 128).map((affected) => projectionSpec(affected.app_team_id, affected.team_season_id)), coverage: page3.complete ? "complete" : "partial", publishContent: false };
     }
     requireValue4(lease.stage === "projection" && lease.component === "projection" && args.teamId === lease.scope && args.seasonId === lease.resource_key, "Invalid projection demand.");
     const projection = await repo.buildProjectionPage(args.teamId, args.seasonId, checkpoint);
@@ -14055,25 +14055,25 @@ async function collectApplicationJob({ db, env, lease, args, checkpoint }, optio
       }
       if (!credential) throw new SyncError("authentication_required", "Reconnect the provider.", { kind: "blocked" });
     }
-    const page2 = await collectSource({ provider: lease.provider, kind: lease.component, scope: lease.scope, args, cursor: checkpoint, transport, credential, account, scanId: lease.scan_id });
-    const built = await repo.buildSourcePage({ ...page2, coverage: page2.sourceCoverage || page2.coverage, accountId: account?.id || null, generation: account?.generation || null, provider: lease.provider, component: lease.component, resourceKey: lease.resource_key, scanId: lease.scan_id });
-    const children2 = (lease.component === "catalog" && account ? [] : page2.children).map((child) => ({
+    const page3 = await collectSource({ provider: lease.provider, kind: lease.component, scope: lease.scope, args, cursor: checkpoint, transport, credential, account, scanId: lease.scan_id });
+    const built = await repo.buildSourcePage({ ...page3, coverage: page3.sourceCoverage || page3.coverage, accountId: account?.id || null, generation: account?.generation || null, provider: lease.provider, component: lease.component, resourceKey: lease.resource_key, scanId: lease.scan_id });
+    const children2 = (lease.component === "catalog" && account ? [] : page3.children).map((child) => ({
       ...child,
       stage: ANALYSIS.has(child.component) ? "analysis" : "source",
-      priority: childPriority(child, page2, Date.now()),
+      priority: childPriority(child, page3, Date.now()),
       intervalMs: INTERVAL[child.component] || 36e5
     }));
     for (const affected of (built.affectedTeams || []).slice(0, Math.max(0, 128 - children2.length))) children2.push(projectionSpec(affected.app_team_id, affected.team_season_id));
     const authorityFence = sourceProof ? [{ sql: `INSERT INTO domain_team_preconditions(id,expected_input,actual_input) SELECT 1,1,CASE WHEN ${sourceProof.sql} THEN 1 ELSE 0 END WHERE $FENCE ON CONFLICT(id) DO UPDATE SET expected_input=excluded.expected_input,actual_input=excluded.actual_input`, params: sourceProof.params }] : [];
     return {
       statements: [...authorityFence, ...built.statements],
-      checkpoint: page2.checkpoint,
+      checkpoint: page3.checkpoint,
       children: children2,
-      complete: page2.complete,
-      coverage: lease.provider === "teamsnap" && ["events", "attendance"].includes(lease.component) && page2.checkpoint?.refresh?.protocol === "teamsnap-refresh-v1" ? page2.coverage : lease.stage === "analysis" ? unavailableCoverage(page2.coverage) || (page2.complete ? "complete" : "partial") : page2.complete ? "complete" : "partial",
-      retrievedAt: successfulRetrieval(page2.observations),
-      observations: page2.observations,
-      rowsSaved: Object.values(page2.records).reduce((count, rows) => count + rows.length, 0) + page2.fixtures.length,
+      complete: page3.complete,
+      coverage: lease.provider === "teamsnap" && ["events", "attendance"].includes(lease.component) && page3.checkpoint?.refresh?.protocol === "teamsnap-refresh-v1" ? page3.coverage : lease.stage === "analysis" ? unavailableCoverage(page3.coverage) || (page3.complete ? "complete" : "partial") : page3.complete ? "complete" : "partial",
+      retrievedAt: successfulRetrieval(page3.observations),
+      observations: page3.observations,
+      rowsSaved: Object.values(page3.records).reduce((count, rows) => count + rows.length, 0) + page3.fixtures.length,
       publishContent: false
     };
   } catch (error4) {
@@ -14803,31 +14803,31 @@ async function collectOriginalTraceImport({ db, env, args, checkpoint = {} }) {
 init_identity();
 
 // src/sources/discovery.js
-async function searchGotSport(transport, { q = "", state = "", age, gender, page: page2 = 1 } = {}) {
+async function searchGotSport(transport, { q = "", state = "", age, gender, page: page3 = 1 } = {}) {
   requireValue2(age !== void 0 && age !== null && age !== "" && gender !== void 0 && gender !== null && gender !== "", "Choose an age group and team category to search GotSport rankings, or paste a public team link.", "search_filters_required");
   q = text(q, 100);
   state = text(state, 8).toUpperCase();
   age = Number(age);
-  page2 = Number(page2);
-  requireValue2(Number.isInteger(age) && age >= 7 && age <= 19 && ["m", "f"].includes(gender) && Number.isInteger(page2) && page2 >= 1 && page2 <= 1e3 && (!state || /^[A-Z]{2,3}$/.test(state)), "Invalid search filters.", "invalid_input");
+  page3 = Number(page3);
+  requireValue2(Number.isInteger(age) && age >= 7 && age <= 19 && ["m", "f"].includes(gender) && Number.isInteger(page3) && page3 >= 1 && page3 <= 1e3 && (!state || /^[A-Z]{2,3}$/.test(state)), "Invalid search filters.", "invalid_input");
   const raw = await ranking(transport, "/team_ranking_data", {
     "search[team_or_club_name]": q,
     "search[team_country]": "USA",
     "search[age]": age,
     "search[gender]": gender,
-    "search[page]": page2,
+    "search[page]": page3,
     ...state ? { "search[team_association]": state, "search[filter_by]": "state" } : {}
   });
   requireValue2(Array.isArray(raw.team_ranking_data) && raw.team_ranking_data.length <= 500 && raw.pagination, "Invalid GotSport search response.", "unsupported_response");
   const pages = Number(raw.pagination.total_pages), total = Number(raw.pagination.total_count);
-  requireValue2(Number.isSafeInteger(pages) && pages >= 0 && Number.isSafeInteger(total) && total >= 0 && (!total || pages >= page2), "Invalid GotSport search pagination.", "unsupported_response");
+  requireValue2(Number.isSafeInteger(pages) && pages >= 0 && Number.isSafeInteger(total) && total >= 0 && (!total || pages >= page3), "Invalid GotSport search pagination.", "unsupported_response");
   const teams = unique4(raw.team_ranking_data, (r) => native(r.team_id)).map((r) => {
     const id4 = native(r.team_id);
     requireValue2(id4 && text(r.team_name), "GotSport search returned an incomplete team.", "unsupported_response");
     const club = text(r.club_name), name = text(r.team_name), full = name.toLowerCase().startsWith(club.toLowerCase()) ? name : [club, name].filter(Boolean).join(" ");
     return { ...teamRecord("gotsport", id4, full, { catalog_verified: true, club_name: club, age: r.age ?? null, gender: r.gender ?? null, region: r.team_association ?? null, source_url: `https://rankings.gotsport.com/teams/${id4}/upcoming-games` }), club, age: r.age ?? null, gender: r.gender ?? null, region: r.team_association ?? null };
   });
-  return { records: { teams }, teams, page: page2, pages, total, nextPage: page2 < pages ? page2 + 1 : null };
+  return { records: { teams }, teams, page: page3, pages, total, nextPage: page3 < pages ? page3 + 1 : null };
 }
 async function resolveGotSportPage(transport, value) {
   let id4 = native(typeof value === "string" ? value.trim() : "");
@@ -15938,12 +15938,12 @@ var SourceTeamReads = class extends ReadRepository {
     const after = rows[0].results[0], afterRevision = await hash5([after.content_revision, after.profile_count, after.profile_revision, after.native_count, after.event_revision, after.canonical_count, after.category_revision, after.category_count, after.schedule_complete]);
     if (!after.permitted || revision3 !== afterRevision) throw invalid2("Saved source-team data changed. Reload these details.", "cursor_restart", 409);
     const profiles = rows[1].results, profile = profiles.find((p) => p.id === sourceId) || profiles[0], preferred = profiles.find((p) => p.provider === "gotsport") || profile, d = parse20(preferred.evidence), branding = sourceBranding(profile.branding), verified = preferred.provenance === "provider" && preferred.name_authority <= 2, official_url = url2(d.source_url) || (/^\d+$/.test(preferred.native_id) && preferred.provider === "gotsport" ? `https://rankings.gotsport.com/teams/${preferred.native_id}/upcoming-games` : null), candidate = preferred.provider === "gotsport" && preferred.provenance === "provider" && official_url ? { id: preferred.id, provider: "gotsport", name: preferred.name, kind: "followed", official_url, requires_verification: !verified } : null;
-    const page2 = rows[3].results, items = page2.slice(0, limit), last = items.at(-1), aggregate2 = rows[2].results[0], { total, ...record } = aggregate2;
+    const page3 = rows[3].results, items = page3.slice(0, limit), last = items.at(-1), aggregate2 = rows[2].results[0], { total, ...record } = aggregate2;
     const eventRow = ({ order_value, home_branding, away_branding, ...r }) => {
       const homeId = r.own_match && r.own_side === "home" ? selection2.team_id : r.home_id, awayId = r.own_match && r.own_side === "away" ? selection2.team_id : r.away_id;
       return { ...r, home_id: homeId, away_id: awayId, home: { id: homeId, name: r.home_name, logo: sourceBranding(home_branding).logo, confirmed: !!r.home_id && !r.conditional }, away: { id: awayId, name: r.away_name, logo: sourceBranding(away_branding).logo, confirmed: !!r.away_id && !r.conditional }, local_day: r.starts_at ? localDay2(r.starts_at, selection2.timezone) : r.local_day, time_pending: !r.starts_at, conditional: !!r.conditional, result_conflict: !!r.result_conflict, identity_conflict: !!r.identity_conflict, can_edit: false, can_bookmark: false };
     };
-    return this.envelope(cursorSelection, after, { team: { id: sourceId, name: preferred.name, provider: profile.provider, logo: branding.logo, logo_state: branding.logo_state, club_name: branding.club_name, club_name_state: branding.club_name_state, official_url, verified, follow_candidate: this.actor.owner ? candidate : null }, record, events: { items: items.map(eventRow), total, next_cursor: page2.length > limit ? await this.cursor.issue({ selection: cursorSelection, scope: cursorScope, revision: revision3, position: [last.order_value, last.id] }) : null }, coverage: { schedule_complete: !!after.schedule_complete && after.category_count > 0, note: "Saved public fixtures from this team\u2019s shared season context. Other competitions are outside this view." }, capabilities: { can_follow: !!this.actor.owner && !!candidate }, source_revision: revision3 });
+    return this.envelope(cursorSelection, after, { team: { id: sourceId, name: preferred.name, provider: profile.provider, logo: branding.logo, logo_state: branding.logo_state, club_name: branding.club_name, club_name_state: branding.club_name_state, official_url, verified, follow_candidate: this.actor.owner ? candidate : null }, record, events: { items: items.map(eventRow), total, next_cursor: page3.length > limit ? await this.cursor.issue({ selection: cursorSelection, scope: cursorScope, revision: revision3, position: [last.order_value, last.id] }) : null }, coverage: { schedule_complete: !!after.schedule_complete && after.category_count > 0, note: "Saved public fixtures from this team\u2019s shared season context. Other competitions are outside this view." }, capabilities: { can_follow: !!this.actor.owner && !!candidate }, source_revision: revision3 });
   }
 };
 
@@ -15979,7 +15979,7 @@ async function sourceTeamRoutes(request, { db, actor: actor2, cursor, now: now2 
 }
 
 // src/application/version.js
-var VERSION2 = "7.5.3";
+var VERSION2 = "7.5.4";
 
 // src/application/bootstrap.js
 init_team_catalog();
@@ -17169,8 +17169,8 @@ var TrackingCaptureService = class {
     need5(lease.provider === "trace" && lease.component === "tracking-capture" && lease.stage === "export" && lease.scope === row.app_team_id && lease.resource_key === row.id && lease.account_id === row.account_id && lease.authorization_generation === row.account_generation, "The capture job scope changed.", "contract_violation", 409);
     if (["complete", "partial", "failed"].includes(row.state)) return { statements: [], complete: true, coverage: row.state === "complete" ? "complete" : "partial", publishContent: false };
     const account = { id: row.account_id, provider: "trace", generation: row.account_generation, native_id: selection2.account_native_id }, loaded = this.credentialLoader ? await this.credentialLoader({ db: this.db, env, account }) : await new SecurityStore(this.db).loadAccountCredential(account.id, { generation: account.generation }), credential = typeof loaded === "string" ? loaded : loaded.credential, transport = this.transportFactory ? this.transportFactory(env) : new CaptureTransport(env);
-    const page2 = await collectTrackingCapture({ transport, credential, account, selection: selection2, cursor: parse22(row.checkpoint) }), records = [...parse22(row.records), ...page2.record ? [recordStatus(page2.record)] : []];
-    const started = row.part_count > 0, prefix = started ? "" : JSON.stringify(reportHeader(row, selection2)).slice(0, -1) + ',"records":[', record = page2.record ? JSON.stringify(page2.record) : "", seperator = record && parse22(row.records).length ? "," : "", state = page2.complete ? records.every((v) => v.status === "captured") ? "complete" : "partial" : "capturing", tail = page2.complete ? `],"status":${JSON.stringify(state)},"usage":${JSON.stringify(page2.checkpoint?.usage || {})}${page2.failure ? ',"failure":' + JSON.stringify(page2.failure) : ""}}` : "", data = encoder3.encode(prefix + seperator + record + tail);
+    const page3 = await collectTrackingCapture({ transport, credential, account, selection: selection2, cursor: parse22(row.checkpoint) }), records = [...parse22(row.records), ...page3.record ? [recordStatus(page3.record)] : []];
+    const started = row.part_count > 0, prefix = started ? "" : JSON.stringify(reportHeader(row, selection2)).slice(0, -1) + ',"records":[', record = page3.record ? JSON.stringify(page3.record) : "", seperator = record && parse22(row.records).length ? "," : "", state = page3.complete ? records.every((v) => v.status === "captured") ? "complete" : "partial" : "capturing", tail = page3.complete ? `],"status":${JSON.stringify(state)},"usage":${JSON.stringify(page3.checkpoint?.usage || {})}${page3.failure ? ',"failure":' + JSON.stringify(page3.failure) : ""}}` : "", data = encoder3.encode(prefix + seperator + record + tail);
     need5(row.byte_length + data.length <= 12 * 1024 * 1024, "The raw capture exceeded its artifact bound.", "record_too_large", 413);
     const condition = activeScope(selection2, this.now()), fence = crypto.randomUUID(), guard = "($FENCE AND EXISTS(SELECT 1 FROM tracking_captures WHERE id=? AND capture_fence=?))", statements = [{ sql: `UPDATE tracking_captures SET capture_fence=? WHERE id=? AND part_count=? AND ${condition.sql} AND $FENCE`, params: [fence, row.id, row.part_count, ...condition.params] }];
     let partCount = 0;
@@ -17179,8 +17179,8 @@ var TrackingCaptureService = class {
       statements.push({ sql: `INSERT INTO tracking_capture_parts SELECT ?,?,? WHERE ${guard} ON CONFLICT(capture_id,ordinal) DO NOTHING`, params: [row.id, row.part_count + partCount++, part2.buffer, row.id, fence] });
     }
     need5(statements.length <= 29, "The capture page exceeded its write bound.", "record_too_large", 413);
-    statements.push({ sql: `UPDATE tracking_captures SET state=?,checkpoint=?,records=?,part_count=?,byte_length=?,error_code=? WHERE id=? AND ${guard}`, params: [state, JSON.stringify(page2.checkpoint || {}), JSON.stringify(records), row.part_count + partCount, row.byte_length + data.length, page2.failure?.code || null, row.id, row.id, fence] });
-    return { ...page2, statements, checkpoint: page2.checkpoint || {}, publishContent: false, rowsSaved: page2.record ? 1 : 0 };
+    statements.push({ sql: `UPDATE tracking_captures SET state=?,checkpoint=?,records=?,part_count=?,byte_length=?,error_code=? WHERE id=? AND ${guard}`, params: [state, JSON.stringify(page3.checkpoint || {}), JSON.stringify(records), row.part_count + partCount, row.byte_length + data.length, page3.failure?.code || null, row.id, row.id, fence] });
+    return { ...page3, statements, checkpoint: page3.checkpoint || {}, publishContent: false, rowsSaved: page3.record ? 1 : 0 };
   }
   async download(id4) {
     this.owner();
@@ -17493,8 +17493,8 @@ function pdfPage(state, snapshot2, columns3, rows, font) {
     consumed++;
   }
   if (!rows.length) text5("No rows in this selection.", left, y);
-  const id4 = 10 + state.page * 2, body2 = bytes7(content), page2 = object2(id4, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 3 0 R >> >> /Contents ${id4 + 1} 0 R >>`), commands = object2(id4 + 1, stream(body2));
-  return { data: concat([page2, commands]), objects: [{ id: id4, offset: state.offset }, { id: id4 + 1, offset: state.offset + page2.length }], state: { ...state, row: state.row + consumed, page: state.page + 1, offset: state.offset + page2.length + commands.length }, consumed };
+  const id4 = 10 + state.page * 2, body2 = bytes7(content), page3 = object2(id4, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 3 0 R >> >> /Contents ${id4 + 1} 0 R >>`), commands = object2(id4 + 1, stream(body2));
+  return { data: concat([page3, commands]), objects: [{ id: id4, offset: state.offset }, { id: id4 + 1, offset: state.offset + page3.length }], state: { ...state, row: state.row + consumed, page: state.page + 1, offset: state.offset + page3.length + commands.length }, consumed };
 }
 function pdfPagesObject(state) {
   const data = object2(2, `<< /Type /Pages /Count ${state.page} /Kids [${Array.from({ length: state.page }, (_, i) => 10 + i * 2 + " 0 R").join(" ")}] >>`);
@@ -17729,9 +17729,9 @@ var ReportingService = class {
     const state = await attendanceStateQuery(this.db, { team_id: snapshot2.app_team_id, team_season_id: snapshot2.team_season_id }).first();
     if (state?.content_revision !== snapshot2.content_revision || attendance && (!Number.isSafeInteger(attendanceRevision) || state.attendance_source_revision !== attendanceRevision)) return this.changed(snapshot2);
     const next = Math.min(snapshot2.total, snapshot2.captured + CAPTURE_PAGE), guard = "EXISTS(SELECT 1 FROM team_read_state r WHERE r.app_team_id=? AND r.content_revision=? AND NOT EXISTS(SELECT 1 FROM team_lifecycle l WHERE l.team_id=r.app_team_id))" + (attendance ? " AND " + ATTENDANCE_EVIDENCE_CLOCK_SQL + "=?" : ""), guardParams = [snapshot2.app_team_id, snapshot2.content_revision, ...attendance ? [attendanceRevision] : []], parameters = JSON.parse(snapshot2.query_params);
-    const page2 = (await this.db.prepare(`SELECT q.ordinal,q.row_json FROM(${snapshot2.query_sql}) q WHERE q.ordinal>=? AND q.ordinal<?`).bind(...parameters, snapshot2.captured, next).all()).results;
+    const page3 = (await this.db.prepare(`SELECT q.ordinal,q.row_json FROM(${snapshot2.query_sql}) q WHERE q.ordinal>=? AND q.ordinal<?`).bind(...parameters, snapshot2.captured, next).all()).results;
     const statements = [
-      { sql: `INSERT INTO report_rows(snapshot_id,ordinal,row_json) SELECT ?,json_extract(value,'$.ordinal'),json_extract(value,'$.row_json') FROM json_each(?) WHERE ${guard} AND $FENCE ON CONFLICT(snapshot_id,ordinal) DO NOTHING`, params: [snapshot2.id, JSON.stringify(page2), ...guardParams] },
+      { sql: `INSERT INTO report_rows(snapshot_id,ordinal,row_json) SELECT ?,json_extract(value,'$.ordinal'),json_extract(value,'$.row_json') FROM json_each(?) WHERE ${guard} AND $FENCE ON CONFLICT(snapshot_id,ordinal) DO NOTHING`, params: [snapshot2.id, JSON.stringify(page3), ...guardParams] },
       { sql: `UPDATE report_snapshots SET captured=(SELECT COUNT(*) FROM report_rows WHERE snapshot_id=?),state=CASE WHEN (SELECT COUNT(*) FROM report_rows WHERE snapshot_id=?)=total AND ${guard} THEN 'ready' ELSE 'capturing' END WHERE id=? AND ${guard} AND $FENCE`, params: [snapshot2.id, snapshot2.id, ...guardParams, snapshot2.id, ...guardParams] },
       { sql: `UPDATE report_snapshots SET state='failed',error_code='report_changed' WHERE id=? AND NOT (${guard}) AND $FENCE`, params: [snapshot2.id, ...guardParams] }
     ];
@@ -18182,10 +18182,10 @@ async function identityRoutes(request, { db, actor: actor2, cursor, sync }) {
       if (!Array.isArray(position) || position.length !== 1 || typeof position[0] !== "string") throw invalid2("The linked-record cursor is invalid.", "cursor_invalid");
       after = position[0];
     }
-    const page2 = await repository.readIdentityPage({ teamId: team3.id, seasonId: seasonId2, kind: kind2, entityId: selection2.entity_id, after, limit: Number(query2.limit || 50) });
-    if (page2.revision !== revision3) throw invalid2("Linked records changed. Reload this list.", "cursor_restart", 409);
-    const next_cursor = page2.after ? await cursor.issue({ selection: selection2, scope: scope3, revision: revision3, position: [page2.after] }) : null;
-    return json2({ ...page2, next_cursor, after: void 0 });
+    const page3 = await repository.readIdentityPage({ teamId: team3.id, seasonId: seasonId2, kind: kind2, entityId: selection2.entity_id, after, limit: Number(query2.limit || 50) });
+    if (page3.revision !== revision3) throw invalid2("Linked records changed. Reload this list.", "cursor_restart", 409);
+    const next_cursor = page3.after ? await cursor.issue({ selection: selection2, scope: scope3, revision: revision3, position: [page3.after] }) : null;
+    return json2({ ...page3, next_cursor, after: void 0 });
   }
   if (request.method !== "POST" || path === "/api/identities") throw invalid2("That linked-record action is unavailable.", "method_not_allowed", 405);
   assertSameOrigin(request);
@@ -20014,8 +20014,27 @@ function wrapDatabase(db) {
   return owner;
 }
 
+// src/application/upgrade-only.js
+init_fresh_install();
+var page2 = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>myTS maintenance</title><style>body{font:16px system-ui;background:#101827;color:#edf2fa;margin:0;display:grid;min-height:100dvh;place-items:center}main{width:min(340px,calc(100vw - 48px))}h1{font-size:24px;margin:0 0 12px}p{line-height:1.5;color:#bac7d9}label{display:block;margin:24px 0 8px}input,button{box-sizing:border-box;width:100%;padding:12px;border:1px solid #64748b;border-radius:8px;font:inherit}input{background:#182335;color:white}button{margin-top:12px;background:#9ee34b;color:#132010;border:0;font-weight:700}button:disabled{opacity:.6}small{color:#bac7d9}#status{min-height:48px}</style><main><small>myTS ${VERSION2}</small><h1>Database maintenance</h1><p>Update the database while collection stays paused. Saved data is preserved.</p><form><label for="key">Installation key</label><input id="key" type="password" autocomplete="off" required maxlength="300"><button>Update database</button></form><p id="status" role="status" aria-live="polite">Use the installation key configured for this Worker.</p></main><script>const form=document.querySelector('form'),key=document.querySelector('input'),button=document.querySelector('button'),status=document.querySelector('#status');form.addEventListener('submit',async event=>{event.preventDefault();const password=key.value;key.value='';button.disabled=true;try{let result;do{status.textContent='Updating database\u2026';const response=await fetch('/api/owner/initialize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});result=await response.json();if(!response.ok)throw Error(result.error?.message||'The update could not finish.');status.textContent='Updating database: '+(result.setup?.progress||0)+'%';}while(result.continue);status.textContent='Database updated. Collection remains paused.';button.textContent='Database updated';}catch(error){status.textContent=error.message;button.disabled=false;}});</script></html>`;
+async function upgradeOnlyResponse(request, env, installationFor2) {
+  const path = new URL(request.url).pathname;
+  if ((path === "/" || path === "/admin") && ["GET", "HEAD"].includes(request.method)) return new Response(request.method === "HEAD" ? null : page2, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" } });
+  if (path === "/api/owner/initialize" && request.method === "POST") {
+    assertSameOrigin(request);
+    if (request.headers.has("x-view-key")) throw new InstallationError("owner_required", "Use the installation key.", 401);
+    if (!env.DB) throw new InstallationError("database_unconfigured", "The existing database binding is unavailable.", 503);
+    const body2 = await readAuthBody(request), budget = new BudgetDB(env.DB, 50), installation = installationFor2(budget, env);
+    await installation.fresh.verifyBootstrap(body2.password);
+    const state = await installation.inspectRecognized();
+    if (!["ready", "upgrade_required", "upgrading"].includes(state.state)) throw new InstallationError("installation_incomplete", "An existing complete installation is required. Preserve the database and review its configuration.", 409);
+    return json2(await installation.advance(body2.password));
+  }
+  return json2({ error: { code: "installation_maintenance", message: "Database maintenance is active. Collection remains paused." } }, 503);
+}
+
 // worker.js
-var installationFor = (db, env) => new Installation(db, { schema: SCHEMA2, seed: SEED2, bootstrapPassword: env.ADMIN_KEY, upgradeMode: env.MYTS_UPGRADE_MODE });
+var installationFor = (db, env) => new Installation(db, { schema: SCHEMA2, seed: SEED2, bootstrapPassword: env.ADMIN_KEY, upgradeMode: env.MYTS_UPGRADE_MODE === "upgrade-only" ? "normal" : env.MYTS_UPGRADE_MODE });
 var SyncRuntime = createApplicationRuntime({ reportCollector: collectReportJob, trackingCollector: collectTrackingCaptureJob, runtimeOptions: {
   // Readiness and every N+2 guarded write batch share the same unchanged
   // 50-statement invocation ceiling; collectors reserve the actual overhead.
@@ -20042,6 +20061,10 @@ var worker_default = {
   async fetch(request, env, ctx) {
     const url3 = new URL(request.url);
     try {
+      if (env.MYTS_UPGRADE_MODE === "upgrade-only") {
+        if (url3.pathname === "/api/health" && request.method === "GET") return json2({ service: "myTS", version: VERSION2, state: "paused", reason: "upgrade_only" });
+        return await upgradeOnlyResponse(request, env, installationFor);
+      }
       if (url3.pathname === "/club-logo") return await serveClubLogo(request, ctx);
       if (url3.pathname === "/api/health" && request.method === "GET") return json2({ service: "myTS", version: VERSION2, ...env.MYTS_UPGRADE_MODE === "maintenance" ? { state: "paused", reason: "maintenance" } : {} });
       if (url3.pathname.startsWith("/api/")) {
@@ -20066,7 +20089,7 @@ var worker_default = {
   },
   async scheduled(controller, env, ctx) {
     ctx.waitUntil((async () => {
-      if (env.MYTS_UPGRADE_MODE === "maintenance" || !env.DB) return;
+      if (["maintenance", "upgrade-only"].includes(env.MYTS_UPGRADE_MODE) || !env.DB) return;
       const budget = new BudgetDB(env.DB), installation = installationFor(budget, env), state = await installation.inspect();
       if (["upgrade_required", "upgrading"].includes(state.state)) {
         await wakeSync(env);
@@ -20560,7 +20583,7 @@ SOFTWARE.
 </script>
 <script>
 (()=>{'use strict';
-const VERSION='7.5.3', THEMES=window.mytsTheme.themes, AUTH='https://auth.teamsnap.com/oauth/authorize', OAUTH_STATE='myts.oauth.v6', ADMIN_KEY='myts.admin.v6', CLIENT_KEY='myts.client.v6';
+const VERSION='7.5.4', THEMES=window.mytsTheme.themes, AUTH='https://auth.teamsnap.com/oauth/authorize', OAUTH_STATE='myts.oauth.v6', ADMIN_KEY='myts.admin.v6', CLIENT_KEY='myts.client.v6';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 function currentTheme(){return window.mytsTheme.current()}
 function syncThemeControl(){
