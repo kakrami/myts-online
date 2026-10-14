@@ -1,9 +1,17 @@
 {
   "name": "myts",
-  "version": "6.20.133",
+  "version": "7.5.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "wrangler dev --config wrangler.jsonc",
+    "build": "wrangler deploy --config wrangler.jsonc --dry-run --outdir /tmp/myts-review-build",
+    "deploy": "wrangler deploy --config wrangler.jsonc"
+  },
   "devDependencies": {
-    "wrangler": "^4.68.0"
+    "wrangler": "4.149.0"
   }
 }
